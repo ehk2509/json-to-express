@@ -556,6 +556,77 @@
           }
         }
       }
+    },
+    "outbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "worker": {
+          "enum": [
+            "embedded",
+            "separate"
+          ],
+          "default": "embedded"
+        },
+        "pollIntervalMs": {
+          "type": "integer",
+          "minimum": 50,
+          "default": 500
+        },
+        "batchSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        "lockTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 30000
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        },
+        "backoffMs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1000
+        }
+      }
+    },
+    "jobs": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workflow"
+        ],
+        "properties": {
+          "workflow": {
+            "type": "string",
+            "minLength": 1
+          },
+          "queue": {
+            "type": "string",
+            "minLength": 1,
+            "default": "default"
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "backoffMs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -993,7 +1064,8 @@
             "updateById",
             "deleteById",
             "emit",
-            "respond"
+            "respond",
+            "enqueue"
           ]
         },
         "entity": {
@@ -1018,6 +1090,14 @@
         },
         "body": {
           "$ref": "#/$defs/workflowValue"
+        },
+        "job": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }
