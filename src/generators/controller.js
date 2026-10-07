@@ -83,8 +83,16 @@ function controllerSource(entity, spec) {
     const lines=['async function list(req, res, next) {','  try {',...hookLines(entity,'before','list'),'    const filter = {};'];
     if(entity.softDelete.enabled) lines.push('    filter['+js(entity.softDelete.field)+'] = null;');
     if(q.filters.length){
+      lines.push('    const mongoOperators = {eq: "$eq", ne: "$ne", gt: "$gt", gte: "$gte", lt: "$lt", lte: "$lte", in: "$in"};');
       lines.push('    for (const field of '+js(q.filters)+') {');
       lines.push('      if (req.query[field] !== undefined) filter[field] = req.query[field];');
+      lines.push('      for (const operator of '+js(q.operators)+') {');
+      lines.push('        if (operator === "eq") continue;');
+      lines.push('        const key = field + "__" + operator;');
+      lines.push('        if (req.query[key] === undefined) continue;');
+      lines.push('        filter[field] = typeof filter[field] === "object" && filter[field] !== null ? filter[field] : {};');
+      lines.push('        filter[field][mongoOperators[operator]] = operator === "in" ? String(req.query[key]).split(",") : req.query[key];');
+      lines.push('      }');
       lines.push('    }');
     }
     lines.push('    let query = '+entity.name+'.find(filter);');
