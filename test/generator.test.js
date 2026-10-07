@@ -483,17 +483,22 @@ test('generates durable Mongo outbox, worker, retries and queued workflow jobs',
 
   const generatedPackage = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
   assert.equal(generatedPackage.scripts.worker, 'node src/workflows/worker.js');
+  assert.equal(generatedPackage.scripts['worker:once'], 'node src/workflows/worker.js --once');
+  assert.equal(generatedPackage.scripts['outbox:retry'], 'node src/workflows/worker.js --retry-dead');
 
   const outbox = fs.readFileSync(path.join(output, 'src/workflows/outbox.js'), 'utf8');
   assert.match(outbox, /status: "processing"/);
   assert.match(outbox, /status: dead \? "dead" : "pending"/);
   assert.match(outbox, /Math\.pow\(2, attempts - 1\)/);
-  assert.match(outbox, /lockTimeout/);
+  assert.match(outbox, /Date\.now\(\) - 5000/);
+  assert.match(outbox, /retryDead/);
 
   const worker = fs.readFileSync(path.join(output, 'src/workflows/worker.js'), 'utf8');
   assert.match(worker, /processBatch/);
   assert.match(worker, /recoverStale/);
   assert.match(worker, /workflows\.execute/);
+  assert.match(worker, /--retry-dead/);
+  assert.match(worker, /mongoose\.disconnect/);
 
   const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
   assert.match(engine, /pendingJobs/);
