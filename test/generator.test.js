@@ -182,3 +182,16 @@ test('does not overwrite an existing generated directory without force', t => {
   assert.throws(() => generateApplication(spec, output), /--force/);
   assert.doesNotThrow(() => generateApplication(spec, output, {force: true}));
 });
+
+
+test('uses generation.outputDir from JSON when CLI output is omitted', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-json-output-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const configured = JSON.parse(JSON.stringify(spec));
+  configured.generation = {outputDir: path.join(tempRoot, 'from-json')};
+
+  const result = generateApplication(configured);
+  assert.equal(result.outputDir, path.join(tempRoot, 'from-json'));
+  assert.equal(fs.existsSync(path.join(result.outputDir, 'src/app.js')), true);
+});
