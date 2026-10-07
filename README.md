@@ -2,34 +2,38 @@
 
 Describe an Express backend in JSON and generate a runnable REST API.
 
-The first prototype turns one declarative JSON file into an Express + MongoDB application with Mongoose models, CRUD controllers, routes, error handling, environment configuration and a generated health-check test.
+The v0.1 prototype is built around one rule: **application behavior belongs in the JSON specification, not in generator source code**. Defaults make small specs convenient, while explicit configuration can override every behavior currently exposed by the prototype.
 
-## Status
+## What is generated
 
-This repository is an early v0.1 prototype. The supported target is intentionally narrow:
+From one JSON file, json-to-express generates:
 
-- Node.js 18+
-- Express
-- MongoDB + Mongoose
-- JSON-defined entities and fields
-- Generated CRUD endpoints
-- Field constraints: required, unique, enum, min/max, minLength/maxLength and default
-- Generated environment template and smoke test
-
-Authentication, relationships, OpenAPI, PostgreSQL and custom-code extension points are future work.
+- Express application and server bootstrap
+- MongoDB/Mongoose connection
+- Mongoose schemas/models
+- CRUD controllers
+- per-entity routers
+- configurable health endpoint
+- centralized error handling
+- .env.example
+- package.json
+- generated endpoint documentation
+- health smoke test when health checks are enabled
 
 ## Quick start
-
-Clone the repository, then run:
 
 ~~~bash
 node bin/json-to-express.js validate examples/shop.json
 node bin/json-to-express.js generate examples/shop.json
 ~~~
 
-The application is generated under generated/shop-api by default.
+The sample uses its own generation.outputDir. A CLI --output value overrides the JSON destination:
 
-Run the generated application:
+~~~bash
+node bin/json-to-express.js generate examples/shop.json --output /tmp/shop-api
+~~~
+
+Then:
 
 ~~~bash
 cd generated/shop-api
@@ -38,7 +42,246 @@ cp .env.example .env
 npm start
 ~~~
 
-By default the sample expects MongoDB at mongodb://127.0.0.1:27017/shop-api and listens on port 3000.
+## JSON is the source of truth
+
+The application can be customized at each layer.
+
+### Generation
+
+~~~json
+{
+  "generation": {
+    "outputDir": "generated/my-service"
+  }
+}
+~~~
+
+--output can override this at invocation time. --force intentionally remains a CLI-only safety switch so a checked-in JSON file cannot silently authorize destructive overwrites.
+
+### Application and API
+
+~~~json
+{
+  "app": {
+    "name": "catalog-service",
+    "port": 8080,
+    "portEnv": "HTTP_PORT",
+    "apiPrefix": "/api/v2",
+    "bodyLimit": "5mb"
+  }
+}
+~~~
+
+### Health endpoint
+
+~~~json
+{
+  "app": {
+    "health": {
+      "enabled": true,
+      "path": "/ready",
+      "status": 200,
+      "response": {
+        "service": "catalog",
+        "ready": true
+      }
+    }
+  }
+}
+~~~
+
+Set enabled to false and neither the route nor its generated smoke test is emitted.
+
+### Error responses and status codes
+
+~~~json
+{
+  "app": {
+    "responses": {
+      "notFound": "No route matched",
+      "validationError": "Payload rejected",
+      "invalidIdentifier": "Invalid resource id",
+      "uniqueConstraint": "Already exists",
+      "internalError": "Service unavailable"
+    },
+    "statusCodes": {
+      "notFound": 404,
+      "validationError": 422,
+      "invalidIdentifier": 400,
+      "uniqueConstraint": 409,
+      "internalError": 503
+    }
+  }
+}
+~~~
+
+### Generated package.json
+
+~~~json
+{
+  "app": {
+    "package": {
+      "name": "catalog-service",
+      "version": "1.2.0",
+      "private": true,
+      "description": "Catalog API",
+      "nodeEngine": ">=20",
+      "scripts": {
+        "lint": "node --check src/app.js"
+      },
+      "dependencies": {
+        "express": "^5.1.0"
+      },
+      "devDependencies": {}
+    }
+  }
+}
+~~~
+
+Custom scripts and dependencies are merged with the defaults required by the generated application. Explicit dependency versions override the defaults.
+
+### MongoDB
+
+~~~json
+{
+  "database": {
+    "type": "mongodb",
+    "uriEnv": "CATALOG_MONGO_URL",
+    "defaultUri": "mongodb://127.0.0.1:27017/catalog",
+    "options": {
+      "maxPoolSize": 20,
+      "serverSelectionTimeoutMS": 5000
+    }
+  }
+}
+~~~
+
+database.options is passed directly to mongoose.connect, which keeps Mongo/Mongoose connection tuning extensible without generator changes.
+
+### Entities and Mongoose schema options
+
+~~~json
+{
+  "entities": {
+    "Product": {
+      "route": "catalog",
+      "collection": "catalog_items",
+      "idParam": "productId",
+      "schemaOptions": {
+        "timestamps": false,
+        "versionKey": "revision",
+        "strict": "throw"
+      }
+    }
+  }
+}
+~~~
+
+schemaOptions is forwarded to mongoose.Schema. collection is a convenience override for the backing collection.
+
+### CRUD endpoints
+
+Every CRUD operation can be enabled/disabled independently and can override its HTTP method, relative path and status codes.
+
+~~~json
+{
+  "entities": {
+    "Product": {
+      "idParam": "productId",
+      "operations": {
+        "list": {
+          "enabled": true,
+          "method": "post",
+          "path": "/search",
+          "status": 200,
+          "lean": true
+        },
+        "get": {
+          "method": "get",
+          "path": "/item/:productId",
+          "status": 200,
+          "notFoundStatus": 404,
+          "lean": true
+        },
+        "create": false,
+        "update": {
+          "method": "put",
+          "path": "/item/:productId",
+          "status": 200,
+          "notFoundStatus": 404,
+          "runValidators": true
+        },
+        "delete": {
+          "method": "delete",
+          "path": "/item/:productId",
+          "status": 204,
+          "notFoundStatus": 404
+        }
+      }
+    }
+  }
+}
+~~~
+
+Defaults remain conventional GET/POST/PATCH/DELETE CRUD routes, so these blocks can be omitted when no override is needed.
+
+### Fields
+
+First-class field properties currently include:
+
+- type: string, number, boolean, date
+- required
+- unique
+- enum
+- min / max
+- minLength / maxLength
+- default
+
+The options object is an extensibility escape hatch for additional JSON-serializable Mongoose schema-type options:
+
+~~~json
+{
+  "name": {
+    "type": "string",
+    "required": true,
+    "options": {
+      "trim": true,
+      "lowercase": true,
+      "index": true,
+      "select": false
+    }
+  }
+}
+~~~
+
+First-class properties override the same option supplied inside options.
+
+## Defaults
+
+A minimal entity still works:
+
+~~~json
+{
+  "app": {
+    "name": "todo-api"
+  },
+  "database": {
+    "type": "mongodb"
+  },
+  "entities": {
+    "Todo": {
+      "fields": {
+        "title": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  }
+}
+~~~
+
+It defaults to port 3000, PORT, /api, /health, MONGODB_URI, timestamps enabled, versionKey disabled, and standard CRUD methods/routes.
 
 ## CLI
 
@@ -47,86 +290,9 @@ j2e validate <spec.json>
 j2e generate <spec.json> [--output <dir>] [--force]
 ~~~
 
-Use --output to choose a target directory. json-to-express refuses to overwrite a non-empty directory unless --force is provided.
-
-When installed as an npm package, both json-to-express and j2e are exposed as commands.
-
-## Application specification
-
-Example:
-
-~~~json
-{
-  "app": {
-    "name": "shop-api",
-    "port": 3000
-  },
-  "database": {
-    "type": "mongodb",
-    "uriEnv": "MONGODB_URI"
-  },
-  "entities": {
-    "Product": {
-      "fields": {
-        "name": {
-          "type": "string",
-          "required": true,
-          "minLength": 2
-        },
-        "price": {
-          "type": "number",
-          "required": true,
-          "min": 0
-        },
-        "status": {
-          "type": "string",
-          "enum": ["draft", "active", "archived"],
-          "default": "draft"
-        }
-      }
-    }
-  }
-}
-~~~
-
-Supported field types in v0.1 are string, number, boolean and date.
-
-Entity names must use PascalCase. Routes are generated automatically, so Product becomes /api/products and Category becomes /api/categories. A custom lowercase route can also be supplied with the entity route property.
-
-## Generated structure
-
-~~~text
-generated/shop-api/
-├── .env.example
-├── package.json
-├── README.md
-├── src/
-│   ├── app.js
-│   ├── server.js
-│   ├── config/
-│   │   └── database.js
-│   ├── middleware/
-│   │   └── error-handler.js
-│   ├── models/
-│   ├── controllers/
-│   └── routes/
-└── test/
-    └── health.test.js
-~~~
-
-For each entity, json-to-express generates:
-
-~~~text
-GET    /api/<entities>
-GET    /api/<entities>/:id
-POST   /api/<entities>
-PATCH  /api/<entities>/:id
-DELETE /api/<entities>/:id
-~~~
+The generator refuses to overwrite a non-empty directory unless --force is explicitly passed.
 
 ## Architecture
-
-The generator deliberately separates validation and normalization from code generation:
 
 ~~~text
 JSON specification
@@ -144,22 +310,35 @@ file generators
 runnable Express application
 ~~~
 
-That normalized application model is the seam for future output targets and features without coupling the input format directly to templates.
+The normalization layer is deliberate: defaults and compatibility live there, while templates only consume a complete application model.
+
+## Customization boundary
+
+"Everything customizable" in v0.1 means **everything the v0.1 generator knows how to generate is controlled by JSON**. It does not mean embedding arbitrary JavaScript strings inside JSON.
+
+Business-specific logic, arbitrary middleware code, custom validators implemented as functions, authentication flows and cross-entity relationships require explicit declarative features. Those are safer future extensions than executing raw code from a specification.
 
 ## Development
 
-The generator has no runtime dependencies.
+The generator itself has no runtime dependencies.
 
 ~~~bash
 npm test
 npm run check
 ~~~
 
-CI exercises the project on Node.js 18, 20 and 22.
+CI runs on Node.js 18, 20 and 22.
 
 ## Roadmap
 
-The next useful layers are entity relationships, request validation independent of Mongoose, JWT authentication/RBAC, generated OpenAPI documentation, PostgreSQL support, and protected custom-code extension points so regeneration never destroys developer-owned code.
+Next layers:
+
+1. entity relationships and references
+2. declarative request/query validation
+3. authentication and RBAC
+4. generated OpenAPI
+5. hooks/custom extension modules that survive regeneration
+6. PostgreSQL/Prisma target
 
 ## License
 
