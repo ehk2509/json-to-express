@@ -322,7 +322,10 @@
       ],
       "properties": {
         "type": {
-          "const": "mongodb"
+          "enum": [
+            "mongodb",
+            "postgresql"
+          ]
         },
         "uriEnv": {
           "type": "string",
@@ -335,6 +338,23 @@
         },
         "options": {
           "type": "object"
+        },
+        "idStrategy": {
+          "enum": [
+            "objectId",
+            "uuid"
+          ]
+        },
+        "prisma": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "schemaPath": {
+              "type": "string",
+              "minLength": 1,
+              "default": "prisma/schema.prisma"
+            }
+          }
         }
       },
       "additionalProperties": false
