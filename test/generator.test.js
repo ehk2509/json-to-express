@@ -508,3 +508,103 @@ test('generates durable Mongo outbox, worker, retries and queued workflow jobs',
   const server = fs.readFileSync(path.join(output, 'src/server.js'), 'utf8');
   assert.doesNotMatch(server, /outboxWorker\.startWorker/);
 });
+
+
+test('generates PostgreSQL Prisma schema, UUID routes and CRUD controllers from the same IR', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-prisma-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const postgresSpec = {
+    specVersion: '1.0',
+    app: {name: 'postgres-api'},
+    database: {
+      type: 'postgresql',
+      uriEnv: 'DATABASE_URL',
+      defaultUri: 'postgresql://postgres:postgres@127.0.0.1:5432/postgres_api',
+      idStrategy: 'uuid',
+      prisma: {schemaPath: 'db/schema.prisma'}
+    },
+    entities: {
+      Category: {
+        collection: 'categories',
+        fields: {
+          name: {type: 'string', required: true, unique: true}
+        }
+      },
+      Product: {
+        collection: 'products',
+        softDelete: {enabled: true, field: 'deletedAt'},
+        indexes: [{fields: {name: 1, price: -1}, options: {}}],
+        operations: {
+          list: {
+            populate: ['category'],
+            query: {
+              filters: ['name', 'price', 'category'],
+              operators: ['eq', 'gte', 'lte'],
+              pagination: {enabled: true, defaultLimit: 10, maxLimit: 50}
+            }
+          },
+          get: {populate: ['category']},
+          update: {transaction: true}
+        },
+        fields: {
+          name: {type: 'string', required: true},
+          price: {type: 'number', required: true},
+          category: {type: 'reference', ref: 'Category', required: true, onDelete: 'restrict'},
+          published: {type: 'boolean', default: false}
+        }
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'postgres');
+  const result = generateApplication(postgresSpec, output);
+
+  assert.ok(result.files.includes('db/schema.prisma'));
+  assert.ok(result.files.includes('src/controllers/ProductController.js'));
+  assert.equal(result.files.some(file => file === 'src/models/Product.js'), false);
+
+  const schema = fs.readFileSync(path.join(output, 'db/schema.prisma'), 'utf8');
+  assert.match(schema, /provider = "postgresql"/);
+  assert.match(schema, /id String @id @default\(uuid\(\)\)/);
+  assert.match(schema, /categoryId String/);
+  assert.match(schema, /@relation\("Product_category".*onDelete: Restrict\)/);
+  assert.match(schema, /Product_category Product\[\] @relation\("Product_category"\)/);
+  assert.match(schema, /@@index\(\[name, price\(sort: Desc\)\]\)/);
+  assert.match(schema, /@@map\("products"\)/);
+
+  const controller = fs.readFileSync(path.join(output, 'src/controllers/ProductController.js'), 'utf8');
+  assert.match(controller, /prisma\.product\.findMany/);
+  assert.match(controller, /db\.product\.update/);
+  assert.match(controller, /prisma\.\$transaction/);
+  assert.match(controller, /field \+ "Id"/);
+  assert.match(controller, /connect: \{id: reference\}/);
+
+  const routes = fs.readFileSync(path.join(output, 'src/routes/ProductRoutes.js'), 'utf8');
+  assert.match(routes, /validation\.identifier/);
+
+  const validation = fs.readFileSync(path.join(output, 'src/middleware/validation.js'), 'utf8');
+  assert.ok(validation.includes('^[0-9a-f]{8}-[0-9a-f]{4}-'));
+  assert.doesNotMatch(validation, /mongoose/);
+
+  const database = fs.readFileSync(path.join(output, 'src/config/database.js'), 'utf8');
+  assert.match(database, /PrismaClient/);
+  assert.match(database, /\$connect/);
+  assert.match(database, /\$disconnect/);
+
+  const generatedPackage = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(generatedPackage.dependencies['@prisma/client']);
+  assert.equal(generatedPackage.dependencies.mongoose, undefined);
+  assert.ok(generatedPackage.devDependencies.prisma);
+  assert.equal(generatedPackage.scripts['prisma:generate'], 'prisma generate --schema db/schema.prisma');
+  assert.equal(generatedPackage.scripts['db:push'], 'prisma db push --schema db/schema.prisma');
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
+  assert.equal(openapi.components.schemas.Product.properties.id.format, 'uuid');
+  assert.equal(openapi.paths['/api/products/{id}'].get.parameters[0].schema.format, 'uuid');
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
+  }
+});

@@ -2,9 +2,15 @@
 
 const {joinUrl} = require('./utils');
 
-function fieldSchema(field) {
+function identifierSchema(spec) {
+  return spec.database.type === 'postgresql'
+    ? {type: 'string', format: 'uuid'}
+    : {type: 'string', pattern: '^[a-fA-F0-9]{24}$'};
+}
+
+function fieldSchema(field, spec) {
   if (field.type === 'reference') {
-    const item = {type: 'string', pattern: '^[a-fA-F0-9]{24}$'};
+    const item = identifierSchema(spec);
     return field.many ? {type: 'array', items: item} : item;
   }
   const types = {string: 'string', number: 'number', boolean: 'boolean', date: 'string'};
@@ -52,12 +58,12 @@ module.exports = function openapiSource(spec) {
     const properties = {};
     const required = [];
     for (const field of entity.fields) {
-      properties[field.name] = fieldSchema(field);
+      properties[field.name] = fieldSchema(field, spec);
       if (field.required) required.push(field.name);
     }
     document.components.schemas[entity.name] = {
       type: 'object',
-      properties: { _id: {type: 'string'}, ...properties },
+      properties: {[spec.database.type === 'postgresql' ? 'id' : '_id']: identifierSchema(spec), ...properties},
       ...(required.length ? {required} : {})
     };
 
@@ -70,9 +76,12 @@ module.exports = function openapiSource(spec) {
         operationId: name + entity.name,
         responses: {[String(op.status)]: {description: 'Success'}}
       };
-      if (['get','update','delete'].includes(name)) {
+      if (['get', 'update', 'delete'].includes(name)) {
         operation.parameters = [{
-          name: entity.idParam, in: 'path', required: true, schema: {type: 'string', pattern: '^[a-fA-F0-9]{24}$'}
+          name: entity.idParam,
+          in: 'path',
+          required: true,
+          schema: identifierSchema(spec)
         }];
       }
       if (name === 'list') {
@@ -85,7 +94,7 @@ module.exports = function openapiSource(spec) {
           operation.parameters.push({name: op.query.pagination.limitParam, in: 'query', schema: {type: 'integer', minimum: 1, maximum: op.query.pagination.maxLimit}});
         }
       }
-      if (['create','update'].includes(name)) {
+      if (['create', 'update'].includes(name)) {
         operation.requestBody = {
           required: name === 'create',
           content: {'application/json': {schema: {$ref: '#/components/schemas/' + entity.name}}}

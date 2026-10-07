@@ -123,17 +123,27 @@ function normalizeSpec(inputSpec) {
   const authEnabled = valueOr(auth.enabled, false);
   const openapi = spec.docs && spec.docs.openapi || {};
   const outboxConfig = spec.outbox || {};
+  const prismaSchemaPath = valueOr(spec.database.prisma && spec.database.prisma.schemaPath, 'prisma/schema.prisma');
+  const databaseType = spec.database.type;
+  const isMongo = databaseType === 'mongodb';
+  const isPostgres = databaseType === 'postgresql';
   const hasAsyncWork = Object.keys(spec.events || {}).length > 0 || Object.keys(spec.jobs || {}).length > 0;
 
   const dependencies = {
     dotenv: '^16.4.5',
     express: '^4.21.1',
-    mongoose: '^8.8.0',
+    ...(isMongo ? {mongoose: '^8.8.0'} : {}),
+    ...(isPostgres ? {'@prisma/client': '^6.16.2'} : {}),
     ...(authEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
     ...(valueOr(cors.enabled, false) ? {cors: '^2.8.5'} : {}),
     ...(valueOr(rateLimit.enabled, false) ? {'express-rate-limit': '^7.4.1'} : {}),
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
     ...(packageConfig.dependencies || {})
+  };
+  const devDependencies = {
+    supertest: '^7.0.0',
+    ...(isPostgres ? {prisma: '^6.16.2'} : {}),
+    ...(packageConfig.devDependencies || {})
   };
 
   const normalized = {
@@ -226,6 +236,10 @@ function normalizeSpec(inputSpec) {
           start: 'node ' + serverFile,
           dev: 'node --watch ' + serverFile,
           test: 'node --test',
+          ...(isPostgres ? {
+            'prisma:generate': 'prisma generate --schema ' + prismaSchemaPath,
+            'db:push': 'prisma db push --schema ' + prismaSchemaPath
+          } : {}),
           ...(hasAsyncWork ? {
             worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
             'worker:once': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --once',
@@ -234,14 +248,24 @@ function normalizeSpec(inputSpec) {
           ...(packageConfig.scripts || {})
         },
         dependencies,
-        devDependencies: {supertest: '^7.0.0', ...(packageConfig.devDependencies || {})}
+        devDependencies
       }
     },
     database: {
-      type: 'mongodb',
-      uriEnv: valueOr(spec.database.uriEnv, 'MONGODB_URI'),
-      defaultUri: valueOr(spec.database.defaultUri, 'mongodb://127.0.0.1:27017/' + generatedName),
-      options: spec.database.options || {}
+      type: databaseType,
+      orm: isMongo ? 'mongoose' : 'prisma',
+      idStrategy: valueOr(spec.database.idStrategy, isMongo ? 'objectId' : 'uuid'),
+      uriEnv: valueOr(spec.database.uriEnv, isMongo ? 'MONGODB_URI' : 'DATABASE_URL'),
+      defaultUri: valueOr(
+        spec.database.defaultUri,
+        isMongo
+          ? 'mongodb://127.0.0.1:27017/' + generatedName
+          : 'postgresql://postgres:postgres@127.0.0.1:5432/' + generatedName.replace(/-/g, '_')
+      ),
+      options: spec.database.options || {},
+      prisma: {
+        schemaPath: prismaSchemaPath
+      }
     },
     workflows: Object.entries(spec.workflows || {}).map(([name, workflow]) => ({
       name,

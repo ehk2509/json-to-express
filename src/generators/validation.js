@@ -8,7 +8,8 @@ function descriptor(entity) {
     fields[field.name] = {
       type: field.type,
       required: Boolean(field.required),
-      many: Boolean(field.many)
+      many: Boolean(field.many),
+      enum: field.enum || null
     };
   }
   return fields;
@@ -16,21 +17,34 @@ function descriptor(entity) {
 
 module.exports = function validationSource(spec) {
   const entities = Object.fromEntries(spec.entities.map(entity => [entity.name, descriptor(entity)]));
+  const postgres = spec.database.type === 'postgresql';
+  const idHelper = postgres
+    ? [
+      'function isIdentifier(value) {',
+      "  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);",
+      '}'
+    ]
+    : [
+      "const mongoose = require('mongoose');",
+      'function isIdentifier(value) { return mongoose.Types.ObjectId.isValid(value); }'
+    ];
+
   return [
     "'use strict';", '',
-    "const mongoose = require('mongoose');",
+    ...idHelper, '',
     'const definitions = ' + js(entities) + ';', '',
     'function validValue(definition, value) {',
     '  if (value === null || value === undefined) return true;',
-    "  if (definition.type === 'string') return typeof value === 'string';",
-    "  if (definition.type === 'number') return typeof value === 'number' && Number.isFinite(value);",
-    "  if (definition.type === 'boolean') return typeof value === 'boolean';",
-    "  if (definition.type === 'date') return !Number.isNaN(Date.parse(value));",
+    "  if (definition.type === 'string' && typeof value !== 'string') return false;",
+    "  if (definition.type === 'number' && !(typeof value === 'number' && Number.isFinite(value))) return false;",
+    "  if (definition.type === 'boolean' && typeof value !== 'boolean') return false;",
+    "  if (definition.type === 'date' && Number.isNaN(Date.parse(value))) return false;",
     "  if (definition.type === 'reference') {",
     '    const values = definition.many ? value : [value];',
-    '    return Array.isArray(values) && values.every(item => mongoose.Types.ObjectId.isValid(item));',
+    '    if (!Array.isArray(values) || !values.every(isIdentifier)) return false;',
     '  }',
-    '  return false;',
+    '  if (definition.enum && !definition.enum.includes(value)) return false;',
+    '  return true;',
     '}', '',
     'function body(entityName, partial) {',
     '  return function validateBody(req, res, next) {',
@@ -39,18 +53,18 @@ module.exports = function validationSource(spec) {
     '    for (const [name, definition] of Object.entries(fields)) {',
     '      const value = req.body && req.body[name];',
     '      if (!partial && definition.required && (value === undefined || value === null)) errors.push(name + " is required");',
-    '      if (value !== undefined && !validValue(definition, value)) errors.push(name + " has an invalid type");',
+    '      if (value !== undefined && !validValue(definition, value)) errors.push(name + " has an invalid value");',
     '    }',
     "    if (errors.length) return res.status(400).json({error: 'Invalid request', details: errors});",
     '    next();',
     '  };',
     '}', '',
-    'function objectId(paramName) {',
-    '  return function validateObjectId(req, res, next) {',
-    "    if (!mongoose.Types.ObjectId.isValid(req.params[paramName])) return res.status(400).json({error: 'Invalid identifier'});",
+    'function identifier(paramName) {',
+    '  return function validateIdentifier(req, res, next) {',
+    "    if (!isIdentifier(req.params[paramName])) return res.status(400).json({error: 'Invalid identifier'});",
     '    next();',
     '  };',
     '}', '',
-    'module.exports = {body, objectId};', ''
+    'module.exports = {body, identifier, objectId: identifier};', ''
   ].join('\n');
 };

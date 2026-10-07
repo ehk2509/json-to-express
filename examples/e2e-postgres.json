@@ -1,0 +1,125 @@
+{
+  "specVersion": "1.0",
+  "generation": {
+    "outputDir": ".tmp/e2e-postgres"
+  },
+  "app": {
+    "name": "j2e-postgres-e2e",
+    "port": 3457,
+    "host": "127.0.0.1",
+    "apiPrefix": "/api",
+    "health": {
+      "enabled": true,
+      "path": "/health",
+      "status": 200,
+      "response": {
+        "status": "ok"
+      }
+    },
+    "production": {
+      "requestId": true,
+      "securityHeaders": true
+    }
+  },
+  "docs": {
+    "openapi": {
+      "enabled": true,
+      "file": "openapi.json",
+      "title": "J2E PostgreSQL E2E",
+      "version": "1.0.0"
+    }
+  },
+  "database": {
+    "type": "postgresql",
+    "uriEnv": "DATABASE_URL",
+    "defaultUri": "postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres",
+    "idStrategy": "uuid",
+    "prisma": {
+      "schemaPath": "prisma/schema.prisma"
+    }
+  },
+  "entities": {
+    "Category": {
+      "collection": "categories",
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        }
+      }
+    },
+    "Product": {
+      "collection": "products",
+      "softDelete": {
+        "enabled": true,
+        "field": "deletedAt"
+      },
+      "indexes": [
+        {
+          "fields": {
+            "name": 1,
+            "price": -1
+          },
+          "options": {}
+        }
+      ],
+      "operations": {
+        "list": {
+          "populate": [
+            "category"
+          ],
+          "query": {
+            "filters": [
+              "name",
+              "price",
+              "category"
+            ],
+            "operators": [
+              "eq",
+              "gte",
+              "lte"
+            ],
+            "sortParam": "sort",
+            "selectParam": "fields",
+            "pagination": {
+              "enabled": true,
+              "defaultLimit": 20,
+              "maxLimit": 100
+            }
+          }
+        },
+        "get": {
+          "populate": [
+            "category"
+          ]
+        },
+        "update": {
+          "transaction": true
+        }
+      },
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 2
+        },
+        "price": {
+          "type": "number",
+          "required": true,
+          "min": 0
+        },
+        "category": {
+          "type": "reference",
+          "ref": "Category",
+          "required": true,
+          "onDelete": "restrict"
+        },
+        "published": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

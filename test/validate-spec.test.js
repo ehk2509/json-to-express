@@ -200,3 +200,43 @@ test('validates queued jobs and enqueue targets', () => {
     }
   );
 });
+
+
+test('enforces PostgreSQL Prisma capability boundaries', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'postgres-api'},
+      database: {type: 'postgresql', idStrategy: 'objectId', options: {pool: 2}},
+      entities: {
+        Category: {fields: {name: {type: 'string'}}},
+        Product: {
+          schemaOptions: {timestamps: false},
+          fields: {
+            category: {
+              type: 'reference',
+              ref: 'Category',
+              required: true,
+              many: true,
+              onDelete: 'nullify',
+              options: {index: true}
+            }
+          }
+        }
+      },
+      workflows: {
+        unsupported: {steps: [{name: 'done', action: 'respond', body: {ok: true}}]}
+      }
+    }),
+    error => {
+      assert.match(error.message, /idStrategy must be "uuid"/);
+      assert.match(error.message, /database\.options is only supported by the mongodb target/);
+      assert.match(error.message, /workflows are not yet supported by the postgresql target/);
+      assert.match(error.message, /schemaOptions is only supported by the mongodb target/);
+      assert.match(error.message, /many is not yet supported by the postgresql target/);
+      assert.match(error.message, /cannot use onDelete "nullify"/);
+      assert.match(error.message, /\.options is only supported by the mongodb target/);
+      return true;
+    }
+  );
+});
