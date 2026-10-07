@@ -10,7 +10,7 @@ const databaseSource = require('./database');
 const errorHandlerSource = require('./error-handler');
 const packageSource = require('./package');
 const readmeSource = require('./readme');
-const smokeTestSource = require('./test');
+const smokeTestSource = require('./smoke-test');
 const {filePaths} = require('./utils');
 
 function buildFiles(spec) {
