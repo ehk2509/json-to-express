@@ -1,7 +1,7 @@
 {
   "name": "json-to-express",
   "version": "0.1.0",
-  "description": "Generate a runnable Express + MongoDB REST API from a declarative JSON specification.",
+  "description": "Generate runnable Express REST APIs from declarative JSON for MongoDB/Mongoose or PostgreSQL/Prisma.",
   "main": "src/index.js",
   "bin": {
     "json-to-express": "bin/json-to-express.js",
@@ -10,7 +10,7 @@
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check-syntax.js",
-    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json"
+    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json"
   },
   "keywords": [
     "express",
@@ -18,7 +18,9 @@
     "json",
     "rest-api",
     "mongoose",
-    "scaffolding"
+    "scaffolding",
+    "prisma",
+    "postgresql"
   ],
   "author": "Elyes Hkiri",
   "license": "MIT",
