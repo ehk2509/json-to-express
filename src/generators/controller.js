@@ -1,6 +1,6 @@
 'use strict';
 
-const {js, payload} = require('./utils');
+const {filePaths, js, payload, relativeRequire} = require('./utils');
 
 function enabled(entity, name) {
   return entity.operations[name] && entity.operations[name].enabled;
@@ -8,33 +8,27 @@ function enabled(entity, name) {
 
 function listFunction(entity) {
   const op = entity.operations.list;
-  const query = op.query;
-  const lines = [
-    'async function list(req, res, next) {',
-    '  try {'
-  ];
+  const queryConfig = op.query;
+  const lines = ['async function list(req, res, next) {', '  try {', '    const filter = {};'];
 
-  if (query.filters.length) {
-    lines.push('    const filter = {};');
-    lines.push('    for (const field of ' + js(query.filters) + ') {');
+  if (queryConfig.filters.length) {
+    lines.push('    for (const field of ' + js(queryConfig.filters) + ') {');
     lines.push('      if (req.query[field] !== undefined) filter[field] = req.query[field];');
     lines.push('    }');
-  } else {
-    lines.push('    const filter = {};');
   }
 
   lines.push('    let query = ' + entity.name + '.find(filter);');
 
-  if (query.sortParam) {
-    lines.push('    if (req.query[' + js(query.sortParam) + ']) query = query.sort(req.query[' + js(query.sortParam) + ']);');
+  if (queryConfig.sortParam) {
+    lines.push('    if (req.query[' + js(queryConfig.sortParam) + ']) query = query.sort(req.query[' + js(queryConfig.sortParam) + ']);');
   }
-  if (query.selectParam) {
-    lines.push('    if (req.query[' + js(query.selectParam) + ']) query = query.select(req.query[' + js(query.selectParam) + ']);');
+  if (queryConfig.selectParam) {
+    lines.push('    if (req.query[' + js(queryConfig.selectParam) + ']) query = query.select(req.query[' + js(queryConfig.selectParam) + ']);');
   }
-  if (query.pagination.enabled) {
-    lines.push('    const requestedLimit = Number(req.query[' + js(query.pagination.limitParam) + ']);');
-    lines.push('    const requestedPage = Number(req.query[' + js(query.pagination.pageParam) + ']);');
-    lines.push('    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : ' + query.pagination.defaultLimit + ', 1), ' + query.pagination.maxLimit + ');');
+  if (queryConfig.pagination.enabled) {
+    lines.push('    const requestedLimit = Number(req.query[' + js(queryConfig.pagination.limitParam) + ']);');
+    lines.push('    const requestedPage = Number(req.query[' + js(queryConfig.pagination.pageParam) + ']);');
+    lines.push('    const limit = Math.min(Math.max(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : ' + queryConfig.pagination.defaultLimit + ', 1), ' + queryConfig.pagination.maxLimit + ');');
     lines.push('    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;');
     lines.push('    query = query.skip((page - 1) * limit).limit(limit);');
   }
@@ -67,10 +61,11 @@ function getFunction(entity) {
   return lines.join('\n');
 }
 
-function controllerSource(entity) {
+function controllerSource(entity, spec) {
   const id = 'req.params[' + js(entity.idParam) + ']';
   const functions = [];
   const exports = [];
+  const paths = filePaths(spec, entity.name);
 
   if (enabled(entity, 'list')) {
     functions.push(listFunction(entity));
@@ -124,7 +119,7 @@ function controllerSource(entity) {
 
   return [
     "'use strict';", '',
-    "const " + entity.name + " = require('../models/" + entity.name + "');", '',
+    'const ' + entity.name + ' = require(' + js(relativeRequire(paths.controller, paths.model)) + ');', '',
     functions.join('\n\n'), '',
     'module.exports = {' + exports.join(', ') + '};', ''
   ].join('\n');
