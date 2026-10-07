@@ -173,3 +173,30 @@ test('validates workflow targets, step ordering and custom endpoint references',
     }
   );
 });
+
+
+test('validates queued jobs and enqueue targets', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'jobs-api'},
+      database: {type: 'mongodb'},
+      entities: {Order: {fields: {status: {type: 'string'}}}},
+      jobs: {
+        brokenJob: {workflow: 'missingWorkflow'}
+      },
+      workflows: {
+        enqueueBroken: {
+          steps: [
+            {name: 'job', action: 'enqueue', job: 'missingJob', payload: {id: '$body.id'}}
+          ]
+        }
+      }
+    }),
+    error => {
+      assert.match(error.message, /jobs\.brokenJob\.workflow references unknown workflow/);
+      assert.match(error.message, /job references unknown job/);
+      return true;
+    }
+  );
+});
