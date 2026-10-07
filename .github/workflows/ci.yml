@@ -38,6 +38,9 @@ jobs:
       - name: Install generated application
         working-directory: .tmp/e2e-app
         run: npm install --no-audit --no-fund
+      - name: Test generated application contracts
+        working-directory: .tmp/e2e-app
+        run: npm test
       - name: Start generated application
         working-directory: .tmp/e2e-app
         env:
