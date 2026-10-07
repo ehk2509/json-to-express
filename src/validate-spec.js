@@ -80,6 +80,27 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.database && spec.database.type === 'postgresql') {
+    if (spec.database.idStrategy !== undefined && spec.database.idStrategy !== 'uuid') {
+      errors.push('database.idStrategy must be "uuid" for postgresql');
+    }
+    if (spec.database.options && Object.keys(spec.database.options).length) {
+      errors.push('database.options is only supported by the mongodb target');
+    }
+    if (isObject(spec.workflows) && Object.keys(spec.workflows).length) {
+      errors.push('workflows are not yet supported by the postgresql target');
+    }
+    if (isObject(spec.endpoints) && Object.keys(spec.endpoints).length) {
+      errors.push('custom workflow endpoints are not yet supported by the postgresql target');
+    }
+    if (isObject(spec.events) && Object.keys(spec.events).length) {
+      errors.push('events/outbox are not yet supported by the postgresql target');
+    }
+    if (isObject(spec.jobs) && Object.keys(spec.jobs).length) {
+      errors.push('background jobs/outbox are not yet supported by the postgresql target');
+    }
+  }
+
   const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
   const workflowNames = new Set(isObject(spec.workflows) ? Object.keys(spec.workflows) : []);
   const eventNames = new Set(isObject(spec.events) ? Object.keys(spec.events) : []);
@@ -155,6 +176,21 @@ function validateSpec(inputSpec) {
     for (const [entityName, entity] of Object.entries(spec.entities)) {
       if (!isObject(entity)) continue;
 
+      if (spec.database && spec.database.type === 'postgresql') {
+        if (entity.schemaOptions && Object.keys(entity.schemaOptions).length) {
+          errors.push('entities.' + entityName + '.schemaOptions is only supported by the mongodb target');
+        }
+        if (Array.isArray(entity.indexes)) {
+          entity.indexes.forEach((definition, index) => {
+            if (!isObject(definition) || !isObject(definition.options)) return;
+            const unsupported = Object.keys(definition.options).filter(key => key !== 'unique');
+            if (unsupported.length) {
+              errors.push('entities.' + entityName + '.indexes[' + index + '].options only supports "unique" for postgresql');
+            }
+          });
+        }
+      }
+
       if (entity.hooks && entity.hooks.module) {
         validateRelativePath(errors, entity.hooks.module, 'entities.' + entityName + '.hooks.module');
       }
@@ -208,6 +244,13 @@ function validateSpec(inputSpec) {
       if (isObject(entity.fields)) {
         for (const [fieldName, field] of Object.entries(entity.fields)) {
           if (!isObject(field)) continue;
+
+          if (spec.database && spec.database.type === 'postgresql' && field.options && Object.keys(field.options).length) {
+            errors.push('entities.' + entityName + '.fields.' + fieldName + '.options is only supported by the mongodb target');
+          }
+          if (spec.database && spec.database.type === 'postgresql' && field.type === 'reference' && field.many === true) {
+            errors.push('entities.' + entityName + '.fields.' + fieldName + '.many is not yet supported by the postgresql target');
+          }
 
           if (field.type === 'reference') {
             if (!field.ref) {
