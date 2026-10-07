@@ -42,8 +42,12 @@ function normalizeSpec(spec) {
   const packageConfig = spec.app.package || {};
   const health = spec.app.health || {};
   const responses = spec.app.responses || {};
+  const statusCodes = spec.app.statusCodes || {};
 
   return {
+    generation: {
+      outputDir: spec.generation && spec.generation.outputDir
+    },
     app: {
       name: spec.app.name.trim(),
       port: spec.app.port || 3000,
@@ -62,6 +66,13 @@ function normalizeSpec(spec) {
         invalidIdentifier: responses.invalidIdentifier || 'Invalid identifier',
         uniqueConstraint: responses.uniqueConstraint || 'Unique constraint violated',
         internalError: responses.internalError || 'Internal server error'
+      },
+      statusCodes: {
+        notFound: statusCodes.notFound || 404,
+        validationError: statusCodes.validationError || 400,
+        invalidIdentifier: statusCodes.invalidIdentifier || 400,
+        uniqueConstraint: statusCodes.uniqueConstraint || 409,
+        internalError: statusCodes.internalError || 500
       },
       package: {
         name: packageConfig.name || packageName(spec.app.name),
