@@ -60,7 +60,7 @@ function validateSpec(spec) {
           errors.push(fieldPath + ' must be an object');
           continue;
         }
-        if (!SUPPORTED_TYPES.has(field.type)) errors.push(fieldPath + '.type must be one of: ' + [...SUPPORTED_TYPES].join(', '));
+        if (!SUPPORTED_TYPES.has(field.type)) errors.push(fieldPath + '.type "' + String(field.type) + '" is unsupported; expected one of: ' + [...SUPPORTED_TYPES].join(', '));
         for (const booleanOption of ['required', 'unique']) {
           if (field[booleanOption] !== undefined && typeof field[booleanOption] !== 'boolean') {
             errors.push(fieldPath + '.' + booleanOption + ' must be a boolean');
