@@ -15,6 +15,18 @@
       "response": {
         "status": "ok"
       }
+    },
+    "production": {
+      "requestId": true,
+      "securityHeaders": true
+    }
+  },
+  "docs": {
+    "openapi": {
+      "enabled": true,
+      "file": "openapi.json",
+      "title": "J2E E2E",
+      "version": "1.0.0"
     }
   },
   "database": {
@@ -23,12 +35,53 @@
     "defaultUri": "mongodb://127.0.0.1:27017/j2e_e2e"
   },
   "entities": {
+    "Category": {
+      "indexes": [
+        {
+          "fields": {
+            "name": 1
+          },
+          "options": {
+            "unique": true
+          }
+        }
+      ],
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        }
+      }
+    },
     "Product": {
+      "softDelete": {
+        "enabled": true,
+        "field": "deletedAt"
+      },
+      "indexes": [
+        {
+          "fields": {
+            "name": 1,
+            "price": -1
+          },
+          "options": {}
+        }
+      ],
       "operations": {
         "list": {
+          "populate": [
+            "category"
+          ],
           "query": {
             "filters": [
-              "name"
+              "name",
+              "price"
+            ],
+            "operators": [
+              "eq",
+              "gte",
+              "lte"
             ],
             "sortParam": "sort",
             "selectParam": "fields",
@@ -38,6 +91,11 @@
               "maxLimit": 100
             }
           }
+        },
+        "get": {
+          "populate": [
+            "category"
+          ]
         }
       },
       "fields": {
@@ -52,6 +110,12 @@
           "type": "number",
           "required": true,
           "min": 0
+        },
+        "category": {
+          "type": "reference",
+          "ref": "Category",
+          "required": true,
+          "onDelete": "restrict"
         }
       }
     }
