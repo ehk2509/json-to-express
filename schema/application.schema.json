@@ -15,8 +15,43 @@
         "outputDir": {
           "type": "string",
           "minLength": 1
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "models": {
+              "type": "string",
+              "minLength": 1
+            },
+            "controllers": {
+              "type": "string",
+              "minLength": 1
+            },
+            "routes": {
+              "type": "string",
+              "minLength": 1
+            },
+            "config": {
+              "type": "string",
+              "minLength": 1
+            },
+            "middleware": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tests": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "app": {
       "type": "object",
@@ -70,27 +105,19 @@
               "default": 200
             },
             "response": {}
-          }
+          },
+          "additionalProperties": false
         },
         "responses": {
           "type": "object",
           "properties": {
-            "notFound": {
-              "type": "string"
-            },
-            "validationError": {
-              "type": "string"
-            },
-            "invalidIdentifier": {
-              "type": "string"
-            },
-            "uniqueConstraint": {
-              "type": "string"
-            },
-            "internalError": {
-              "type": "string"
-            }
-          }
+            "notFound": {},
+            "validationError": {},
+            "invalidIdentifier": {},
+            "uniqueConstraint": {},
+            "internalError": {}
+          },
+          "additionalProperties": false
         },
         "statusCodes": {
           "type": "object",
@@ -110,7 +137,8 @@
             "internalError": {
               "$ref": "#/$defs/httpStatus"
             }
-          }
+          },
+          "additionalProperties": false
         },
         "package": {
           "type": "object",
@@ -152,9 +180,71 @@
                 "type": "string"
               }
             }
+          },
+          "additionalProperties": false
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "default": "0.0.0.0"
+        },
+        "hostEnv": {
+          "type": "string",
+          "minLength": 1,
+          "default": "HOST"
+        },
+        "startupMessage": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Listening on {host}:{port}"
+        },
+        "express": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "trustProxy": {},
+            "json": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "limit": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "1mb"
+                }
+              }
+            },
+            "urlencoded": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "extended": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "limit": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "1mb"
+                }
+              }
+            }
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "database": {
       "type": "object",
@@ -177,7 +267,8 @@
         "options": {
           "type": "object"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "entities": {
       "type": "object",
@@ -231,8 +322,73 @@
             },
             "runValidators": {
               "type": "boolean"
+            },
+            "selectParam": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "query": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "filters": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "default": []
+                },
+                "sortParam": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": "sort"
+                },
+                "selectParam": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": "select"
+                },
+                "pagination": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "pageParam": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "page"
+                    },
+                    "limitParam": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "limit"
+                    },
+                    "defaultLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 20
+                    },
+                    "maxLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 100
+                    }
+                  }
+                }
+              }
             }
-          }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -276,7 +432,8 @@
         "options": {
           "type": "object"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "entity": {
       "type": "object",
@@ -317,7 +474,8 @@
             "delete": {
               "$ref": "#/$defs/operation"
             }
-          }
+          },
+          "additionalProperties": false
         },
         "fields": {
           "type": "object",
@@ -328,8 +486,11 @@
           "additionalProperties": {
             "$ref": "#/$defs/field"
           }
-        }
-      }
+        },
+        "notFoundResponse": {}
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }
