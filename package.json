@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/json-to-express.js && node --check src/index.js && node --check src/generator.js && node --check src/normalize-spec.js && node --check src/validate-spec.js"
+    "check": "node scripts/check-syntax.js"
   },
   "keywords": [
     "express",
@@ -29,6 +29,7 @@
     "src",
     "schema",
     "examples",
+    "scripts",
     "README.md",
     "LICENSE"
   ]
