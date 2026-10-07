@@ -6,94 +6,190 @@ const {normalizeSpec} = require('./normalize-spec');
 
 const TYPE_MAP = {string: 'String', number: 'Number', boolean: 'Boolean', date: 'Date'};
 
+function js(value) {
+  return JSON.stringify(value);
+}
+
+function joinUrl(...parts) {
+  const joined = parts
+    .filter(part => part !== undefined && part !== null && part !== '')
+    .map((part, index) => {
+      const value = String(part);
+      if (index === 0) return value.replace(/\/$/, '');
+      return value.replace(/^\//, '').replace(/\/$/, '');
+    })
+    .filter(Boolean)
+    .join('/');
+  return joined.startsWith('/') ? joined : '/' + joined;
+}
+
 function renderField(field) {
-  const options = ['type: ' + TYPE_MAP[field.type]];
-  if (field.required) options.push('required: true');
-  if (field.unique) options.push('unique: true');
-  if (field.enum) options.push('enum: ' + JSON.stringify(field.enum));
-  if (field.min !== undefined) options.push('min: ' + field.min);
-  if (field.max !== undefined) options.push('max: ' + field.max);
-  if (field.minLength !== undefined) options.push('minlength: ' + field.minLength);
-  if (field.maxLength !== undefined) options.push('maxlength: ' + field.maxLength);
-  if (field.default !== undefined) options.push('default: ' + JSON.stringify(field.default));
-  return '  ' + field.name + ': { ' + options.join(', ') + ' }';
+  const options = {...field.options};
+  options.type = TYPE_MAP[field.type];
+
+  for (const key of ['required', 'unique', 'enum', 'min', 'max', 'default']) {
+    if (field[key] !== undefined) options[key] = field[key];
+  }
+  if (field.minLength !== undefined) options.minlength = field.minLength;
+  if (field.maxLength !== undefined) options.maxlength = field.maxLength;
+
+  const entries = Object.entries(options).map(([key, value]) => {
+    const rendered = key === 'type' ? value : js(value);
+    return key + ': ' + rendered;
+  });
+  return '  ' + field.name + ': { ' + entries.join(', ') + ' }';
 }
 
 function modelSource(entity) {
+  const schemaOptions = {
+    ...entity.schemaOptions,
+    ...(entity.collection ? {collection: entity.collection} : {})
+  };
+
   return [
     "'use strict';", '',
     "const mongoose = require('mongoose');", '',
     'const ' + entity.name + 'Schema = new mongoose.Schema({',
     entity.fields.map(renderField).join(',\n'),
-    '}, {timestamps: true, versionKey: false});', '',
+    '}, ' + js(schemaOptions) + ');', '',
     "module.exports = mongoose.model('" + entity.name + "', " + entity.name + 'Schema);', ''
   ].join('\n');
 }
 
+function operationEnabled(entity, name) {
+  return entity.operations[name] && entity.operations[name].enabled;
+}
+
 function controllerSource(entity) {
   const model = entity.name;
+  const id = "req.params[" + js(entity.idParam) + "]";
+  const functions = [];
+  const exports = [];
+
+  if (operationEnabled(entity, 'list')) {
+    const op = entity.operations.list;
+    let query = model + '.find()';
+    if (op.lean) query += '.lean()';
+    functions.push([
+      'async function list(req, res, next) {',
+      '  try {',
+      '    const items = await ' + query + ';',
+      '    res.status(' + op.status + ').json(items);',
+      '  } catch (error) { next(error); }',
+      '}'
+    ].join('\n'));
+    exports.push('list');
+  }
+
+  if (operationEnabled(entity, 'get')) {
+    const op = entity.operations.get;
+    let query = model + '.findById(' + id + ')';
+    if (op.lean) query += '.lean()';
+    functions.push([
+      'async function get(req, res, next) {',
+      '  try {',
+      '    const item = await ' + query + ';',
+      "    if (!item) return res.status(" + op.notFoundStatus + ").json({error: '" + model + " not found'});",
+      '    res.status(' + op.status + ').json(item);',
+      '  } catch (error) { next(error); }',
+      '}'
+    ].join('\n'));
+    exports.push('get');
+  }
+
+  if (operationEnabled(entity, 'create')) {
+    const op = entity.operations.create;
+    functions.push([
+      'async function create(req, res, next) {',
+      '  try {',
+      '    const item = await ' + model + '.create(req.body);',
+      '    res.status(' + op.status + ').json(item);',
+      '  } catch (error) { next(error); }',
+      '}'
+    ].join('\n'));
+    exports.push('create');
+  }
+
+  if (operationEnabled(entity, 'update')) {
+    const op = entity.operations.update;
+    functions.push([
+      'async function update(req, res, next) {',
+      '  try {',
+      '    const item = await ' + model + '.findByIdAndUpdate(' + id + ', req.body, {new: true, runValidators: ' + op.runValidators + '});',
+      "    if (!item) return res.status(" + op.notFoundStatus + ").json({error: '" + model + " not found'});",
+      '    res.status(' + op.status + ').json(item);',
+      '  } catch (error) { next(error); }',
+      '}'
+    ].join('\n'));
+    exports.push('update');
+  }
+
+  if (operationEnabled(entity, 'delete')) {
+    const op = entity.operations.delete;
+    const success = op.status === 204
+      ? '    res.status(204).end();'
+      : '    res.status(' + op.status + ').json(item);';
+    functions.push([
+      'async function remove(req, res, next) {',
+      '  try {',
+      '    const item = await ' + model + '.findByIdAndDelete(' + id + ');',
+      "    if (!item) return res.status(" + op.notFoundStatus + ").json({error: '" + model + " not found'});",
+      success,
+      '  } catch (error) { next(error); }',
+      '}'
+    ].join('\n'));
+    exports.push('remove');
+  }
+
   return [
     "'use strict';", '',
     "const " + model + " = require('../models/" + model + "');", '',
-    'async function list(req, res, next) {',
-    '  try { res.json(await ' + model + '.find().lean()); } catch (error) { next(error); }',
-    '}', '',
-    'async function get(req, res, next) {',
-    '  try {',
-    '    const item = await ' + model + '.findById(req.params.id).lean();',
-    "    if (!item) return res.status(404).json({error: '" + model + " not found'});",
-    '    res.json(item);',
-    '  } catch (error) { next(error); }',
-    '}', '',
-    'async function create(req, res, next) {',
-    '  try { res.status(201).json(await ' + model + '.create(req.body)); } catch (error) { next(error); }',
-    '}', '',
-    'async function update(req, res, next) {',
-    '  try {',
-    '    const item = await ' + model + '.findByIdAndUpdate(req.params.id, req.body, {new: true, runValidators: true});',
-    "    if (!item) return res.status(404).json({error: '" + model + " not found'});",
-    '    res.json(item);',
-    '  } catch (error) { next(error); }',
-    '}', '',
-    'async function remove(req, res, next) {',
-    '  try {',
-    '    const item = await ' + model + '.findByIdAndDelete(req.params.id);',
-    "    if (!item) return res.status(404).json({error: '" + model + " not found'});",
-    '    res.status(204).end();',
-    '  } catch (error) { next(error); }',
-    '}', '',
-    'module.exports = {list, get, create, update, remove};', ''
+    functions.join('\n\n'), '',
+    'module.exports = {' + exports.join(', ') + '};', ''
   ].join('\n');
 }
 
 function routesSource(entity) {
+  const routeLines = [];
+  const controllerNames = {list: 'list', get: 'get', create: 'create', update: 'update', delete: 'remove'};
+
+  for (const [name, operation] of Object.entries(entity.operations)) {
+    if (!operation.enabled) continue;
+    routeLines.push(
+      'router.' + operation.method + '(' + js(operation.path) + ', controller.' + controllerNames[name] + ');'
+    );
+  }
+
   return [
     "'use strict';", '',
     "const express = require('express');",
     "const controller = require('../controllers/" + entity.name + "Controller');", '',
     'const router = express.Router();', '',
-    "router.get('/', controller.list);",
-    "router.get('/:id', controller.get);",
-    "router.post('/', controller.create);",
-    "router.patch('/:id', controller.update);",
-    "router.delete('/:id', controller.remove);", '',
+    ...routeLines, '',
     'module.exports = router;', ''
   ].join('\n');
 }
 
 function appSource(spec) {
   const imports = spec.entities.map(entity => "const " + entity.name + "Routes = require('./routes/" + entity.name + "Routes');");
-  const mounts = spec.entities.map(entity => "app.use('/api/" + entity.route + "', " + entity.name + 'Routes);');
+  const mounts = spec.entities.map(entity => {
+    const basePath = joinUrl(spec.app.apiPrefix, entity.route);
+    return 'app.use(' + js(basePath) + ', ' + entity.name + 'Routes);';
+  });
+  const health = spec.app.health.enabled
+    ? ['app.get(' + js(spec.app.health.path) + ', (req, res) => res.status(' + spec.app.health.status + ').json(' + js(spec.app.health.response) + '));']
+    : [];
+
   return [
     "'use strict';", '',
     "const express = require('express');",
     "const errorHandler = require('./middleware/error-handler');",
     ...imports, '',
     'const app = express();', '',
-    'app.use(express.json());',
-    "app.get('/health', (req, res) => res.json({status: 'ok'}));",
+    'app.use(express.json({limit: ' + js(spec.app.bodyLimit) + '}));',
+    ...health,
     ...mounts, '',
-    "app.use((req, res) => res.status(404).json({error: 'Route not found'}));",
+    'app.use((req, res) => res.status(' + spec.app.statusCodes.notFound + ').json({error: ' + js(spec.app.responses.notFound) + '}));',
     'app.use(errorHandler);', '',
     'module.exports = app;', ''
   ].join('\n');
@@ -106,7 +202,7 @@ function serverSource(spec) {
     "require('dotenv').config();",
     "const app = require('./app');",
     "const connectDatabase = require('./config/database');", '',
-    'const port = Number(process.env.PORT || ' + spec.app.port + ');', '',
+    "const port = Number(process.env[" + js(spec.app.portEnv) + "] || " + spec.app.port + ');', '',
     'async function start() {',
     '  await connectDatabase();',
     "  app.listen(port, () => console.log('" + safeName + " listening on port ' + port));",
@@ -120,73 +216,82 @@ function databaseSource(spec) {
     "'use strict';", '',
     "const mongoose = require('mongoose');", '',
     'async function connectDatabase() {',
-    "  const uri = process.env['" + spec.database.uriEnv + "'];",
+    "  const uri = process.env[" + js(spec.database.uriEnv) + "];",
     "  if (!uri) throw new Error('Missing required environment variable " + spec.database.uriEnv + "');",
-    '  await mongoose.connect(uri);',
+    '  await mongoose.connect(uri, ' + js(spec.database.options) + ');',
     '  return mongoose.connection;',
     '}', '',
     'module.exports = connectDatabase;', ''
   ].join('\n');
 }
 
-function errorHandlerSource() {
+function errorHandlerSource(spec) {
   return [
     "'use strict';", '',
     'module.exports = function errorHandler(error, req, res, next) {',
-    "  if (error && error.name === 'ValidationError') return res.status(400).json({error: 'Validation failed', details: error.message});",
-    "  if (error && error.name === 'CastError') return res.status(400).json({error: 'Invalid identifier'});",
-    "  if (error && error.code === 11000) return res.status(409).json({error: 'Unique constraint violated', fields: error.keyValue});",
+    "  if (error && error.name === 'ValidationError') return res.status(" + spec.app.statusCodes.validationError + ").json({error: " + js(spec.app.responses.validationError) + ", details: error.message});",
+    "  if (error && error.name === 'CastError') return res.status(" + spec.app.statusCodes.invalidIdentifier + ").json({error: " + js(spec.app.responses.invalidIdentifier) + "});",
+    "  if (error && error.code === 11000) return res.status(" + spec.app.statusCodes.uniqueConstraint + ").json({error: " + js(spec.app.responses.uniqueConstraint) + ", fields: error.keyValue});",
     '  console.error(error);',
-    "  return res.status(500).json({error: 'Internal server error'});",
+    "  return res.status(" + spec.app.statusCodes.internalError + ").json({error: " + js(spec.app.responses.internalError) + "});",
     '};', ''
   ].join('\n');
 }
 
 function generatedPackageSource(spec) {
+  const packageConfig = spec.app.package;
   return JSON.stringify({
-    name: spec.app.packageName,
-    version: '0.1.0',
-    private: true,
-    description: 'Generated by json-to-express',
+    name: packageConfig.name,
+    version: packageConfig.version,
+    private: packageConfig.private,
+    description: packageConfig.description,
     main: 'src/server.js',
-    scripts: {start: 'node src/server.js', dev: 'node --watch src/server.js', test: 'node --test'},
-    engines: {node: '>=18'},
-    dependencies: {dotenv: '^16.4.5', express: '^4.21.1', mongoose: '^8.8.0'},
-    devDependencies: {supertest: '^7.0.0'}
+    scripts: packageConfig.scripts,
+    engines: {node: packageConfig.nodeEngine},
+    dependencies: packageConfig.dependencies,
+    devDependencies: packageConfig.devDependencies
   }, null, 2) + '\n';
+}
+
+function endpointLines(spec) {
+  const lines = [];
+  if (spec.app.health.enabled) lines.push('- GET ' + spec.app.health.path);
+  for (const entity of spec.entities) {
+    const base = joinUrl(spec.app.apiPrefix, entity.route);
+    for (const operation of Object.values(entity.operations)) {
+      if (!operation.enabled) continue;
+      const fullPath = operation.path === '/' ? base : joinUrl(base, operation.path);
+      lines.push('- ' + operation.method.toUpperCase() + ' ' + fullPath);
+    }
+  }
+  return lines;
 }
 
 function generatedReadme(spec) {
   return [
     '# ' + spec.app.name, '',
+    spec.app.package.description, '',
     'Generated by json-to-express.', '',
     '## Run', '',
     '    npm install',
     '    cp .env.example .env',
     '    npm start', '',
-    'Default port: ' + spec.app.port + '.', '',
+    'Default port: ' + spec.app.port + ' (' + spec.app.portEnv + ').', '',
     '## Endpoints', '',
-    '- GET /health',
-    ...spec.entities.flatMap(entity => [
-      '- GET /api/' + entity.route,
-      '- GET /api/' + entity.route + '/:id',
-      '- POST /api/' + entity.route,
-      '- PATCH /api/' + entity.route + '/:id',
-      '- DELETE /api/' + entity.route + '/:id'
-    ]), ''
+    ...endpointLines(spec), ''
   ].join('\n');
 }
 
-function smokeTestSource() {
+function smokeTestSource(spec) {
   return [
     "'use strict';", '',
     "const test = require('node:test');",
     "const assert = require('node:assert/strict');",
     "const request = require('supertest');",
     "const app = require('../src/app');", '',
-    "test('GET /health reports ok', async () => {",
-    "  const response = await request(app).get('/health').expect(200);",
-    "  assert.deepEqual(response.body, {status: 'ok'});",
+    "test('configured health endpoint responds', async () => {",
+    '  const response = await request(app).get(' + js(spec.app.health.path) + ').expect(' + spec.app.health.status + ');',
+    '  assert.deepEqual(response.body, ' + js(spec.app.health.response) + ');',
     '});', ''
   ].join('\n');
 }
@@ -194,13 +299,13 @@ function smokeTestSource() {
 function buildFiles(spec) {
   const files = new Map();
   files.set('package.json', generatedPackageSource(spec));
-  files.set('.env.example', 'PORT=' + spec.app.port + '\n' + spec.database.uriEnv + '=mongodb://127.0.0.1:27017/' + spec.app.packageName + '\n');
+  files.set('.env.example', spec.app.portEnv + '=' + spec.app.port + '\n' + spec.database.uriEnv + '=' + spec.database.defaultUri + '\n');
   files.set('README.md', generatedReadme(spec));
   files.set('src/app.js', appSource(spec));
   files.set('src/server.js', serverSource(spec));
   files.set('src/config/database.js', databaseSource(spec));
-  files.set('src/middleware/error-handler.js', errorHandlerSource());
-  files.set('test/health.test.js', smokeTestSource());
+  files.set('src/middleware/error-handler.js', errorHandlerSource(spec));
+  if (spec.app.health.enabled) files.set('test/health.test.js', smokeTestSource(spec));
 
   for (const entity of spec.entities) {
     files.set('src/models/' + entity.name + '.js', modelSource(entity));
@@ -219,14 +324,14 @@ function assertWritable(outputDir, force) {
 
 function generateApplication(inputSpec, outputDir, options = {}) {
   const spec = normalizeSpec(inputSpec);
-  const target = path.resolve(outputDir);
+  const target = path.resolve(outputDir || spec.generation.outputDir || path.join('generated', spec.app.package.name));
   assertWritable(target, options.force === true);
   fs.mkdirSync(target, {recursive: true});
   const files = buildFiles(spec);
-  for (const [relativePath, content] of files) {
+  for (const [relativePath, fileContent] of files) {
     const destination = path.join(target, relativePath);
     fs.mkdirSync(path.dirname(destination), {recursive: true});
-    fs.writeFileSync(destination, content, 'utf8');
+    fs.writeFileSync(destination, fileContent, 'utf8');
   }
   return {outputDir: target, files: [...files.keys()], spec};
 }
