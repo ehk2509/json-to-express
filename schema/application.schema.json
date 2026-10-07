@@ -48,6 +48,10 @@
             "tests": {
               "type": "string",
               "minLength": 1
+            },
+            "workflows": {
+              "type": "string",
+              "minLength": 1
             }
           }
         }
