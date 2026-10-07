@@ -1,0 +1,19 @@
+{
+  "app": {"name": "shop-api", "port": 3000},
+  "database": {"type": "mongodb", "uriEnv": "MONGODB_URI"},
+  "entities": {
+    "Product": {
+      "fields": {
+        "name": {"type": "string", "required": true, "minLength": 2},
+        "price": {"type": "number", "required": true, "min": 0},
+        "status": {"type": "string", "enum": ["draft", "active", "archived"], "default": "draft"},
+        "featured": {"type": "boolean", "default": false}
+      }
+    },
+    "Category": {
+      "fields": {
+        "name": {"type": "string", "required": true, "unique": true}
+      }
+    }
+  }
+}
