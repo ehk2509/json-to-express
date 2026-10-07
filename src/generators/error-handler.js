@@ -14,6 +14,7 @@ module.exports = function errorHandlerSource(spec) {
     "  if (error && error.name === 'ValidationError') return res.status(" + spec.app.statusCodes.validationError + ').json(' + validationPayload + ');',
     "  if (error && error.name === 'CastError') return res.status(" + spec.app.statusCodes.invalidIdentifier + ').json(' + payload(spec.app.responses.invalidIdentifier) + ');',
     "  if (error && error.code === 11000) return res.status(" + spec.app.statusCodes.uniqueConstraint + ').json(' + uniquePayload + ');',
+    "  if (error && error.statusCode) return res.status(error.statusCode).json({error: error.message});",
     '  console.error(error);',
     '  return res.status(' + spec.app.statusCodes.internalError + ').json(' + payload(spec.app.responses.internalError) + ');',
     '};', ''
