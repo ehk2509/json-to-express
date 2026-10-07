@@ -18,7 +18,7 @@ const validSpec = {
 };
 
 test('validates and normalizes a minimal application specification', () => {
-  assert.equal(validateSpec(validSpec), validSpec);
+  assert.equal(validateSpec(validSpec).specVersion, '1.0');
 
   const normalized = normalizeSpec(validSpec);
   assert.equal(normalized.app.packageName, 'demo-api');
@@ -112,5 +112,32 @@ test('rejects unsafe generated layout paths', () => {
       entities: {Product: {fields: {name: {type: 'string'}}}}
     }),
     /safe relative path/
+  );
+});
+
+
+test('validates references, indexes and auth semantics', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      auth: {enabled: false},
+      app: {name: 'demo'},
+      database: {type: 'mongodb'},
+      entities: {
+        Product: {
+          indexes: [{fields: {missing: 1}}],
+          operations: {get: {auth: true, populate: ['category']}},
+          fields: {
+            category: {type: 'reference', ref: 'MissingEntity'}
+          }
+        }
+      }
+    }),
+    error => {
+      assert.match(error.message, /requires top-level auth\.enabled/);
+      assert.match(error.message, /references unknown entity/);
+      assert.match(error.message, /unknown field/);
+      return true;
+    }
   );
 });
