@@ -122,6 +122,8 @@ function normalizeSpec(inputSpec) {
   const auth = spec.auth || {};
   const authEnabled = valueOr(auth.enabled, false);
   const openapi = spec.docs && spec.docs.openapi || {};
+  const outboxConfig = spec.outbox || {};
+  const hasAsyncWork = Object.keys(spec.events || {}).length > 0 || Object.keys(spec.jobs || {}).length > 0;
 
   const dependencies = {
     dotenv: '^16.4.5',
@@ -146,6 +148,15 @@ function normalizeSpec(inputSpec) {
       rolesClaim: valueOr(auth.rolesClaim, 'roles')
     },
     environment: spec.environment || {},
+    outbox: {
+      enabled: hasAsyncWork,
+      worker: valueOr(outboxConfig.worker, 'embedded'),
+      pollIntervalMs: valueOr(outboxConfig.pollIntervalMs, 500),
+      batchSize: valueOr(outboxConfig.batchSize, 20),
+      lockTimeoutMs: valueOr(outboxConfig.lockTimeoutMs, 30000),
+      maxAttempts: valueOr(outboxConfig.maxAttempts, 5),
+      backoffMs: valueOr(outboxConfig.backoffMs, 1000)
+    },
     docs: {
       openapi: {
         enabled: valueOr(openapi.enabled, true),
@@ -215,6 +226,7 @@ function normalizeSpec(inputSpec) {
           start: 'node ' + serverFile,
           dev: 'node --watch ' + serverFile,
           test: 'node --test',
+          ...(hasAsyncWork ? {worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js')} : {}),
           ...(packageConfig.scripts || {})
         },
         dependencies,
@@ -249,6 +261,15 @@ function normalizeSpec(inputSpec) {
           headers: webhook.headers || {},
           failure: valueOr(webhook.failure, 'continue')
         }))
+      }
+    ])),
+    jobs: Object.fromEntries(Object.entries(spec.jobs || {}).map(([name, job]) => [
+      name,
+      {
+        workflow: job.workflow,
+        queue: valueOr(job.queue, 'default'),
+        maxAttempts: valueOr(job.maxAttempts, valueOr(outboxConfig.maxAttempts, 5)),
+        backoffMs: valueOr(job.backoffMs, valueOr(outboxConfig.backoffMs, 1000))
       }
     ])),
     entities: []
