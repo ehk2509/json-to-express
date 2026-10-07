@@ -31,11 +31,18 @@ async function waitForHealth() {
 
 async function main() {
   let webhookPayload;
+  let webhookAttempts = 0;
   const webhookServer = http.createServer((req, res) => {
     let raw = '';
     req.on('data', chunk => { raw += chunk; });
     req.on('end', () => {
+      webhookAttempts += 1;
       webhookPayload = JSON.parse(raw || '{}');
+      if (webhookAttempts === 1) {
+        res.writeHead(500);
+        res.end('retry me');
+        return;
+      }
       res.writeHead(204);
       res.end();
     });
@@ -83,9 +90,33 @@ async function main() {
   assert.equal(published.response.status, 200);
   assert.equal(published.body.id, id);
   assert.equal(published.body.published, true);
+
+  for (let attempt = 0; attempt < 30 && webhookAttempts < 2; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(webhookAttempts, 2);
   assert.equal(webhookPayload.id, id);
   assert.equal(webhookPayload.name, 'Keyboard');
   assert.equal(webhookPayload.published, true);
+
+  const queued = await request('/api/products/' + id + '/reprice', {
+    method: 'POST',
+    body: JSON.stringify({price: 135})
+  });
+  assert.equal(queued.response.status, 202);
+  assert.equal(queued.body.queued, true);
+
+  let repriced;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const current = await request('/api/products/' + id);
+    if (current.response.status === 200 && current.body.price === 135) {
+      repriced = current.body;
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(repriced);
+  assert.equal(repriced.price, 135);
 
   const removed = await request('/api/products/' + id, {method: 'DELETE'});
   assert.equal(removed.response.status, 204);
