@@ -123,6 +123,7 @@ function normalizeSpec(inputSpec) {
   const authEnabled = valueOr(auth.enabled, false);
   const openapi = spec.docs && spec.docs.openapi || {};
   const outboxConfig = spec.outbox || {};
+  const prismaSchemaPath = valueOr(spec.database.prisma && spec.database.prisma.schemaPath, 'prisma/schema.prisma');
   const databaseType = spec.database.type;
   const isMongo = databaseType === 'mongodb';
   const isPostgres = databaseType === 'postgresql';
@@ -236,8 +237,8 @@ function normalizeSpec(inputSpec) {
           dev: 'node --watch ' + serverFile,
           test: 'node --test',
           ...(isPostgres ? {
-            'prisma:generate': 'prisma generate',
-            'db:push': 'prisma db push'
+            'prisma:generate': 'prisma generate --schema ' + prismaSchemaPath,
+            'db:push': 'prisma db push --schema ' + prismaSchemaPath
           } : {}),
           ...(hasAsyncWork ? {
             worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
@@ -263,7 +264,7 @@ function normalizeSpec(inputSpec) {
       ),
       options: spec.database.options || {},
       prisma: {
-        schemaPath: valueOr(spec.database.prisma && spec.database.prisma.schemaPath, 'prisma/schema.prisma')
+        schemaPath: prismaSchemaPath
       }
     },
     workflows: Object.entries(spec.workflows || {}).map(([name, workflow]) => ({
