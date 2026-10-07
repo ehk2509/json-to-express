@@ -35,6 +35,9 @@ function filePaths(spec, entityName) {
     auth: path.posix.join(source, p.middleware, 'auth.js'),
     validation: path.posix.join(source, p.middleware, 'validation.js'),
     environment: path.posix.join(source, p.config, 'environment.js'),
+    workflowEngine: path.posix.join(source, p.workflows, 'engine.js'),
+    eventBus: path.posix.join(source, p.workflows, 'events.js'),
+    endpointRoutes: path.posix.join(source, p.routes, 'CustomRoutes.js'),
     test: path.posix.join(p.tests, 'health.test.js')
   };
   if (entityName) {
