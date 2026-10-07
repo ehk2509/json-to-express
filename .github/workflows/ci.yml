@@ -19,6 +19,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
       - run: npm run check
+      - run: npm run validate:examples
 
   generated-app-e2e:
     runs-on: ubuntu-latest
