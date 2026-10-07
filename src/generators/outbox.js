@@ -53,7 +53,7 @@ module.exports = function outboxSource(spec) {
     '  const filter = {status: "pending", availableAt: {$lte: new Date()}};',
     '  if (queues.length) filter.queue = {$in: queues};',
     '  return Outbox.findOneAndUpdate(',
-    '    filter,'
+    '    filter,',
     '    {$set: {status: "processing", lockedAt: new Date()}},',
     '    {sort: {availableAt: 1, createdAt: 1}, new: true}',
     '  );',
