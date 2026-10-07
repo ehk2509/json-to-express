@@ -1,0 +1,832 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ehk2509/json-to-express/schema/application.schema.json",
+  "title": "json-to-express application specification",
+  "type": "object",
+  "required": [
+    "specVersion",
+    "app",
+    "database",
+    "entities"
+  ],
+  "properties": {
+    "generation": {
+      "type": "object",
+      "properties": {
+        "outputDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "models": {
+              "type": "string",
+              "minLength": 1
+            },
+            "controllers": {
+              "type": "string",
+              "minLength": 1
+            },
+            "routes": {
+              "type": "string",
+              "minLength": 1
+            },
+            "config": {
+              "type": "string",
+              "minLength": 1
+            },
+            "middleware": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tests": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 3000
+        },
+        "portEnv": {
+          "type": "string",
+          "minLength": 1,
+          "default": "PORT"
+        },
+        "apiPrefix": {
+          "type": "string",
+          "pattern": "^/",
+          "default": "/api"
+        },
+        "bodyLimit": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "1mb"
+        },
+        "health": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/health"
+            },
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599,
+              "default": 200
+            },
+            "response": {}
+          },
+          "additionalProperties": false
+        },
+        "responses": {
+          "type": "object",
+          "properties": {
+            "notFound": {},
+            "validationError": {},
+            "invalidIdentifier": {},
+            "uniqueConstraint": {},
+            "internalError": {}
+          },
+          "additionalProperties": false
+        },
+        "statusCodes": {
+          "type": "object",
+          "properties": {
+            "notFound": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "validationError": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "invalidIdentifier": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "uniqueConstraint": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "internalError": {
+              "$ref": "#/$defs/httpStatus"
+            }
+          },
+          "additionalProperties": false
+        },
+        "package": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "private": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "nodeEngine": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scripts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "dependencies": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "devDependencies": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "main": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "default": "0.0.0.0"
+        },
+        "hostEnv": {
+          "type": "string",
+          "minLength": 1,
+          "default": "HOST"
+        },
+        "startupMessage": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Listening on {host}:{port}"
+        },
+        "express": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "trustProxy": {},
+            "json": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "limit": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "1mb"
+                }
+              }
+            },
+            "urlencoded": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "extended": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "limit": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "1mb"
+                }
+              }
+            }
+          }
+        },
+        "middlewareModules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
+        },
+        "production": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requestId": {
+              "type": "boolean",
+              "default": true
+            },
+            "securityHeaders": {
+              "type": "boolean",
+              "default": true
+            },
+            "cors": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "origin": {
+                  "type": "string",
+                  "default": "*"
+                }
+              }
+            },
+            "rateLimit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "windowMs": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 60000
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 100
+                }
+              }
+            },
+            "compression": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "database": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "mongodb"
+        },
+        "uriEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "default": "MONGODB_URI"
+        },
+        "defaultUri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "options": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "specVersion": {
+      "const": "1.0"
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "strategy": {
+          "const": "jwt"
+        },
+        "secretEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "default": "JWT_SECRET"
+        },
+        "algorithms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [
+            "HS256"
+          ]
+        },
+        "userClaim": {
+          "type": "string",
+          "minLength": 1,
+          "default": "sub"
+        },
+        "rolesClaim": {
+          "type": "string",
+          "minLength": 1,
+          "default": "roles"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      }
+    },
+    "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "openapi": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "default": "openapi.json"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "httpStatus": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "method": {
+              "enum": [
+                "get",
+                "post",
+                "put",
+                "patch",
+                "delete"
+              ]
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/"
+            },
+            "status": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "notFoundStatus": {
+              "$ref": "#/$defs/httpStatus"
+            },
+            "lean": {
+              "type": "boolean"
+            },
+            "runValidators": {
+              "type": "boolean"
+            },
+            "selectParam": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "query": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "filters": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "default": []
+                },
+                "sortParam": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": "sort"
+                },
+                "selectParam": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": "select"
+                },
+                "pagination": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "pageParam": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "page"
+                    },
+                    "limitParam": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "limit"
+                    },
+                    "defaultLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 20
+                    },
+                    "maxLimit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 100
+                    }
+                  }
+                },
+                "operators": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "eq",
+                      "ne",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "in"
+                    ]
+                  },
+                  "default": [
+                    "eq"
+                  ]
+                }
+              }
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "validate": {
+              "type": "boolean",
+              "default": true
+            },
+            "populate": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transaction": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "date",
+            "reference"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "unique": {
+          "type": "boolean"
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "number"
+        },
+        "maxLength": {
+          "type": "number"
+        },
+        "default": {},
+        "options": {
+          "type": "object"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "many": {
+          "type": "boolean",
+          "default": false
+        },
+        "onDelete": {
+          "enum": [
+            "restrict",
+            "nullify",
+            "cascade"
+          ],
+          "default": "restrict"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entity": {
+      "type": "object",
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idParam": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "schemaOptions": {
+          "type": "object"
+        },
+        "operations": {
+          "type": "object",
+          "properties": {
+            "list": {
+              "$ref": "#/$defs/operation"
+            },
+            "get": {
+              "$ref": "#/$defs/operation"
+            },
+            "create": {
+              "$ref": "#/$defs/operation"
+            },
+            "update": {
+              "$ref": "#/$defs/operation"
+            },
+            "delete": {
+              "$ref": "#/$defs/operation"
+            }
+          },
+          "additionalProperties": false
+        },
+        "fields": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "notFoundResponse": {},
+        "hooks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "module"
+          ],
+          "properties": {
+            "module": {
+              "type": "string",
+              "minLength": 1
+            },
+            "before": {
+              "$ref": "#/$defs/hookMap"
+            },
+            "after": {
+              "$ref": "#/$defs/hookMap"
+            }
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "options": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "softDelete": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "default": "deletedAt"
+            }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "createdBy": {
+              "type": "string",
+              "minLength": 1,
+              "default": "createdBy"
+            },
+            "updatedBy": {
+              "type": "string",
+              "minLength": 1,
+              "default": "updatedBy"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "hookMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "list": {
+          "type": "string",
+          "minLength": 1
+        },
+        "get": {
+          "type": "string",
+          "minLength": 1
+        },
+        "create": {
+          "type": "string",
+          "minLength": 1
+        },
+        "update": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delete": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

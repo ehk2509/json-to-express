@@ -1,0 +1,71 @@
+'use strict';
+
+const path = require('node:path');
+const modelSource = require('./model');
+const controllerSource = require('./controller');
+const routesSource = require('./routes');
+const appSource = require('./app');
+const serverSource = require('./server');
+const databaseSource = require('./database');
+const errorHandlerSource = require('./error-handler');
+const packageSource = require('./package');
+const readmeSource = require('./readme');
+const healthTestSource = require('./health-generator');
+const authSource = require('./auth');
+const validationSource = require('./validation');
+const environmentSource = require('./environment');
+const openapiSource = require('./openapi');
+const contractTestSource = require('./contract-test');
+const {filePaths} = require('./utils');
+
+function envExample(spec) {
+  const values = {
+    [spec.app.portEnv]: spec.app.port,
+    [spec.app.hostEnv]: spec.app.host,
+    [spec.database.uriEnv]: spec.database.defaultUri
+  };
+
+  if (spec.auth.enabled) values[spec.auth.secretEnv] = 'change-me';
+
+  for (const [name, raw] of Object.entries(spec.environment)) {
+    if (typeof raw === 'string') values[name] = raw;
+    else if (raw && raw.default !== undefined) values[name] = raw.default;
+    else if (!(name in values)) values[name] = '';
+  }
+
+  return Object.entries(values).map(([name, value]) => name + '=' + value).join('\n') + '\n';
+}
+
+function buildFiles(spec) {
+  const files = new Map();
+  const paths = filePaths(spec);
+
+  files.set('package.json', packageSource(spec));
+  files.set('.env.example', envExample(spec));
+  files.set('README.md', readmeSource(spec));
+  files.set(paths.app, appSource(spec));
+  files.set(paths.server, serverSource(spec));
+  files.set(paths.database, databaseSource(spec));
+  files.set(paths.errorHandler, errorHandlerSource(spec));
+  files.set(paths.validation, validationSource(spec));
+  files.set(paths.environment, environmentSource(spec));
+
+  const auth = authSource(spec);
+  if (auth) files.set(paths.auth, auth);
+
+  if (spec.app.health.enabled) files.set(paths.test, healthTestSource(spec));
+  files.set(path.posix.join(spec.generation.paths.tests, 'contract.test.js'), contractTestSource(spec));
+
+  if (spec.docs.openapi.enabled) files.set(spec.docs.openapi.file, openapiSource(spec));
+
+  for (const entity of spec.entities) {
+    const entityPaths = filePaths(spec, entity.name);
+    files.set(entityPaths.model, modelSource(entity, spec));
+    files.set(entityPaths.controller, controllerSource(entity, spec));
+    files.set(entityPaths.route, routesSource(entity, spec));
+  }
+
+  return files;
+}
+
+module.exports = {buildFiles};

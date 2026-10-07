@@ -1,0 +1,150 @@
+{
+  "specVersion": "1.0",
+  "generation": {
+    "outputDir": "generated/shop-api"
+  },
+  "app": {
+    "name": "shop-api",
+    "port": 3000,
+    "portEnv": "PORT",
+    "apiPrefix": "/api/v1",
+    "bodyLimit": "2mb",
+    "health": {
+      "enabled": true,
+      "path": "/health",
+      "status": 200,
+      "response": {
+        "service": "shop-api",
+        "status": "ok"
+      }
+    },
+    "responses": {
+      "notFound": "Route not found",
+      "validationError": "Validation failed",
+      "invalidIdentifier": "Invalid identifier",
+      "uniqueConstraint": "A unique value already exists",
+      "internalError": "Internal server error"
+    },
+    "statusCodes": {
+      "notFound": 404,
+      "validationError": 422,
+      "invalidIdentifier": 400,
+      "uniqueConstraint": 409,
+      "internalError": 500
+    },
+    "package": {
+      "name": "shop-api",
+      "version": "0.1.0",
+      "private": true,
+      "description": "Generated shop REST API",
+      "nodeEngine": ">=20",
+      "scripts": {
+        "lint": "node --check src/app.js"
+      },
+      "dependencies": {},
+      "devDependencies": {}
+    }
+  },
+  "database": {
+    "type": "mongodb",
+    "uriEnv": "MONGODB_URI",
+    "defaultUri": "mongodb://127.0.0.1:27017/shop-api",
+    "options": {
+      "maxPoolSize": 10
+    }
+  },
+  "entities": {
+    "Product": {
+      "route": "products",
+      "collection": "products",
+      "idParam": "productId",
+      "schemaOptions": {
+        "timestamps": true,
+        "versionKey": false
+      },
+      "operations": {
+        "list": {
+          "enabled": true,
+          "method": "get",
+          "path": "/",
+          "status": 200,
+          "lean": true
+        },
+        "get": {
+          "enabled": true,
+          "method": "get",
+          "path": "/:productId",
+          "status": 200,
+          "notFoundStatus": 404,
+          "lean": true
+        },
+        "create": {
+          "enabled": true,
+          "method": "post",
+          "path": "/",
+          "status": 201
+        },
+        "update": {
+          "enabled": true,
+          "method": "patch",
+          "path": "/:productId",
+          "status": 200,
+          "notFoundStatus": 404,
+          "runValidators": true
+        },
+        "delete": {
+          "enabled": true,
+          "method": "delete",
+          "path": "/:productId",
+          "status": 204,
+          "notFoundStatus": 404
+        }
+      },
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 2,
+          "options": {
+            "trim": true,
+            "index": true
+          }
+        },
+        "price": {
+          "type": "number",
+          "required": true,
+          "min": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ],
+          "default": "draft"
+        },
+        "featured": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "Category": {
+      "route": "categories",
+      "operations": {
+        "delete": false
+      },
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "unique": true,
+          "options": {
+            "trim": true
+          }
+        }
+      }
+    }
+  }
+}
