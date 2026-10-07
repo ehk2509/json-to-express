@@ -52,7 +52,7 @@ function appSource(spec) {
     ...middleware,
     ...health,
     ...mounts,
-    ...(spec.endpoints.length ? ['app.use(' + js(spec.app.apiPrefix || '/') + ', CustomRoutes);'] : []), ''
+    ...(spec.endpoints.length ? ['app.use(' + js(spec.app.apiPrefix || '/') + ', CustomRoutes);'] : []), '',
     'app.use((req, res) => res.status(' + spec.app.statusCodes.notFound + ').json(' + payload(spec.app.responses.notFound) + '));',
     'app.use(errorHandler);', '',
     'module.exports = app;', ''
