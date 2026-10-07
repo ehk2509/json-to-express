@@ -18,7 +18,7 @@ function routesSource(entity, spec) {
     if (operation.validate) {
       if (name === 'create') middleware.push('validation.body(' + js(entity.name) + ', false)');
       if (name === 'update') middleware.push('validation.body(' + js(entity.name) + ', true)');
-      if (['get','update','delete'].includes(name)) middleware.push('validation.objectId(' + js(entity.idParam) + ')');
+      if (['get','update','delete'].includes(name)) middleware.push('validation.identifier(' + js(entity.idParam) + ')');
     }
     const handlers=[...middleware,'controller.'+controllerNames[name]].join(', ');
     routeLines.push('router.' + operation.method + '(' + js(operation.path) + ', ' + handlers + ');');
