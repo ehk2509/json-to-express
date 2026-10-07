@@ -1,13 +1,14 @@
 'use strict';
 
-const {js} = require('./utils');
+const {filePaths, js, relativeRequire} = require('./utils');
 
 function serverSource(spec) {
+  const paths = filePaths(spec);
   return [
     "'use strict';", '',
     "require('dotenv').config();",
-    "const app = require('./app');",
-    "const connectDatabase = require('./config/database');", '',
+    'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
+    'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');', '',
     'const port = Number(process.env[' + js(spec.app.portEnv) + '] || ' + spec.app.port + ');',
     'const host = process.env[' + js(spec.app.hostEnv) + '] || ' + js(spec.app.host) + ';', '',
     'async function start() {',
