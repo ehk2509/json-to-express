@@ -35,9 +35,19 @@ function validateSpec(spec) {
     }
   }
 
+  if (spec.app && Array.isArray(spec.app.middlewareModules)) {
+    spec.app.middlewareModules.forEach((value, index) => {
+      validateRelativePath(errors, value, 'app.middlewareModules[' + index + ']');
+    });
+  }
+
   if (isObject(spec.entities)) {
     for (const [entityName, entity] of Object.entries(spec.entities)) {
       if (!isObject(entity)) continue;
+
+      if (entity.hooks && entity.hooks.module) {
+        validateRelativePath(errors, entity.hooks.module, 'entities.' + entityName + '.hooks.module');
+      }
 
       const idParam = entity.idParam || 'id';
       if (isObject(entity.operations)) {
