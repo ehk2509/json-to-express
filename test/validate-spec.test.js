@@ -25,12 +25,28 @@ test('validates and normalizes a minimal application specification', () => {
   assert.equal(normalized.app.package.name, 'demo-api');
   assert.equal(normalized.app.apiPrefix, '/api');
   assert.equal(normalized.app.health.path, '/health');
+  assert.equal(normalized.app.express.json.enabled, true);
   assert.equal(normalized.entities[0].route, 'products');
   assert.equal(normalized.entities[0].operations.create.method, 'post');
   assert.equal(normalized.database.uriEnv, 'MONGODB_URI');
 });
 
-test('collects useful validation failures', () => {
+test('JSON Schema is the structural source of truth and rejects unknown properties', () => {
+  assert.throws(
+    () => validateSpec({
+      app: {name: 'demo', apiPrefx: '/typo'},
+      database: {type: 'mongodb'},
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    error => {
+      assert.ok(error instanceof SpecificationError);
+      assert.match(error.message, /apiPrefx is not a supported property/);
+      return true;
+    }
+  );
+});
+
+test('collects structural validation failures', () => {
   assert.throws(
     () => validateSpec({
       app: {name: ''},
@@ -40,33 +56,37 @@ test('collects useful validation failures', () => {
       }
     }),
     error => {
-      assert.ok(error instanceof SpecificationError);
       assert.match(error.message, /app\.name/);
       assert.match(error.message, /database\.type/);
-      assert.match(error.message, /PascalCase/);
+      assert.match(error.message, /invalid property name/);
       assert.match(error.message, /money/);
       return true;
     }
   );
 });
 
-test('rejects inconsistent customizable endpoint settings', () => {
+test('semantic validation catches cross-field constraints', () => {
   const invalid = {
-    app: {
-      name: 'demo',
-      statusCodes: {internalError: 700},
-      health: {path: 'health'}
-    },
+    app: {name: 'demo'},
     database: {type: 'mongodb'},
     entities: {
       Product: {
         idParam: 'productId',
         operations: {
-          get: {method: 'trace', path: '/item/:id'},
-          update: {path: '/item'}
+          get: {method: 'get', path: '/item/:id'},
+          update: {path: '/item'},
+          list: {
+            query: {
+              pagination: {
+                enabled: true,
+                defaultLimit: 100,
+                maxLimit: 10
+              }
+            }
+          }
         },
         fields: {
-          name: {type: 'string', options: 'trim'}
+          name: {type: 'string', enum: [1, 2]}
         }
       }
     }
@@ -75,12 +95,22 @@ test('rejects inconsistent customizable endpoint settings', () => {
   assert.throws(
     () => validateSpec(invalid),
     error => {
-      assert.match(error.message, /health\.path/);
-      assert.match(error.message, /statusCodes\.internalError/);
-      assert.match(error.message, /method must be one of/);
       assert.match(error.message, /:productId/);
-      assert.match(error.message, /options must be an object/);
+      assert.match(error.message, /defaultLimit must be <= maxLimit/);
+      assert.match(error.message, /enum values must be strings/);
       return true;
     }
+  );
+});
+
+test('rejects unsafe generated layout paths', () => {
+  assert.throws(
+    () => validateSpec({
+      generation: {paths: {source: '../outside'}},
+      app: {name: 'demo'},
+      database: {type: 'mongodb'},
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    /safe relative path/
   );
 });
