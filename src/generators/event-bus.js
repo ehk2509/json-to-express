@@ -1,13 +1,20 @@
 'use strict';
 
-const {js} = require('./utils');
+const {filePaths, js, relativeRequire} = require('./utils');
 
 module.exports = function eventBusSource(spec) {
+  const paths = filePaths(spec);
   return [
     "'use strict';", '',
+    'const outbox = require(' + js(relativeRequire(paths.eventBus, paths.outbox)) + ');',
     'const events = ' + js(spec.events) + ';', '',
-    'async function publish(name, payload) {',
-    '  const definition = events[name] || {webhooks: []};',
+    'async function publish(name, payload, options = {}) {',
+    '  if (!events[name]) throw new Error("Unknown event: " + name);',
+    '  return outbox.enqueueEvent(name, payload, {session: options.session});',
+    '}', '',
+    'async function deliver(name, payload) {',
+    '  const definition = events[name];',
+    '  if (!definition) throw new Error("Unknown event: " + name);',
     '  for (const webhook of definition.webhooks) {',
     '    const url = process.env[webhook.urlEnv];',
     "    if (!url) throw new Error('Missing webhook URL environment variable: ' + webhook.urlEnv);",
@@ -24,6 +31,6 @@ module.exports = function eventBusSource(spec) {
     '    }',
     '  }',
     '}', '',
-    'module.exports = {publish};', ''
+    'module.exports = {deliver, publish};', ''
   ].join('\n');
 };
