@@ -32,6 +32,9 @@ function filePaths(spec, entityName) {
     server: path.posix.join(source, 'server.js'),
     database: path.posix.join(source, p.config, 'database.js'),
     errorHandler: path.posix.join(source, p.middleware, 'error-handler.js'),
+    auth: path.posix.join(source, p.middleware, 'auth.js'),
+    validation: path.posix.join(source, p.middleware, 'validation.js'),
+    environment: path.posix.join(source, p.config, 'environment.js'),
     test: path.posix.join(p.tests, 'health.test.js')
   };
   if (entityName) {
