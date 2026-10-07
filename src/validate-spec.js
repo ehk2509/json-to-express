@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const {validateSchema} = require('./schema-validator');
+const {upgradeSpec} = require('./spec-version');
 
 class SpecificationError extends Error {
   constructor(errors) {
@@ -22,7 +23,8 @@ function validateRelativePath(errors, value, fieldPath) {
   }
 }
 
-function validateSpec(spec) {
+function validateSpec(inputSpec) {
+  const spec = upgradeSpec(inputSpec);
   const errors = validateSchema(spec);
 
   if (!isObject(spec)) {
