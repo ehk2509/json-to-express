@@ -2,13 +2,18 @@
 
 Generate a runnable Express application from a declarative JSON specification.
 
-The v0.1 prototype is JSON-first: runtime behavior, project layout, routes, Mongo/Mongoose options, query behavior, middleware, hooks, package metadata, and server settings are described in JSON.
+The project is JSON-first: runtime behavior, project layout, routes, persistence target, query behavior, middleware, hooks, package metadata, and server settings are described in JSON.
+
+Two persistence targets now share the same normalized application model:
+
+- MongoDB + Mongoose — full v1 target, including workflows/outbox/jobs
+- PostgreSQL + Prisma — CRUD/relations/query/auth/OpenAPI target with a dedicated real-Postgres E2E
 
 ## What is generated
 
 - Express app and server bootstrap
-- MongoDB/Mongoose connection
-- Mongoose models
+- MongoDB/Mongoose or PostgreSQL/Prisma connection
+- Mongoose models or Prisma schema/client
 - CRUD controllers and routers
 - configurable query semantics
 - configurable error handling and health endpoint
@@ -219,6 +224,79 @@ Entities can also define notFoundResponse.
 ~~~
 
 database.options is forwarded to mongoose.connect.
+
+## PostgreSQL + Prisma target
+
+Choose PostgreSQL directly in the same application spec:
+
+~~~json
+{
+  "database": {
+    "type": "postgresql",
+    "uriEnv": "DATABASE_URL",
+    "defaultUri": "postgresql://postgres:postgres@127.0.0.1:5432/catalog",
+    "idStrategy": "uuid",
+    "prisma": {
+      "schemaPath": "prisma/schema.prisma"
+    }
+  }
+}
+~~~
+
+The generated project includes @prisma/client, the Prisma CLI, schema generation, and these scripts:
+
+~~~bash
+npm run prisma:generate
+npm run db:push
+npm start
+~~~
+
+PostgreSQL uses UUID primary keys while MongoDB continues to use ObjectId identifiers. Generated route validation and OpenAPI adapt automatically.
+
+The same entity JSON generates Prisma models, relation foreign keys, inverse relations, indexes, table mappings, timestamps, soft-delete fields, audit fields, and CRUD controllers.
+
+For example, a reference:
+
+~~~json
+{
+  "category": {
+    "type": "reference",
+    "ref": "Category",
+    "required": true,
+    "onDelete": "restrict"
+  }
+}
+~~~
+
+becomes a named Prisma relation with a UUID foreign key and Restrict referential action. nullify maps to SetNull for optional references and cascade maps to Cascade.
+
+The Prisma CRUD target supports:
+
+- create/get/list/update/delete
+- relation connect/disconnect
+- populate through Prisma include/select
+- filtering and allowlisted operators
+- numeric/boolean/date query coercion
+- sorting, projection, and pagination
+- soft delete
+- optional Prisma transactions
+- hooks
+- auth/RBAC
+- generated request validation
+- OpenAPI UUID contracts
+- Prisma unique/FK/not-found error mapping
+
+### Current PostgreSQL boundary
+
+The PostgreSQL target intentionally rejects features whose runtime is still Mongo-specific instead of emitting partially valid code:
+
+- declarative workflows/custom workflow endpoints
+- events and durable outbox
+- background jobs
+- many-reference relations
+- Mongoose schemaOptions and field options
+
+These are target-expansion gaps, not silent fallbacks. The validator reports them before generation.
 
 ## Entities and Mongoose
 
@@ -834,9 +912,9 @@ Unit/integration tests cover:
 - stale generated-file removal
 - syntax validation of every emitted JavaScript file
 
-CI runs this suite on Node.js 18, 20, and 22.
+CI runs the generator suite on Node.js 18, 20, and 22.
 
-A separate generated-app-e2e job performs:
+A MongoDB generated-app-e2e job performs:
 
 ~~~text
 JSON spec
@@ -856,7 +934,26 @@ JSON spec
   -> verify generated OpenAPI
 ~~~
 
-This proves that the generated project itself runs end to end.
+A second generated-app-postgres-e2e job independently performs:
+
+~~~text
+PostgreSQL JSON spec
+  -> generate fresh Prisma application
+  -> npm install
+  -> prisma db push against Postgres 16
+  -> generated contract tests
+  -> start generated Express server
+  -> create related Category/Product rows
+  -> verify FK Restrict
+  -> GET list with relation include + filters + pagination
+  -> GET by UUID
+  -> PATCH through Prisma transaction
+  -> soft DELETE
+  -> reject invalid UUID
+  -> verify UUID OpenAPI contract
+~~~
+
+Together these holdouts prove that both persistence targets produce runnable applications, not only syntactically valid output.
 
 ## Safety boundary
 
@@ -871,13 +968,16 @@ npm test
 npm run check
 node bin/json-to-express.js validate examples/shop.json
 node bin/json-to-express.js validate examples/e2e.json
+node bin/json-to-express.js validate examples/e2e-postgres.json
 ~~~
 
 ## Scope after v1
 
-The Express/Mongoose target now covers the original prototype hardening gaps plus relationships, indexes, request validation, JWT/RBAC, OpenAPI, safe advanced querying, soft delete, auditing, optional transactions, environment contracts, production middleware, graceful shutdown, protected custom hooks, generated contract tests, and real MongoDB E2E validation.
+The Express/Mongoose target remains the complete v1 target, including workflows, durable outbox, and background jobs.
 
-Future work such as PostgreSQL/Prisma, Fastify, or NestJS is considered an additional target rather than a missing capability of the Express/Mongoose generator.
+PostgreSQL/Prisma is now a real second target for CRUD-oriented services and proves that the normalized application model is not tied to Mongoose. Its remaining parity work is the SQL implementation of workflows/outbox/jobs and many-to-many references.
+
+Fastify, NestJS, and additional database/ORM combinations remain future independent targets.
 
 ## License
 
