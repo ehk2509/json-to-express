@@ -341,3 +341,79 @@ test('generates JWT RBAC, production middleware, OpenAPI and environment guards'
   assert.equal(openapi.components.securitySchemes.bearerAuth.scheme, 'bearer');
   assert.deepEqual(openapi.paths['/api/teams'].get.security, [{bearerAuth: []}]);
 });
+
+
+test('generates custom workflow endpoints, safe references and webhook runtime', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-workflow-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const workflowSpec = {
+    specVersion: '1.0',
+    app: {name: 'workflow-api', apiPrefix: '/api'},
+    database: {type: 'mongodb'},
+    entities: {
+      Order: {
+        fields: {
+          status: {type: 'string', required: true},
+          total: {type: 'number', required: true}
+        }
+      }
+    },
+    events: {
+      'order.published': {
+        webhooks: [{urlEnv: 'ORDER_WEBHOOK_URL', method: 'post', failure: 'fail'}]
+      }
+    },
+    workflows: {
+      publishOrder: {
+        transaction: true,
+        steps: [
+          {name: 'load', action: 'findById', entity: 'Order', id: '$params.id'},
+          {name: 'update', action: 'updateById', entity: 'Order', id: '$params.id', data: {status: 'published'}},
+          {name: 'notify', action: 'emit', event: 'order.published', payload: {id: '$steps.update._id', total: '$steps.load.total'}},
+          {name: 'done', action: 'respond', status: 202, body: {id: '$steps.update._id', status: '$steps.update.status'}}
+        ]
+      }
+    },
+    endpoints: {
+      publishOrder: {
+        method: 'post',
+        path: '/orders/:id/publish',
+        workflow: 'publishOrder',
+        status: 202
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'workflow');
+  const result = generateApplication(workflowSpec, output);
+
+  assert.ok(result.files.includes('src/workflows/engine.js'));
+  assert.ok(result.files.includes('src/workflows/events.js'));
+  assert.ok(result.files.includes('src/routes/CustomRoutes.js'));
+
+  const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
+  assert.match(app, /CustomRoutes/);
+  assert.match(app, /app\.use\("\/api", CustomRoutes\)/);
+
+  const routes = fs.readFileSync(path.join(output, 'src/routes/CustomRoutes.js'), 'utf8');
+  assert.match(routes, /router\.post\("\/orders\/:id\/publish"/);
+  assert.match(routes, /workflows\.execute\("publishOrder"/);
+
+  const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
+  assert.match(engine, /\$steps/);
+  assert.match(engine, /session\.withTransaction/);
+  assert.match(engine, /pendingEvents/);
+  assert.match(engine, /eventBus\.publish/);
+
+  const events = fs.readFileSync(path.join(output, 'src/workflows/events.js'), 'utf8');
+  assert.match(events, /ORDER_WEBHOOK_URL/);
+  assert.match(events, /fetch\(url/);
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /ORDER_WEBHOOK_URL=/);
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
+  assert.ok(openapi.paths['/api/orders/{id}/publish'].post);
+  assert.equal(openapi.paths['/api/orders/{id}/publish'].post.operationId, 'publishOrder');
+});
