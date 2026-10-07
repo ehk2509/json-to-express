@@ -124,6 +124,7 @@ function normalizeSpec(spec) {
         status: valueOr(health.status, 200),
         response: valueOr(health.response, {status: 'ok'})
       },
+      middlewareModules: spec.app.middlewareModules || [],
       express: {
         trustProxy: valueOr(expressConfig.trustProxy, false),
         json: {
@@ -198,6 +199,7 @@ function normalizeSpec(spec) {
         collection: entity.collection,
         idParam,
         notFoundResponse: valueOr(entity.notFoundResponse, name + ' not found'),
+        hooks: entity.hooks || null,
         schemaOptions: {
           timestamps: true,
           versionKey: false,
