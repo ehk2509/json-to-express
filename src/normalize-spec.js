@@ -16,28 +16,26 @@ const DEFAULT_PATHS = {
 
 const DEFAULT_OPERATIONS = {
   list: {
-    enabled: true,
-    method: 'get',
-    path: '/',
-    status: 200,
-    lean: true,
+    enabled: true, method: 'get', path: '/', status: 200, lean: true,
+    auth: false, validate: true, populate: [], transaction: false,
     query: {
-      filters: [],
-      sortParam: 'sort',
-      selectParam: 'select',
-      pagination: {
-        enabled: false,
-        pageParam: 'page',
-        limitParam: 'limit',
-        defaultLimit: 20,
-        maxLimit: 100
-      }
+      filters: [], sortParam: 'sort', selectParam: 'select',
+      pagination: {enabled: false, pageParam: 'page', limitParam: 'limit', defaultLimit: 20, maxLimit: 100}
     }
   },
-  get: {enabled: true, method: 'get', path: '/:id', status: 200, notFoundStatus: 404, lean: true, selectParam: 'select'},
-  create: {enabled: true, method: 'post', path: '/', status: 201},
-  update: {enabled: true, method: 'patch', path: '/:id', status: 200, notFoundStatus: 404, runValidators: true},
-  delete: {enabled: true, method: 'delete', path: '/:id', status: 204, notFoundStatus: 404}
+  get: {
+    enabled: true, method: 'get', path: '/:id', status: 200, notFoundStatus: 404,
+    lean: true, selectParam: 'select', auth: false, validate: true, populate: [], transaction: false
+  },
+  create: {enabled: true, method: 'post', path: '/', status: 201, auth: false, validate: true, populate: [], transaction: false},
+  update: {
+    enabled: true, method: 'patch', path: '/:id', status: 200, notFoundStatus: 404,
+    runValidators: true, auth: false, validate: true, populate: [], transaction: false
+  },
+  delete: {
+    enabled: true, method: 'delete', path: '/:id', status: 204, notFoundStatus: 404,
+    auth: false, validate: true, populate: [], transaction: false
+  }
 };
 
 function pluralize(value) {
@@ -64,11 +62,19 @@ function valueOr(value, fallback) {
 }
 
 function normalizePaths(generation) {
-  const configured = generation && generation.paths || {};
-  return {...DEFAULT_PATHS, ...configured};
+  return {...DEFAULT_PATHS, ...((generation && generation.paths) || {})};
 }
 
-function normalizeOperation(name, value, idParam) {
+function normalizeAuthRule(value) {
+  if (value === false || value === undefined) return {required: false, roles: []};
+  if (value === true) return {required: true, roles: []};
+  return {
+    required: valueOr(value.required, true),
+    roles: value.roles || []
+  };
+}
+
+function normalizeOperation(name, value, idParam, authEnabled) {
   const defaults = JSON.parse(JSON.stringify(DEFAULT_OPERATIONS[name]));
   if (defaults.path.includes(':id') && idParam !== 'id') defaults.path = defaults.path.replace(':id', ':' + idParam);
 
@@ -78,15 +84,18 @@ function normalizeOperation(name, value, idParam) {
 
   if (name === 'list') {
     const query = configured.query || {};
-    const pagination = query.pagination || {};
     operation.query = {
       ...defaults.query,
       ...query,
       filters: valueOr(query.filters, defaults.query.filters),
-      pagination: {...defaults.query.pagination, ...pagination}
+      pagination: {...defaults.query.pagination, ...(query.pagination || {})}
     };
   }
 
+  operation.auth = normalizeAuthRule(configured.auth === undefined ? (authEnabled ? true : false) : configured.auth);
+  operation.populate = configured.populate || [];
+  operation.validate = valueOr(configured.validate, true);
+  operation.transaction = valueOr(configured.transaction, false);
   return operation;
 }
 
@@ -103,14 +112,45 @@ function normalizeSpec(inputSpec) {
   const expressConfig = spec.app.express || {};
   const jsonConfig = expressConfig.json || {};
   const urlencodedConfig = expressConfig.urlencoded || {};
+  const production = spec.app.production || {};
+  const cors = production.cors || {};
+  const rateLimit = production.rateLimit || {};
   const generatedName = packageConfig.name || packageName(spec.app.name);
   const serverFile = path.posix.join(paths.source, 'server.js');
+  const auth = spec.auth || {};
+  const authEnabled = valueOr(auth.enabled, false);
+  const openapi = spec.docs && spec.docs.openapi || {};
 
-  return {
+  const dependencies = {
+    dotenv: '^16.4.5',
+    express: '^4.21.1',
+    mongoose: '^8.8.0',
+    ...(authEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
+    ...(valueOr(cors.enabled, false) ? {cors: '^2.8.5'} : {}),
+    ...(valueOr(rateLimit.enabled, false) ? {'express-rate-limit': '^7.4.1'} : {}),
+    ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
+    ...(packageConfig.dependencies || {})
+  };
+
+  const normalized = {
     specVersion: spec.specVersion,
-    generation: {
-      outputDir: generation.outputDir,
-      paths
+    generation: {outputDir: generation.outputDir, paths},
+    auth: {
+      enabled: authEnabled,
+      strategy: 'jwt',
+      secretEnv: valueOr(auth.secretEnv, 'JWT_SECRET'),
+      algorithms: auth.algorithms || ['HS256'],
+      userClaim: valueOr(auth.userClaim, 'sub'),
+      rolesClaim: valueOr(auth.rolesClaim, 'roles')
+    },
+    environment: spec.environment || {},
+    docs: {
+      openapi: {
+        enabled: valueOr(openapi.enabled, true),
+        file: valueOr(openapi.file, 'openapi.json'),
+        title: valueOr(openapi.title, spec.app.name.trim()),
+        version: valueOr(openapi.version, packageConfig.version || '0.1.0')
+      }
     },
     app: {
       name: spec.app.name.trim(),
@@ -130,15 +170,23 @@ function normalizeSpec(inputSpec) {
       middlewareModules: spec.app.middlewareModules || [],
       express: {
         trustProxy: valueOr(expressConfig.trustProxy, false),
-        json: {
-          enabled: valueOr(jsonConfig.enabled, true),
-          limit: valueOr(jsonConfig.limit, valueOr(spec.app.bodyLimit, '1mb'))
-        },
+        json: {enabled: valueOr(jsonConfig.enabled, true), limit: valueOr(jsonConfig.limit, valueOr(spec.app.bodyLimit, '1mb'))},
         urlencoded: {
           enabled: valueOr(urlencodedConfig.enabled, false),
           extended: valueOr(urlencodedConfig.extended, true),
           limit: valueOr(urlencodedConfig.limit, '1mb')
         }
+      },
+      production: {
+        requestId: valueOr(production.requestId, true),
+        securityHeaders: valueOr(production.securityHeaders, true),
+        cors: {enabled: valueOr(cors.enabled, false), origin: valueOr(cors.origin, '*')},
+        rateLimit: {
+          enabled: valueOr(rateLimit.enabled, false),
+          windowMs: valueOr(rateLimit.windowMs, 60000),
+          max: valueOr(rateLimit.max, 100)
+        },
+        compression: valueOr(production.compression, false)
       },
       responses: {
         notFound: valueOr(responses.notFound, 'Route not found'),
@@ -167,16 +215,8 @@ function normalizeSpec(inputSpec) {
           test: 'node --test',
           ...(packageConfig.scripts || {})
         },
-        dependencies: {
-          dotenv: '^16.4.5',
-          express: '^4.21.1',
-          mongoose: '^8.8.0',
-          ...(packageConfig.dependencies || {})
-        },
-        devDependencies: {
-          supertest: '^7.0.0',
-          ...(packageConfig.devDependencies || {})
-        }
+        dependencies,
+        devDependencies: {supertest: '^7.0.0', ...(packageConfig.devDependencies || {})}
       }
     },
     database: {
@@ -185,46 +225,63 @@ function normalizeSpec(inputSpec) {
       defaultUri: valueOr(spec.database.defaultUri, 'mongodb://127.0.0.1:27017/' + generatedName),
       options: spec.database.options || {}
     },
-    entities: Object.entries(spec.entities).map(([name, entity]) => {
-      const idParam = valueOr(entity.idParam, 'id');
-      const operations = {};
-      for (const operationName of Object.keys(DEFAULT_OPERATIONS)) {
-        operations[operationName] = normalizeOperation(
-          operationName,
-          entity.operations && entity.operations[operationName],
-          idParam
-        );
-      }
-
-      return {
-        name,
-        route: valueOr(entity.route, defaultRoute(name)),
-        collection: entity.collection,
-        idParam,
-        notFoundResponse: valueOr(entity.notFoundResponse, name + ' not found'),
-        hooks: entity.hooks || null,
-        schemaOptions: {
-          timestamps: true,
-          versionKey: false,
-          ...(entity.schemaOptions || {})
-        },
-        operations,
-        fields: Object.entries(entity.fields).map(([fieldName, field]) => ({
-          name: fieldName,
-          type: field.type,
-          required: field.required,
-          unique: field.unique,
-          enum: field.enum,
-          min: field.min,
-          max: field.max,
-          minLength: field.minLength,
-          maxLength: field.maxLength,
-          default: field.default,
-          options: field.options || {}
-        }))
-      };
-    })
+    entities: []
   };
+
+  normalized.entities = Object.entries(spec.entities).map(([name, entity]) => {
+    const idParam = valueOr(entity.idParam, 'id');
+    const operations = {};
+    for (const operationName of Object.keys(DEFAULT_OPERATIONS)) {
+      operations[operationName] = normalizeOperation(
+        operationName,
+        entity.operations && entity.operations[operationName],
+        idParam,
+        authEnabled
+      );
+    }
+
+    const softDelete = entity.softDelete || {};
+    const audit = entity.audit || {};
+
+    return {
+      name,
+      route: valueOr(entity.route, defaultRoute(name)),
+      collection: entity.collection,
+      idParam,
+      notFoundResponse: valueOr(entity.notFoundResponse, name + ' not found'),
+      hooks: entity.hooks || null,
+      indexes: entity.indexes || [],
+      softDelete: {
+        enabled: valueOr(softDelete.enabled, false),
+        field: valueOr(softDelete.field, 'deletedAt')
+      },
+      audit: {
+        enabled: valueOr(audit.enabled, false),
+        createdBy: valueOr(audit.createdBy, 'createdBy'),
+        updatedBy: valueOr(audit.updatedBy, 'updatedBy')
+      },
+      schemaOptions: {timestamps: true, versionKey: false, ...(entity.schemaOptions || {})},
+      operations,
+      fields: Object.entries(entity.fields).map(([fieldName, field]) => ({
+        name: fieldName,
+        type: field.type,
+        ref: field.ref,
+        many: valueOr(field.many, false),
+        onDelete: valueOr(field.onDelete, 'restrict'),
+        required: field.required,
+        unique: field.unique,
+        enum: field.enum,
+        min: field.min,
+        max: field.max,
+        minLength: field.minLength,
+        maxLength: field.maxLength,
+        default: field.default,
+        options: field.options || {}
+      }))
+    };
+  });
+
+  return normalized;
 }
 
 module.exports = {DEFAULT_PATHS, defaultRoute, normalizeSpec, packageName, pluralize};
