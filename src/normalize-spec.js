@@ -1,10 +1,39 @@
 'use strict';
 
+const path = require('node:path');
 const {validateSpec} = require('./validate-spec');
 
+const DEFAULT_PATHS = {
+  source: 'src',
+  models: 'models',
+  controllers: 'controllers',
+  routes: 'routes',
+  config: 'config',
+  middleware: 'middleware',
+  tests: 'test'
+};
+
 const DEFAULT_OPERATIONS = {
-  list: {enabled: true, method: 'get', path: '/', status: 200, lean: true},
-  get: {enabled: true, method: 'get', path: '/:id', status: 200, notFoundStatus: 404, lean: true},
+  list: {
+    enabled: true,
+    method: 'get',
+    path: '/',
+    status: 200,
+    lean: true,
+    query: {
+      filters: [],
+      sortParam: 'sort',
+      selectParam: 'select',
+      pagination: {
+        enabled: false,
+        pageParam: 'page',
+        limitParam: 'limit',
+        defaultLimit: 20,
+        maxLimit: 100
+      }
+    }
+  },
+  get: {enabled: true, method: 'get', path: '/:id', status: 200, notFoundStatus: 404, lean: true, selectParam: 'select'},
   create: {enabled: true, method: 'post', path: '/', status: 201},
   update: {enabled: true, method: 'patch', path: '/:id', status: 200, notFoundStatus: 404, runValidators: true},
   delete: {enabled: true, method: 'delete', path: '/:id', status: 204, notFoundStatus: 404}
@@ -29,61 +58,108 @@ function normalizePrefix(value) {
   return value.replace(/\/$/, '');
 }
 
+function valueOr(value, fallback) {
+  return value === undefined ? fallback : value;
+}
+
+function normalizePaths(generation) {
+  const configured = generation && generation.paths || {};
+  return {...DEFAULT_PATHS, ...configured};
+}
+
 function normalizeOperation(name, value, idParam) {
-  const defaults = {...DEFAULT_OPERATIONS[name]};
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_OPERATIONS[name]));
   if (defaults.path.includes(':id') && idParam !== 'id') defaults.path = defaults.path.replace(':id', ':' + idParam);
+
   if (typeof value === 'boolean') return {...defaults, enabled: value};
-  return {...defaults, ...(value || {})};
+  const configured = value || {};
+  const operation = {...defaults, ...configured};
+
+  if (name === 'list') {
+    const query = configured.query || {};
+    const pagination = query.pagination || {};
+    operation.query = {
+      ...defaults.query,
+      ...query,
+      filters: valueOr(query.filters, defaults.query.filters),
+      pagination: {...defaults.query.pagination, ...pagination}
+    };
+  }
+
+  return operation;
 }
 
 function normalizeSpec(spec) {
   validateSpec(spec);
 
+  const generation = spec.generation || {};
+  const paths = normalizePaths(generation);
   const packageConfig = spec.app.package || {};
   const health = spec.app.health || {};
   const responses = spec.app.responses || {};
   const statusCodes = spec.app.statusCodes || {};
+  const expressConfig = spec.app.express || {};
+  const jsonConfig = expressConfig.json || {};
+  const urlencodedConfig = expressConfig.urlencoded || {};
+  const generatedName = packageConfig.name || packageName(spec.app.name);
+  const serverFile = path.posix.join(paths.source, 'server.js');
 
   return {
     generation: {
-      outputDir: spec.generation && spec.generation.outputDir
+      outputDir: generation.outputDir,
+      paths
     },
     app: {
       name: spec.app.name.trim(),
-      packageName: packageConfig.name || packageName(spec.app.name),
-      port: spec.app.port || 3000,
-      portEnv: spec.app.portEnv || 'PORT',
-      apiPrefix: normalizePrefix(spec.app.apiPrefix || '/api'),
-      bodyLimit: spec.app.bodyLimit === undefined ? '1mb' : spec.app.bodyLimit,
+      packageName: generatedName,
+      port: valueOr(spec.app.port, 3000),
+      portEnv: valueOr(spec.app.portEnv, 'PORT'),
+      host: valueOr(spec.app.host, '0.0.0.0'),
+      hostEnv: valueOr(spec.app.hostEnv, 'HOST'),
+      startupMessage: valueOr(spec.app.startupMessage, spec.app.name.trim() + ' listening on {host}:{port}'),
+      apiPrefix: normalizePrefix(valueOr(spec.app.apiPrefix, '/api')),
       health: {
-        enabled: health.enabled !== false,
-        path: health.path || '/health',
-        status: health.status || 200,
-        response: health.response === undefined ? {status: 'ok'} : health.response
+        enabled: valueOr(health.enabled, true),
+        path: valueOr(health.path, '/health'),
+        status: valueOr(health.status, 200),
+        response: valueOr(health.response, {status: 'ok'})
+      },
+      express: {
+        trustProxy: valueOr(expressConfig.trustProxy, false),
+        json: {
+          enabled: valueOr(jsonConfig.enabled, true),
+          limit: valueOr(jsonConfig.limit, valueOr(spec.app.bodyLimit, '1mb'))
+        },
+        urlencoded: {
+          enabled: valueOr(urlencodedConfig.enabled, false),
+          extended: valueOr(urlencodedConfig.extended, true),
+          limit: valueOr(urlencodedConfig.limit, '1mb')
+        }
       },
       responses: {
-        notFound: responses.notFound || 'Route not found',
-        validationError: responses.validationError || 'Validation failed',
-        invalidIdentifier: responses.invalidIdentifier || 'Invalid identifier',
-        uniqueConstraint: responses.uniqueConstraint || 'Unique constraint violated',
-        internalError: responses.internalError || 'Internal server error'
+        notFound: valueOr(responses.notFound, 'Route not found'),
+        validationError: valueOr(responses.validationError, 'Validation failed'),
+        invalidIdentifier: valueOr(responses.invalidIdentifier, 'Invalid identifier'),
+        uniqueConstraint: valueOr(responses.uniqueConstraint, 'Unique constraint violated'),
+        internalError: valueOr(responses.internalError, 'Internal server error')
       },
       statusCodes: {
-        notFound: statusCodes.notFound || 404,
-        validationError: statusCodes.validationError || 400,
-        invalidIdentifier: statusCodes.invalidIdentifier || 400,
-        uniqueConstraint: statusCodes.uniqueConstraint || 409,
-        internalError: statusCodes.internalError || 500
+        notFound: valueOr(statusCodes.notFound, 404),
+        validationError: valueOr(statusCodes.validationError, 400),
+        invalidIdentifier: valueOr(statusCodes.invalidIdentifier, 400),
+        uniqueConstraint: valueOr(statusCodes.uniqueConstraint, 409),
+        internalError: valueOr(statusCodes.internalError, 500)
       },
       package: {
-        name: packageConfig.name || packageName(spec.app.name),
-        version: packageConfig.version || '0.1.0',
-        private: packageConfig.private !== false,
-        description: packageConfig.description || 'Generated by json-to-express',
-        nodeEngine: packageConfig.nodeEngine || '>=18',
+        name: generatedName,
+        version: valueOr(packageConfig.version, '0.1.0'),
+        private: valueOr(packageConfig.private, true),
+        description: valueOr(packageConfig.description, 'Generated by json-to-express'),
+        nodeEngine: valueOr(packageConfig.nodeEngine, '>=18'),
+        main: valueOr(packageConfig.main, serverFile),
         scripts: {
-          start: 'node src/server.js',
-          dev: 'node --watch src/server.js',
+          start: 'node ' + serverFile,
+          dev: 'node --watch ' + serverFile,
           test: 'node --test',
           ...(packageConfig.scripts || {})
         },
@@ -101,12 +177,12 @@ function normalizeSpec(spec) {
     },
     database: {
       type: 'mongodb',
-      uriEnv: spec.database.uriEnv || 'MONGODB_URI',
-      defaultUri: spec.database.defaultUri || 'mongodb://127.0.0.1:27017/' + (packageConfig.name || packageName(spec.app.name)),
+      uriEnv: valueOr(spec.database.uriEnv, 'MONGODB_URI'),
+      defaultUri: valueOr(spec.database.defaultUri, 'mongodb://127.0.0.1:27017/' + generatedName),
       options: spec.database.options || {}
     },
     entities: Object.entries(spec.entities).map(([name, entity]) => {
-      const idParam = entity.idParam || 'id';
+      const idParam = valueOr(entity.idParam, 'id');
       const operations = {};
       for (const operationName of Object.keys(DEFAULT_OPERATIONS)) {
         operations[operationName] = normalizeOperation(
@@ -118,9 +194,10 @@ function normalizeSpec(spec) {
 
       return {
         name,
-        route: entity.route || defaultRoute(name),
+        route: valueOr(entity.route, defaultRoute(name)),
         collection: entity.collection,
         idParam,
+        notFoundResponse: valueOr(entity.notFoundResponse, name + ' not found'),
         schemaOptions: {
           timestamps: true,
           versionKey: false,
@@ -145,4 +222,4 @@ function normalizeSpec(spec) {
   };
 }
 
-module.exports = {defaultRoute, normalizeSpec, packageName, pluralize};
+module.exports = {DEFAULT_PATHS, defaultRoute, normalizeSpec, packageName, pluralize};
