@@ -64,6 +64,10 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
+    validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
+  }
+
   if (spec.app && Array.isArray(spec.app.middlewareModules)) {
     spec.app.middlewareModules.forEach((value, index) => {
       validateRelativePath(errors, value, 'app.middlewareModules[' + index + ']');
