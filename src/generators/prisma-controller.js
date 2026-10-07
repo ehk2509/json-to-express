@@ -25,13 +25,16 @@ function selectionExpression(operation) {
   ];
 }
 
-function inputTransformLines(entity) {
+function inputTransformLines(entity, mode) {
   const refs = entity.fields.filter(field => field.type === 'reference');
   const lines = ['    const data = {...req.body};'];
   for (const field of refs) {
     lines.push('    if (Object.prototype.hasOwnProperty.call(data, ' + js(field.name) + ')) {');
     lines.push('      const reference = data[' + js(field.name) + '];');
-    lines.push('      data[' + js(field.name) + '] = reference === null ? {disconnect: true} : {connect: {id: reference}};');
+    lines.push('      if (reference === null && ' + js('create') + ' === ' + js('create') + ' && ' + js('PLACEHOLDER') + ' === "never") {}');
+    lines.push(mode === 'create'
+      ? '      if (reference === null) delete data[' + js(field.name) + ']; else data[' + js(field.name) + '] = {connect: {id: reference}};'
+      : '      data[' + js(field.name) + '] = reference === null ? {disconnect: true} : {connect: {id: reference}};');
     lines.push('    }');
   }
   return lines;
@@ -44,7 +47,7 @@ function fieldTypes(entity) {
 module.exports = function prismaControllerSource(entity, spec) {
   const paths = filePaths(spec, entity.name);
   const delegateName = lowerFirst(entity.name);
-  const delegate = 'db.' + delegateName;
+  const delegate = 'prisma.' + delegateName;
   const id = 'req.params[' + js(entity.idParam) + ']';
   const imports = [
     'const connectDatabase = require(' + js(relativeRequire(paths.controller, filePaths(spec).database)) + ');',
@@ -124,7 +127,7 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const create = entity.operations.create;
   if (create.enabled) {
-    const lines = ['async function create(req, res, next) {','  try {',...hookLines(entity,'before','create',null,delegate),...inputTransformLines(entity)];
+    const lines = ['async function create(req, res, next) {','  try {',...hookLines(entity,'before','create',null,delegate),...inputTransformLines(entity, 'create')];
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) { data[' + js(entity.audit.createdBy) + '] = req.auth.userId; data[' + js(entity.audit.updatedBy) + '] = req.auth.userId; }');
     lines.push(...selectionExpression(create));
     lines.push('    const item = await withTransaction(' + create.transaction + ', db => db.' + delegateName + '.create({data, ...selection}));');
@@ -135,7 +138,7 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const update = entity.operations.update;
   if (update.enabled) {
-    const lines = ['async function update(req, res, next) {','  try {',...hookLines(entity,'before','update',null,delegate),...inputTransformLines(entity)];
+    const lines = ['async function update(req, res, next) {','  try {',...hookLines(entity,'before','update',null,delegate),...inputTransformLines(entity, 'update')];
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) data[' + js(entity.audit.updatedBy) + '] = req.auth.userId;');
     lines.push('    const lookup = {id: ' + id + '};');
     if (entity.softDelete.enabled) lines.push('    lookup[' + js(entity.softDelete.field) + '] = null;');
