@@ -72,8 +72,7 @@ function main() {
 
   if (command === 'generate') {
     const outputOption = optionValue(args, '-o', '--output');
-    const defaultOutput = path.join(process.cwd(), 'generated', String(spec.app && spec.app.name || 'app'));
-    const outputDir = path.resolve(outputOption || defaultOutput);
+    const outputDir = outputOption ? path.resolve(outputOption) : undefined;
     const result = generateApplication(spec, outputDir, {force: args.includes('--force')});
     console.log('✓ Generated ' + result.files.length + ' files in ' + result.outputDir);
     console.log('  cd ' + path.relative(process.cwd(), result.outputDir));
