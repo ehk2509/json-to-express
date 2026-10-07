@@ -584,7 +584,7 @@ test('generates PostgreSQL Prisma schema, UUID routes and CRUD controllers from 
   assert.match(routes, /validation\.identifier/);
 
   const validation = fs.readFileSync(path.join(output, 'src/middleware/validation.js'), 'utf8');
-  assert.match(validation, /\[0-9a-f\].*\{36\}/i);
+  assert.ok(validation.includes('^[0-9a-f]{8}-[0-9a-f]{4}-'));
   assert.doesNotMatch(validation, /mongoose/);
 
   const database = fs.readFileSync(path.join(output, 'src/config/database.js'), 'utf8');
