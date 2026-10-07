@@ -50,6 +50,7 @@ function normalizeSpec(spec) {
     },
     app: {
       name: spec.app.name.trim(),
+      packageName: packageConfig.name || packageName(spec.app.name),
       port: spec.app.port || 3000,
       portEnv: spec.app.portEnv || 'PORT',
       apiPrefix: normalizePrefix(spec.app.apiPrefix || '/api'),
