@@ -7,7 +7,6 @@ function serverSource(spec) {
   return [
     "'use strict';", '',
     "require('dotenv').config();",
-    "const mongoose = require('mongoose');",
     'const validateEnvironment = require(' + js(relativeRequire(paths.server, paths.environment)) + ');',
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
@@ -25,7 +24,7 @@ function serverSource(spec) {
     '  console.log(signal + " received, shutting down");',
     '  if (server) await new Promise(resolve => server.close(resolve));',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['  outboxWorker.stopWorker();'] : []),
-    '  await mongoose.disconnect();',
+    '  if (connectDatabase.disconnect) await connectDatabase.disconnect();',
     '}', '',
     "for (const signal of ['SIGTERM', 'SIGINT']) {",
     '  process.once(signal, () => shutdown(signal).then(() => process.exit(0)).catch(error => { console.error(error); process.exit(1); }));',
