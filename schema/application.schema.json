@@ -246,6 +246,14 @@
               }
             }
           }
+        },
+        "middlewareModules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": []
         }
       },
       "additionalProperties": false
@@ -491,9 +499,54 @@
             "$ref": "#/$defs/field"
           }
         },
-        "notFoundResponse": {}
+        "notFoundResponse": {},
+        "hooks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "module"
+          ],
+          "properties": {
+            "module": {
+              "type": "string",
+              "minLength": 1
+            },
+            "before": {
+              "$ref": "#/$defs/hookMap"
+            },
+            "after": {
+              "$ref": "#/$defs/hookMap"
+            }
+          }
+        }
       },
       "additionalProperties": false
+    },
+    "hookMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "list": {
+          "type": "string",
+          "minLength": 1
+        },
+        "get": {
+          "type": "string",
+          "minLength": 1
+        },
+        "create": {
+          "type": "string",
+          "minLength": 1
+        },
+        "update": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delete": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "additionalProperties": false
