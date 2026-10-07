@@ -29,6 +29,11 @@ function envExample(spec) {
   };
 
   if (spec.auth.enabled) values[spec.auth.secretEnv] = 'change-me';
+  for (const event of Object.values(spec.events)) {
+    for (const webhook of event.webhooks) {
+      if (!(webhook.urlEnv in values)) values[webhook.urlEnv] = '';
+    }
+  }
 
   for (const [name, raw] of Object.entries(spec.environment)) {
     if (typeof raw === 'string') values[name] = raw;
