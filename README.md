@@ -731,6 +731,83 @@ failure can be fail or continue. fail propagates delivery failure through the wo
 
 Custom endpoint auth uses the same JWT/RBAC rules as CRUD operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
 
+## Durable outbox and background jobs
+
+Events and jobs use a generated MongoDB outbox so asynchronous work is persisted before a worker attempts delivery.
+
+~~~json
+{
+  "outbox": {
+    "worker": "embedded",
+    "pollIntervalMs": 500,
+    "batchSize": 20,
+    "lockTimeoutMs": 30000,
+    "maxAttempts": 5,
+    "backoffMs": 1000
+  }
+}
+~~~
+
+Each outbox record moves through pending, processing, done, or dead states and stores attempts, next availability, lock time, and the last delivery error.
+
+Failed work is retried with exponential backoff. Processing records whose lock is older than lockTimeoutMs are recovered to pending so a crashed worker does not permanently lose work.
+
+After maxAttempts the record becomes dead. Generated projects expose:
+
+~~~bash
+npm run worker
+npm run worker:once
+npm run outbox:retry
+~~~
+
+outbox:retry resets dead records to pending so they can be replayed without editing MongoDB manually.
+
+worker can be embedded, where the API process starts the outbox loop, or separate, where the API and worker run as independent processes. Separate mode is preferable when workers should scale independently.
+
+### Reliable events
+
+emit no longer delivers webhooks inline. It writes an event record to the outbox. In a transactional workflow, that outbox record is inserted inside the same MongoDB transaction as the business mutations.
+
+The HTTP workflow can therefore succeed once the event is durably recorded even when the webhook destination is temporarily unavailable.
+
+Webhook failure policy still controls delivery inside one attempt: continue logs a failed subscriber and continues; fail marks the outbox attempt as failed so the whole event is retried.
+
+### Background jobs
+
+Jobs map a durable queue item to an existing declarative workflow:
+
+~~~json
+{
+  "jobs": {
+    "repriceProduct": {
+      "workflow": "repriceProduct",
+      "queue": "products",
+      "maxAttempts": 4,
+      "backoffMs": 500
+    }
+  }
+}
+~~~
+
+A workflow can enqueue it:
+
+~~~json
+{
+  "name": "queueReprice",
+  "action": "enqueue",
+  "job": "repriceProduct",
+  "payload": {
+    "id": "$params.id",
+    "price": "$body.price"
+  },
+  "delayMs": 1000
+}
+~~~
+
+The request can return immediately while the worker later executes the job workflow. Job records support named queues, delayed availability, per-job retry limits, and per-job backoff overrides.
+
+Processing is at-least-once. If a worker crashes after business side effects but before marking the job done, the lock eventually expires and the job may run again. Workflows used as job handlers should therefore be idempotent when duplicate execution would matter.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -747,6 +824,7 @@ Unit/integration tests cover:
 - generated request validation and OpenAPI
 - soft delete, auditing, and transaction generation
 - custom endpoints, declarative workflows, events, and webhooks
+- durable outbox, retries, dead-letter recovery, and background jobs
 - production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options

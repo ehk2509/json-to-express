@@ -83,6 +83,7 @@ function validateSpec(inputSpec) {
   const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
   const workflowNames = new Set(isObject(spec.workflows) ? Object.keys(spec.workflows) : []);
   const eventNames = new Set(isObject(spec.events) ? Object.keys(spec.events) : []);
+  const jobNames = new Set(isObject(spec.jobs) ? Object.keys(spec.jobs) : []);
 
   if (isObject(spec.endpoints)) {
     const routes = new Set();
@@ -98,6 +99,15 @@ function validateSpec(inputSpec) {
         const key = endpoint.method + ' ' + endpoint.path;
         if (routes.has(key)) errors.push('endpoints.' + endpointName + ' duplicates custom endpoint ' + key);
         routes.add(key);
+      }
+    }
+  }
+
+  if (isObject(spec.jobs)) {
+    for (const [jobName, job] of Object.entries(spec.jobs)) {
+      if (!isObject(job)) continue;
+      if (job.workflow && !workflowNames.has(job.workflow)) {
+        errors.push('jobs.' + jobName + '.workflow references unknown workflow "' + job.workflow + '"');
       }
     }
   }
@@ -125,6 +135,10 @@ function validateSpec(inputSpec) {
         if (step.action === 'emit') {
           if (!step.event) errors.push(stepPath + '.event is required for action emit');
           else if (!eventNames.has(step.event)) errors.push(stepPath + '.event references unknown event "' + step.event + '"');
+        }
+        if (step.action === 'enqueue') {
+          if (!step.job) errors.push(stepPath + '.job is required for action enqueue');
+          else if (!jobNames.has(step.job)) errors.push(stepPath + '.job references unknown job "' + step.job + '"');
         }
 
         for (const candidate of [step.id, step.data, step.payload, step.body]) {

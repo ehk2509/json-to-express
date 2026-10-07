@@ -133,6 +133,9 @@
           "failure": "fail"
         }
       ]
+    },
+    "product.repriced": {
+      "webhooks": []
     }
   },
   "workflows": {
@@ -173,6 +176,50 @@
           }
         }
       ]
+    },
+    "repriceProduct": {
+      "steps": [
+        {
+          "name": "update",
+          "action": "updateById",
+          "entity": "Product",
+          "id": "$body.id",
+          "data": {
+            "price": "$body.price"
+          }
+        },
+        {
+          "name": "event",
+          "action": "emit",
+          "event": "product.repriced",
+          "payload": {
+            "id": "$steps.update._id",
+            "price": "$steps.update.price"
+          }
+        }
+      ]
+    },
+    "queueReprice": {
+      "steps": [
+        {
+          "name": "job",
+          "action": "enqueue",
+          "job": "repriceProduct",
+          "payload": {
+            "id": "$params.id",
+            "price": "$body.price"
+          },
+          "delayMs": 50
+        },
+        {
+          "name": "response",
+          "action": "respond",
+          "status": 202,
+          "body": {
+            "queued": true
+          }
+        }
+      ]
     }
   },
   "endpoints": {
@@ -181,6 +228,28 @@
       "path": "/products/:id/publish",
       "workflow": "publishProduct",
       "status": 200
+    },
+    "queueReprice": {
+      "method": "post",
+      "path": "/products/:id/reprice",
+      "workflow": "queueReprice",
+      "status": 202
+    }
+  },
+  "outbox": {
+    "worker": "embedded",
+    "pollIntervalMs": 100,
+    "batchSize": 10,
+    "lockTimeoutMs": 5000,
+    "maxAttempts": 4,
+    "backoffMs": 100
+  },
+  "jobs": {
+    "repriceProduct": {
+      "workflow": "repriceProduct",
+      "queue": "products",
+      "maxAttempts": 3,
+      "backoffMs": 100
     }
   }
 }

@@ -19,6 +19,8 @@ const contractTestSource = require('./contract-test');
 const workflowEngineSource = require('./workflow-engine');
 const eventBusSource = require('./event-bus');
 const customRoutesSource = require('./custom-routes');
+const outboxSource = require('./outbox');
+const workerSource = require('./worker');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -58,11 +60,13 @@ function buildFiles(spec) {
   files.set(paths.validation, validationSource(spec));
   files.set(paths.environment, environmentSource(spec));
 
-  if (spec.workflows.length) {
+  if (spec.workflows.length || spec.outbox.enabled) {
     files.set(paths.workflowEngine, workflowEngineSource(spec));
     files.set(paths.eventBus, eventBusSource(spec));
-    files.set(paths.endpointRoutes, customRoutesSource(spec));
+    files.set(paths.outbox, outboxSource(spec));
   }
+  if (spec.outbox.enabled) files.set(paths.worker, workerSource(spec));
+  if (spec.endpoints.length) files.set(paths.endpointRoutes, customRoutesSource(spec));
 
   const auth = authSource(spec);
   if (auth) files.set(paths.auth, auth);
