@@ -577,7 +577,7 @@ test('generates PostgreSQL Prisma schema, UUID routes and CRUD controllers from 
   assert.match(controller, /prisma\.product\.findMany/);
   assert.match(controller, /db\.product\.update/);
   assert.match(controller, /prisma\.\$transaction/);
-  assert.match(controller, /categoryId/);
+  assert.match(controller, /field \+ "Id"/);
   assert.match(controller, /connect: \{id: reference\}/);
 
   const routes = fs.readFileSync(path.join(output, 'src/routes/ProductRoutes.js'), 'utf8');
