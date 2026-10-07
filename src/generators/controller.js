@@ -34,7 +34,9 @@ function relationDeleteLines(entity, spec) {
   for (const relation of inboundRelations(entity, spec)) {
     const source = relation.source;
     const field = relation.field;
-    const filter = '{' + js(field.name) + ': ' + 'targetId}';
+    const filterParts = [js(field.name) + ': targetId'];
+    if (source.softDelete.enabled) filterParts.push(js(source.softDelete.field) + ': null');
+    const filter = '{' + filterParts.join(', ') + '}';
     if (field.onDelete === 'restrict') {
       lines.push('      const dependent' + source.name + field.name + ' = await ' + source.name + '.countDocuments(' + filter + ').session(session || null);');
       lines.push('      if (dependent' + source.name + field.name + ' > 0) { const error = new Error("Delete restricted by ' + source.name + '.' + field.name + '"); error.statusCode = 409; throw error; }');
