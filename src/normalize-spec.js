@@ -19,7 +19,7 @@ const DEFAULT_OPERATIONS = {
     enabled: true, method: 'get', path: '/', status: 200, lean: true,
     auth: false, validate: true, populate: [], transaction: false,
     query: {
-      filters: [], sortParam: 'sort', selectParam: 'select',
+      filters: [], operators: ['eq'], sortParam: 'sort', selectParam: 'select',
       pagination: {enabled: false, pageParam: 'page', limitParam: 'limit', defaultLimit: 20, maxLimit: 100}
     }
   },
@@ -88,6 +88,7 @@ function normalizeOperation(name, value, idParam, authEnabled) {
       ...defaults.query,
       ...query,
       filters: valueOr(query.filters, defaults.query.filters),
+      operators: valueOr(query.operators, defaults.query.operators),
       pagination: {...defaults.query.pagination, ...(query.pagination || {})}
     };
   }
