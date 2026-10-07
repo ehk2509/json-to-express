@@ -8,6 +8,7 @@ on:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         node: [18, 20, 22]
     runs-on: ubuntu-latest
@@ -18,3 +19,35 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
       - run: npm run check
+
+  generated-app-e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate application
+        run: node bin/json-to-express.js generate examples/e2e.json
+      - name: Install generated application
+        working-directory: .tmp/e2e-app
+        run: npm install --no-audit --no-fund
+      - name: Start generated application
+        working-directory: .tmp/e2e-app
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_e2e
+          PORT: 3456
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Exercise generated CRUD API
+        run: node scripts/e2e-generated-app.js
+      - name: Print generated server log on failure
+        if: failure()
+        run: cat .tmp/e2e-app/server.log || true
