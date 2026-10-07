@@ -622,6 +622,115 @@ The production block can enable request IDs, security headers, CORS, rate limiti
 
 Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and MongoDB disconnect.
 
+## Declarative custom endpoints and workflows
+
+Beyond generated CRUD, v1 can expose custom application actions without embedding JavaScript in the JSON.
+
+~~~json
+{
+  "endpoints": {
+    "publishProduct": {
+      "method": "post",
+      "path": "/products/:id/publish",
+      "workflow": "publishProduct",
+      "status": 200
+    }
+  },
+  "workflows": {
+    "publishProduct": {
+      "transaction": false,
+      "steps": [
+        {
+          "name": "load",
+          "action": "findById",
+          "entity": "Product",
+          "id": "$params.id"
+        },
+        {
+          "name": "update",
+          "action": "updateById",
+          "entity": "Product",
+          "id": "$params.id",
+          "data": {
+            "published": true
+          }
+        },
+        {
+          "name": "notify",
+          "action": "emit",
+          "event": "product.published",
+          "payload": {
+            "id": "$steps.update._id",
+            "name": "$steps.update.name"
+          }
+        },
+        {
+          "name": "done",
+          "action": "respond",
+          "status": 200,
+          "body": {
+            "id": "$steps.update._id",
+            "published": "$steps.update.published"
+          }
+        }
+      ]
+    }
+  }
+}
+~~~
+
+Supported workflow actions are:
+
+- findById
+- create
+- updateById
+- deleteById
+- emit
+- respond
+
+Workflow values can safely reference request and prior-step data using:
+
+- $body
+- $params
+- $query
+- $auth
+- $steps.<stepName>
+
+For example, $steps.create._id reads the generated id from an earlier create step. Strings beginning with a literal dollar sign can be escaped as $value.
+
+References to unavailable future steps, unknown entities, unknown events, and missing workflows are rejected during specification validation.
+
+Set transaction to true to execute database steps inside a MongoDB transaction. Event delivery is deferred until the workflow has completed successfully and, when applicable, the transaction has committed.
+
+### Events and webhooks
+
+Events can have declarative webhook subscribers:
+
+~~~json
+{
+  "events": {
+    "product.published": {
+      "webhooks": [
+        {
+          "urlEnv": "PRODUCT_PUBLISHED_WEBHOOK_URL",
+          "method": "post",
+          "failure": "fail",
+          "headers": {
+            "x-source": "catalog"
+          }
+        }
+      ]
+    }
+  }
+}
+~~~
+
+Webhook URLs are read from environment variables instead of being stored in the application spec. They are automatically included in the generated environment contract and .env.example.
+
+failure can be fail or continue. fail propagates delivery failure through the workflow request; continue logs the delivery error and lets the request complete.
+
+Custom endpoint auth uses the same JWT/RBAC rules as CRUD operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -637,6 +746,7 @@ Unit/integration tests cover:
 - JWT authentication and role authorization generation
 - generated request validation and OpenAPI
 - soft delete, auditing, and transaction generation
+- custom endpoints, declarative workflows, events, and webhooks
 - production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options

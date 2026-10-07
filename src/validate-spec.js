@@ -23,6 +23,33 @@ function validateRelativePath(errors, value, fieldPath) {
   }
 }
 
+function visitWorkflowValue(value, visitor) {
+  if (typeof value === 'string') {
+    visitor(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach(item => visitWorkflowValue(item, visitor));
+    return;
+  }
+  if (isObject(value)) {
+    Object.values(value).forEach(item => visitWorkflowValue(item, visitor));
+  }
+}
+
+function validateWorkflowReference(errors, value, workflowName, stepName, knownSteps) {
+  if (!value.startsWith('$') || value.startsWith('$$')) return;
+  const root = value.split('.')[0];
+  if (['$body', '$params', '$query', '$auth'].includes(root)) return;
+  if (root === '$steps') {
+    const parts = value.split('.');
+    if (parts.length < 3 || !knownSteps.has(parts[1])) {
+      errors.push('workflows.' + workflowName + '.steps.' + stepName + ' references an unavailable prior step in "' + value + '"');
+    }
+    return;
+  }
+  errors.push('workflows.' + workflowName + '.steps.' + stepName + ' has unsupported reference root in "' + value + '"');
+}
 function validateSpec(inputSpec) {
   const spec = upgradeSpec(inputSpec);
   const errors = validateSchema(spec);
@@ -53,8 +80,64 @@ function validateSpec(inputSpec) {
     }
   }
 
+  const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
+  const workflowNames = new Set(isObject(spec.workflows) ? Object.keys(spec.workflows) : []);
+  const eventNames = new Set(isObject(spec.events) ? Object.keys(spec.events) : []);
+
+  if (isObject(spec.endpoints)) {
+    const routes = new Set();
+    for (const [endpointName, endpoint] of Object.entries(spec.endpoints)) {
+      if (!isObject(endpoint)) continue;
+      if (endpoint.workflow && !workflowNames.has(endpoint.workflow)) {
+        errors.push('endpoints.' + endpointName + '.workflow references unknown workflow "' + endpoint.workflow + '"');
+      }
+      if (endpoint.auth !== undefined && endpoint.auth !== false && (!spec.auth || spec.auth.enabled !== true)) {
+        errors.push('endpoints.' + endpointName + '.auth requires top-level auth.enabled');
+      }
+      if (endpoint.method && endpoint.path) {
+        const key = endpoint.method + ' ' + endpoint.path;
+        if (routes.has(key)) errors.push('endpoints.' + endpointName + ' duplicates custom endpoint ' + key);
+        routes.add(key);
+      }
+    }
+  }
+
+  if (isObject(spec.workflows)) {
+    for (const [workflowName, workflow] of Object.entries(spec.workflows)) {
+      if (!isObject(workflow) || !Array.isArray(workflow.steps)) continue;
+      const knownSteps = new Set();
+      for (const [index, step] of workflow.steps.entries()) {
+        if (!isObject(step)) continue;
+        const stepPath = 'workflows.' + workflowName + '.steps[' + index + ']';
+        if (knownSteps.has(step.name)) errors.push(stepPath + '.name must be unique within the workflow');
+
+        const entityActions = new Set(['findById', 'create', 'updateById', 'deleteById']);
+        if (entityActions.has(step.action)) {
+          if (!step.entity) errors.push(stepPath + '.entity is required for action ' + step.action);
+          else if (!entityNames.has(step.entity)) errors.push(stepPath + '.entity references unknown entity "' + step.entity + '"');
+        }
+        if (['findById', 'updateById', 'deleteById'].includes(step.action) && step.id === undefined) {
+          errors.push(stepPath + '.id is required for action ' + step.action);
+        }
+        if (['create', 'updateById'].includes(step.action) && step.data === undefined) {
+          errors.push(stepPath + '.data is required for action ' + step.action);
+        }
+        if (step.action === 'emit') {
+          if (!step.event) errors.push(stepPath + '.event is required for action emit');
+          else if (!eventNames.has(step.event)) errors.push(stepPath + '.event references unknown event "' + step.event + '"');
+        }
+
+        for (const candidate of [step.id, step.data, step.payload, step.body]) {
+          if (candidate === undefined) continue;
+          visitWorkflowValue(candidate, value => validateWorkflowReference(errors, value, workflowName, step.name || String(index), knownSteps));
+        }
+
+        if (step.name) knownSteps.add(step.name);
+      }
+    }
+  }
+
   if (isObject(spec.entities)) {
-    const entityNames = new Set(Object.keys(spec.entities));
     for (const [entityName, entity] of Object.entries(spec.entities)) {
       if (!isObject(entity)) continue;
 

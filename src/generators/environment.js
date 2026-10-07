@@ -6,6 +6,9 @@ module.exports = function environmentSource(spec) {
   const declared = {...spec.environment};
   declared[spec.database.uriEnv] = declared[spec.database.uriEnv] || {required: true};
   if (spec.auth.enabled) declared[spec.auth.secretEnv] = declared[spec.auth.secretEnv] || {required: true};
+  for (const event of Object.values(spec.events)) {
+    for (const webhook of event.webhooks) declared[webhook.urlEnv] = declared[webhook.urlEnv] || {required: true};
+  }
 
   return [
     "'use strict';", '',

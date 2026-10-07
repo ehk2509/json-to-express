@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const http = require('node:http');
 
 const base = process.env.E2E_BASE_URL || 'http://127.0.0.1:3456';
 
@@ -29,7 +30,20 @@ async function waitForHealth() {
 }
 
 async function main() {
-  await waitForHealth();
+  let webhookPayload;
+  const webhookServer = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      webhookPayload = JSON.parse(raw || '{}');
+      res.writeHead(204);
+      res.end();
+    });
+  });
+  await new Promise(resolve => webhookServer.listen(4567, '127.0.0.1', resolve));
+
+  try {
+    await waitForHealth();
 
   const category = await request('/api/categories', {
     method: 'POST',
@@ -65,6 +79,14 @@ async function main() {
   assert.equal(updated.response.status, 200);
   assert.equal(updated.body.price, 120);
 
+  const published = await request('/api/products/' + id + '/publish', {method: 'POST'});
+  assert.equal(published.response.status, 200);
+  assert.equal(published.body.id, id);
+  assert.equal(published.body.published, true);
+  assert.equal(webhookPayload.id, id);
+  assert.equal(webhookPayload.name, 'Keyboard');
+  assert.equal(webhookPayload.published, true);
+
   const removed = await request('/api/products/' + id, {method: 'DELETE'});
   assert.equal(removed.response.status, 204);
 
@@ -80,7 +102,10 @@ async function main() {
   assert.ok(openapi.components.schemas.Product);
   assert.ok(openapi.paths['/api/products']);
 
-  console.log('Generated application E2E v1 capabilities passed.');
+    console.log('Generated application E2E v1 + workflows passed.');
+  } finally {
+    await new Promise(resolve => webhookServer.close(resolve));
+  }
 }
 
 main().catch(error => {

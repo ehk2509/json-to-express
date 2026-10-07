@@ -16,6 +16,9 @@ const validationSource = require('./validation');
 const environmentSource = require('./environment');
 const openapiSource = require('./openapi');
 const contractTestSource = require('./contract-test');
+const workflowEngineSource = require('./workflow-engine');
+const eventBusSource = require('./event-bus');
+const customRoutesSource = require('./custom-routes');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -26,6 +29,11 @@ function envExample(spec) {
   };
 
   if (spec.auth.enabled) values[spec.auth.secretEnv] = 'change-me';
+  for (const event of Object.values(spec.events)) {
+    for (const webhook of event.webhooks) {
+      if (!(webhook.urlEnv in values)) values[webhook.urlEnv] = '';
+    }
+  }
 
   for (const [name, raw] of Object.entries(spec.environment)) {
     if (typeof raw === 'string') values[name] = raw;
@@ -49,6 +57,12 @@ function buildFiles(spec) {
   files.set(paths.errorHandler, errorHandlerSource(spec));
   files.set(paths.validation, validationSource(spec));
   files.set(paths.environment, environmentSource(spec));
+
+  if (spec.workflows.length) {
+    files.set(paths.workflowEngine, workflowEngineSource(spec));
+    files.set(paths.eventBus, eventBusSource(spec));
+    files.set(paths.endpointRoutes, customRoutesSource(spec));
+  }
 
   const auth = authSource(spec);
   if (auth) files.set(paths.auth, auth);

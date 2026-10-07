@@ -5,6 +5,9 @@ const {joinUrl} = require('./utils');
 function endpointLines(spec) {
   const lines = [];
   if (spec.app.health.enabled) lines.push('- GET ' + spec.app.health.path);
+  for (const endpoint of spec.endpoints) {
+    lines.push('- ' + endpoint.method.toUpperCase() + ' ' + joinUrl(spec.app.apiPrefix, endpoint.path));
+  }
   for (const entity of spec.entities) {
     const base = joinUrl(spec.app.apiPrefix, entity.route);
     for (const operation of Object.values(entity.operations)) {

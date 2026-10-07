@@ -116,8 +116,71 @@
           "ref": "Category",
           "required": true,
           "onDelete": "restrict"
+        },
+        "published": {
+          "type": "boolean",
+          "default": false
         }
       }
+    }
+  },
+  "events": {
+    "product.published": {
+      "webhooks": [
+        {
+          "urlEnv": "TEST_WEBHOOK_URL",
+          "method": "post",
+          "failure": "fail"
+        }
+      ]
+    }
+  },
+  "workflows": {
+    "publishProduct": {
+      "steps": [
+        {
+          "name": "load",
+          "action": "findById",
+          "entity": "Product",
+          "id": "$params.id"
+        },
+        {
+          "name": "update",
+          "action": "updateById",
+          "entity": "Product",
+          "id": "$params.id",
+          "data": {
+            "published": true
+          }
+        },
+        {
+          "name": "event",
+          "action": "emit",
+          "event": "product.published",
+          "payload": {
+            "id": "$steps.update._id",
+            "name": "$steps.update.name",
+            "published": "$steps.update.published"
+          }
+        },
+        {
+          "name": "response",
+          "action": "respond",
+          "status": 200,
+          "body": {
+            "id": "$steps.update._id",
+            "published": "$steps.update.published"
+          }
+        }
+      ]
+    }
+  },
+  "endpoints": {
+    "publishProduct": {
+      "method": "post",
+      "path": "/products/:id/publish",
+      "workflow": "publishProduct",
+      "status": 200
     }
   }
 }

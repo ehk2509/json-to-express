@@ -30,6 +30,24 @@ module.exports = function openapiSource(spec) {
     document.components.securitySchemes.bearerAuth = {type: 'http', scheme: 'bearer', bearerFormat: 'JWT'};
   }
 
+  for (const endpoint of spec.endpoints) {
+    const full = joinUrl(spec.app.apiPrefix, endpoint.path).replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}');
+    document.paths[full] = document.paths[full] || {};
+    const parameters = [...endpoint.path.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)].map(match => ({
+      name: match[1],
+      in: 'path',
+      required: true,
+      schema: {type: 'string'}
+    }));
+    const operation = {
+      operationId: endpoint.name,
+      responses: {[String(endpoint.status)]: {description: 'Success'}},
+      ...(parameters.length ? {parameters} : {})
+    };
+    if (endpoint.auth.required) operation.security = [{bearerAuth: []}];
+    document.paths[full][endpoint.method] = operation;
+  }
+
   for (const entity of spec.entities) {
     const properties = {};
     const required = [];

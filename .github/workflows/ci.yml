@@ -47,6 +47,7 @@ jobs:
           MONGODB_URI: mongodb://127.0.0.1:27017/j2e_e2e
           PORT: 3456
           HOST: 127.0.0.1
+          TEST_WEBHOOK_URL: http://127.0.0.1:4567/hook
         run: |
           npm start > server.log 2>&1 &
           echo $! > server.pid

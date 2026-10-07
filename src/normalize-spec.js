@@ -11,6 +11,7 @@ const DEFAULT_PATHS = {
   routes: 'routes',
   config: 'config',
   middleware: 'middleware',
+  workflows: 'workflows',
   tests: 'test'
 };
 
@@ -226,6 +227,30 @@ function normalizeSpec(inputSpec) {
       defaultUri: valueOr(spec.database.defaultUri, 'mongodb://127.0.0.1:27017/' + generatedName),
       options: spec.database.options || {}
     },
+    workflows: Object.entries(spec.workflows || {}).map(([name, workflow]) => ({
+      name,
+      transaction: valueOr(workflow.transaction, false),
+      steps: workflow.steps
+    })),
+    endpoints: Object.entries(spec.endpoints || {}).map(([name, endpoint]) => ({
+      name,
+      method: endpoint.method,
+      path: endpoint.path,
+      workflow: endpoint.workflow,
+      status: valueOr(endpoint.status, 200),
+      auth: normalizeAuthRule(endpoint.auth === undefined ? (authEnabled ? true : false) : endpoint.auth)
+    })),
+    events: Object.fromEntries(Object.entries(spec.events || {}).map(([name, event]) => [
+      name,
+      {
+        webhooks: (event.webhooks || []).map(webhook => ({
+          urlEnv: webhook.urlEnv,
+          method: valueOr(webhook.method, 'post'),
+          headers: webhook.headers || {},
+          failure: valueOr(webhook.failure, 'continue')
+        }))
+      }
+    ])),
     entities: []
   };
 
