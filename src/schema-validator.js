@@ -44,7 +44,7 @@ function validateNode(value, rule, path, errors) {
   }
 
   if (rule.enum && !rule.enum.includes(value)) {
-    errors.push(path + ' must be one of: ' + rule.enum.join(', '));
+    errors.push(path + ' has unsupported value ' + JSON.stringify(value) + '; expected one of: ' + rule.enum.join(', '));
     return;
   }
 
