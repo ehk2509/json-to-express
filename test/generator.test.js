@@ -417,3 +417,89 @@ test('generates custom workflow endpoints, safe references and webhook runtime',
   assert.ok(openapi.paths['/api/orders/{id}/publish'].post);
   assert.equal(openapi.paths['/api/orders/{id}/publish'].post.operationId, 'publishOrder');
 });
+
+
+test('generates durable Mongo outbox, worker, retries and queued workflow jobs', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-outbox-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const queuedSpec = {
+    specVersion: '1.0',
+    app: {name: 'queue-api'},
+    database: {type: 'mongodb'},
+    outbox: {
+      worker: 'separate',
+      pollIntervalMs: 250,
+      batchSize: 7,
+      lockTimeoutMs: 5000,
+      maxAttempts: 6,
+      backoffMs: 200
+    },
+    entities: {
+      Order: {
+        fields: {
+          status: {type: 'string', required: true}
+        }
+      }
+    },
+    events: {
+      'order.done': {
+        webhooks: [{urlEnv: 'ORDER_DONE_URL', failure: 'fail'}]
+      }
+    },
+    jobs: {
+      finalizeOrder: {
+        workflow: 'finalizeOrder',
+        queue: 'orders',
+        maxAttempts: 4,
+        backoffMs: 300
+      }
+    },
+    workflows: {
+      queueFinalize: {
+        transaction: true,
+        steps: [
+          {name: 'job', action: 'enqueue', job: 'finalizeOrder', payload: {id: '$params.id'}, delayMs: 100},
+          {name: 'done', action: 'respond', status: 202, body: {queued: true}}
+        ]
+      },
+      finalizeOrder: {
+        steps: [
+          {name: 'update', action: 'updateById', entity: 'Order', id: '$body.id', data: {status: 'done'}},
+          {name: 'event', action: 'emit', event: 'order.done', payload: {id: '$steps.update._id'}}
+        ]
+      }
+    },
+    endpoints: {
+      finalize: {method: 'post', path: '/orders/:id/finalize', workflow: 'queueFinalize', status: 202}
+    }
+  };
+
+  const output = path.join(tempRoot, 'queued');
+  const result = generateApplication(queuedSpec, output);
+
+  assert.ok(result.files.includes('src/workflows/outbox.js'));
+  assert.ok(result.files.includes('src/workflows/worker.js'));
+
+  const generatedPackage = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.equal(generatedPackage.scripts.worker, 'node src/workflows/worker.js');
+
+  const outbox = fs.readFileSync(path.join(output, 'src/workflows/outbox.js'), 'utf8');
+  assert.match(outbox, /status: "processing"/);
+  assert.match(outbox, /status: dead \? "dead" : "pending"/);
+  assert.match(outbox, /Math\.pow\(2, attempts - 1\)/);
+  assert.match(outbox, /lockTimeout/);
+
+  const worker = fs.readFileSync(path.join(output, 'src/workflows/worker.js'), 'utf8');
+  assert.match(worker, /processBatch/);
+  assert.match(worker, /recoverStale/);
+  assert.match(worker, /workflows\.execute/);
+
+  const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
+  assert.match(engine, /pendingJobs/);
+  assert.match(engine, /enqueueJob/);
+  assert.match(engine, /persistPending\(context, session\)/);
+
+  const server = fs.readFileSync(path.join(output, 'src/server.js'), 'utf8');
+  assert.doesNotMatch(server, /outboxWorker\.startWorker/);
+});
