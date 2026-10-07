@@ -34,6 +34,7 @@ const spec = {
       status: 203,
       response: {service: 'shop', ready: true}
     },
+    middlewareModules: ['custom/request-context.js'],
     express: {
       trustProxy: 1,
       json: {enabled: true, limit: '2mb'},
@@ -76,6 +77,11 @@ const spec = {
       collection: 'catalog_items',
       idParam: 'productId',
       notFoundResponse: {code: 'PRODUCT_NOT_FOUND'},
+      hooks: {
+        module: 'custom/product-hooks.js',
+        before: {list: 'beforeList'},
+        after: {update: 'afterUpdate'}
+      },
       schemaOptions: {timestamps: false, versionKey: 'revision'},
       operations: {
         list: {
@@ -145,6 +151,8 @@ test('generates configured project structure and behavior', t => {
   assert.match(appSource, /express\.urlencoded/);
   assert.match(appSource, /trust proxy/);
   assert.match(appSource, /ROUTE_NOT_FOUND/);
+  assert.match(appSource, /request-context/);
+  assert.match(appSource, /customMiddleware0/);
 
   const routesSource = fs.readFileSync(path.join(output, 'app/http/ProductRoutes.js'), 'utf8');
   assert.match(routesSource, /router\.post\("\/search"/);
@@ -159,6 +167,9 @@ test('generates configured project structure and behavior', t => {
   assert.match(controllerSource, /req\.query\["size"\]/);
   assert.match(controllerSource, /\.skip\(/);
   assert.match(controllerSource, /PRODUCT_NOT_FOUND/);
+  assert.match(controllerSource, /product-hooks/);
+  assert.match(controllerSource, /beforeList/);
+  assert.match(controllerSource, /afterUpdate/);
 
   const modelSource = fs.readFileSync(path.join(output, 'app/domain/Product.js'), 'utf8');
   assert.match(modelSource, /trim: true/);
