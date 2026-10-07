@@ -8,6 +8,11 @@ function appSource(spec) {
     const paths = filePaths(spec, entity.name);
     return 'const ' + entity.name + 'Routes = require(' + js(relativeRequire(appPath, paths.route)) + ');';
   });
+
+  const middlewareImports = spec.app.middlewareModules.map((modulePath, index) =>
+    'const customMiddleware' + index + ' = require(' + js(relativeRequire(appPath, modulePath)) + ');'
+  );
+
   const mounts = spec.entities.map(entity => 'app.use(' + js(joinUrl(spec.app.apiPrefix, entity.route)) + ', ' + entity.name + 'Routes);');
   const middleware = [];
 
@@ -16,6 +21,7 @@ function appSource(spec) {
   if (spec.app.express.urlencoded.enabled) {
     middleware.push('app.use(express.urlencoded({extended: ' + spec.app.express.urlencoded.extended + ', limit: ' + js(spec.app.express.urlencoded.limit) + '}));');
   }
+  spec.app.middlewareModules.forEach((unused, index) => middleware.push('app.use(customMiddleware' + index + ');'));
 
   const health = spec.app.health.enabled
     ? ['app.get(' + js(spec.app.health.path) + ', (req, res) => res.status(' + spec.app.health.status + ').json(' + js(spec.app.health.response) + '));']
@@ -25,7 +31,8 @@ function appSource(spec) {
     "'use strict';", '',
     "const express = require('express');",
     'const errorHandler = require(' + js(relativeRequire(appPath, filePaths(spec).errorHandler)) + ');',
-    ...imports, '',
+    ...imports,
+    ...middlewareImports, '',
     'const app = express();', '',
     ...middleware,
     ...health,
