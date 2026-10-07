@@ -256,3 +256,88 @@ test('uses generation.outputDir from JSON when CLI output is omitted', t => {
   assert.equal(result.outputDir, path.join(tempRoot, 'from-json'));
   assert.equal(fs.existsSync(path.join(result.outputDir, 'app/app.js')), true);
 });
+
+
+test('generates JWT RBAC, production middleware, OpenAPI and environment guards', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-auth-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const secured = {
+    specVersion: '1.0',
+    app: {
+      name: 'secure-api',
+      production: {
+        cors: {enabled: true, origin: 'https://example.com'},
+        rateLimit: {enabled: true, windowMs: 30000, max: 50},
+        compression: true
+      }
+    },
+    auth: {
+      enabled: true,
+      strategy: 'jwt',
+      secretEnv: 'API_JWT_SECRET',
+      rolesClaim: 'roles'
+    },
+    environment: {
+      API_JWT_SECRET: {required: true},
+      EXTERNAL_API_URL: {default: 'https://api.example.com'}
+    },
+    docs: {openapi: {enabled: true, file: 'docs/openapi.json'}},
+    database: {type: 'mongodb'},
+    entities: {
+      Team: {
+        indexes: [{fields: {name: 1}, options: {unique: true}}],
+        audit: {enabled: true},
+        operations: {
+          list: {auth: {required: true, roles: ['admin']}},
+          create: {auth: true, transaction: true}
+        },
+        fields: {
+          name: {type: 'string', required: true}
+        }
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'secure');
+  const result = generateApplication(secured, output);
+  assert.ok(result.files.includes('src/middleware/auth.js'));
+  assert.ok(result.files.includes('src/middleware/validation.js'));
+  assert.ok(result.files.includes('src/config/environment.js'));
+  assert.ok(result.files.includes('docs/openapi.json'));
+  assert.ok(result.files.includes('test/contract.test.js'));
+
+  const routes = fs.readFileSync(path.join(output, 'src/routes/TeamRoutes.js'), 'utf8');
+  assert.match(routes, /auth\.authenticate/);
+  assert.match(routes, /auth\.requireRoles\(\["admin"\]\)/);
+  assert.match(routes, /validation\.body/);
+
+  const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
+  assert.match(app, /require\('cors'\)/);
+  assert.match(app, /express-rate-limit/);
+  assert.match(app, /compression/);
+  assert.match(app, /X-Request-Id/);
+
+  const model = fs.readFileSync(path.join(output, 'src/models/Team.js'), 'utf8');
+  assert.match(model, /TeamSchema\.index/);
+  assert.match(model, /createdBy/);
+  assert.match(model, /updatedBy/);
+
+  const controller = fs.readFileSync(path.join(output, 'src/controllers/TeamController.js'), 'utf8');
+  assert.match(controller, /withTransaction\(true/);
+  assert.match(controller, /req\.auth\.userId/);
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /API_JWT_SECRET=change-me/);
+  assert.match(env, /EXTERNAL_API_URL=https:\/\/api\.example\.com/);
+
+  const generatedPackage = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(generatedPackage.dependencies.jsonwebtoken);
+  assert.ok(generatedPackage.dependencies.cors);
+  assert.ok(generatedPackage.dependencies['express-rate-limit']);
+  assert.ok(generatedPackage.dependencies.compression);
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'docs/openapi.json'), 'utf8'));
+  assert.equal(openapi.components.securitySchemes.bearerAuth.scheme, 'bearer');
+  assert.deepEqual(openapi.paths['/api/teams'].get.security, [{bearerAuth: []}]);
+});
