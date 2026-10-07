@@ -545,6 +545,23 @@
                       "default": 100
                     }
                   }
+                },
+                "operators": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "eq",
+                      "ne",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "in"
+                    ]
+                  },
+                  "default": [
+                    "eq"
+                  ]
                 }
               }
             },
