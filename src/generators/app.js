@@ -1,9 +1,13 @@
 'use strict';
 
-const {js, joinUrl, payload} = require('./utils');
+const {filePaths, js, joinUrl, payload, relativeRequire} = require('./utils');
 
 function appSource(spec) {
-  const imports = spec.entities.map(entity => "const " + entity.name + "Routes = require('./routes/" + entity.name + "Routes');");
+  const appPath = filePaths(spec).app;
+  const imports = spec.entities.map(entity => {
+    const paths = filePaths(spec, entity.name);
+    return 'const ' + entity.name + 'Routes = require(' + js(relativeRequire(appPath, paths.route)) + ');';
+  });
   const mounts = spec.entities.map(entity => 'app.use(' + js(joinUrl(spec.app.apiPrefix, entity.route)) + ', ' + entity.name + 'Routes);');
   const middleware = [];
 
@@ -20,7 +24,7 @@ function appSource(spec) {
   return [
     "'use strict';", '',
     "const express = require('express');",
-    "const errorHandler = require('./middleware/error-handler');",
+    'const errorHandler = require(' + js(relativeRequire(appPath, filePaths(spec).errorHandler)) + ');',
     ...imports, '',
     'const app = express();', '',
     ...middleware,
