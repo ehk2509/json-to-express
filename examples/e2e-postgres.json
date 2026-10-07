@@ -41,16 +41,6 @@
   "entities": {
     "Category": {
       "collection": "categories",
-      "indexes": [
-        {
-          "fields": {
-            "name": 1
-          },
-          "options": {
-            "unique": true
-          }
-        }
-      ],
       "fields": {
         "name": {
           "type": "string",
