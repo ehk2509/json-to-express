@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const {validateSpec} = require('./validate-spec');
+const {upgradeSpec} = require('./spec-version');
 
 const DEFAULT_PATHS = {
   source: 'src',
@@ -89,7 +90,8 @@ function normalizeOperation(name, value, idParam) {
   return operation;
 }
 
-function normalizeSpec(spec) {
+function normalizeSpec(inputSpec) {
+  const spec = upgradeSpec(inputSpec);
   validateSpec(spec);
 
   const generation = spec.generation || {};
@@ -105,6 +107,7 @@ function normalizeSpec(spec) {
   const serverFile = path.posix.join(paths.source, 'server.js');
 
   return {
+    specVersion: spec.specVersion,
     generation: {
       outputDir: generation.outputDir,
       paths
