@@ -1,0 +1,100 @@
+'use strict';
+
+function lowerFirst(value) {
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function prismaType(field) {
+  return {string: 'String', number: 'Float', boolean: 'Boolean', date: 'DateTime'}[field.type];
+}
+
+function defaultAttribute(field) {
+  if (field.default === undefined) return '';
+  if (field.type === 'date' && field.default === 'now') return ' @default(now())';
+  if (['string','number','boolean'].includes(field.type)) return ' @default(' + JSON.stringify(field.default) + ')';
+  return '';
+}
+
+function relationName(source, field) {
+  return source.name + '_' + field.name;
+}
+
+function scalarField(field) {
+  const optional = field.required ? '' : '?';
+  const unique = field.unique ? ' @unique' : '';
+  return '  ' + field.name + ' ' + prismaType(field) + optional + unique + defaultAttribute(field);
+}
+
+function referenceFields(entity, field) {
+  const optional = field.required ? '' : '?';
+  const unique = field.unique ? ' @unique' : '';
+  const onDelete = {restrict: 'Restrict', nullify: 'SetNull', cascade: 'Cascade'}[field.onDelete];
+  const relation = relationName(entity, field);
+  return [
+    '  ' + field.name + 'Id String' + optional + unique,
+    '  ' + field.name + ' ' + field.ref + optional + ' @relation("' + relation + '", fields: [' + field.name + 'Id], references: [id], onDelete: ' + onDelete + ')'
+  ];
+}
+
+function inverseRelations(target, entities) {
+  const lines = [];
+  for (const source of entities) {
+    for (const field of source.fields) {
+      if (field.type !== 'reference' || field.ref !== target.name) continue;
+      const relation = relationName(source, field);
+      lines.push('  ' + source.name + '_' + field.name + ' ' + source.name + '[] @relation("' + relation + '")');
+    }
+  }
+  return lines;
+}
+
+function indexField(entity, name, direction) {
+  const field = entity.fields.find(item => item.name === name);
+  const actual = field && field.type === 'reference' ? name + 'Id' : name;
+  return direction < 0 ? actual + '(sort: Desc)' : actual;
+}
+
+module.exports = function prismaSchemaSource(spec) {
+  const lines = [
+    'generator client {',
+    '  provider = "prisma-client-js"',
+    '}', '',
+    'datasource db {',
+    '  provider = "postgresql"',
+    '  url      = env("' + spec.database.uriEnv + '")',
+    '}', ''
+  ];
+
+  for (const entity of spec.entities) {
+    lines.push('model ' + entity.name + ' {');
+    lines.push('  id String @id @default(uuid())');
+
+    for (const field of entity.fields) {
+      if (field.type === 'reference') lines.push(...referenceFields(entity, field));
+      else lines.push(scalarField(field));
+    }
+
+    if (entity.schemaOptions.timestamps !== false) {
+      lines.push('  createdAt DateTime @default(now())');
+      lines.push('  updatedAt DateTime @updatedAt');
+    }
+    if (entity.softDelete.enabled) lines.push('  ' + entity.softDelete.field + ' DateTime?');
+    if (entity.audit.enabled) {
+      lines.push('  ' + entity.audit.createdBy + ' String?');
+      lines.push('  ' + entity.audit.updatedBy + ' String?');
+    }
+
+    lines.push(...inverseRelations(entity, spec.entities));
+
+    for (const index of entity.indexes) {
+      const fields = Object.entries(index.fields).map(([name, direction]) => indexField(entity, name, direction));
+      lines.push('  ' + (index.options && index.options.unique ? '@@unique' : '@@index') + '([' + fields.join(', ') + '])');
+    }
+    if (entity.collection) lines.push('  @@map("' + entity.collection.replace(/"/g, '\"') + '")');
+    lines.push('}', '');
+  }
+
+  return lines.join('\n');
+};
+
+module.exports.lowerFirst = lowerFirst;
