@@ -8,6 +8,7 @@ function appSource(spec) {
     const paths = filePaths(spec, entity.name);
     return 'const ' + entity.name + 'Routes = require(' + js(relativeRequire(appPath, paths.route)) + ');';
   });
+  if (spec.endpoints.length) imports.push('const CustomRoutes = require(' + js(relativeRequire(appPath, filePaths(spec).endpointRoutes)) + ');');
   const middlewareImports = spec.app.middlewareModules.map((modulePath, index) =>
     'const customMiddleware' + index + ' = require(' + js(relativeRequire(appPath, modulePath)) + ');'
   );
@@ -50,7 +51,8 @@ function appSource(spec) {
     'const app = express();', '',
     ...middleware,
     ...health,
-    ...mounts, '',
+    ...mounts,
+    ...(spec.endpoints.length ? ['app.use(' + js(spec.app.apiPrefix || '/') + ', CustomRoutes);'] : []), ''
     'app.use((req, res) => res.status(' + spec.app.statusCodes.notFound + ').json(' + payload(spec.app.responses.notFound) + '));',
     'app.use(errorHandler);', '',
     'module.exports = app;', ''
