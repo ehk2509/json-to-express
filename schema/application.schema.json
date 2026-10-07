@@ -4,6 +4,7 @@
   "title": "json-to-express application specification",
   "type": "object",
   "required": [
+    "specVersion",
     "app",
     "database",
     "entities"
@@ -254,6 +255,58 @@
             "minLength": 1
           },
           "default": []
+        },
+        "production": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requestId": {
+              "type": "boolean",
+              "default": true
+            },
+            "securityHeaders": {
+              "type": "boolean",
+              "default": true
+            },
+            "cors": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "origin": {
+                  "type": "string",
+                  "default": "*"
+                }
+              }
+            },
+            "rateLimit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "windowMs": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 60000
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 100
+                }
+              }
+            },
+            "compression": {
+              "type": "boolean",
+              "default": false
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -290,6 +343,99 @@
       },
       "additionalProperties": {
         "$ref": "#/$defs/entity"
+      }
+    },
+    "specVersion": {
+      "const": "1.0"
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "strategy": {
+          "const": "jwt"
+        },
+        "secretEnv": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "default": "JWT_SECRET"
+        },
+        "algorithms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [
+            "HS256"
+          ]
+        },
+        "userClaim": {
+          "type": "string",
+          "minLength": 1,
+          "default": "sub"
+        },
+        "rolesClaim": {
+          "type": "string",
+          "minLength": 1,
+          "default": "roles"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "required": {
+                "type": "boolean"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "openapi": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "default": "openapi.json"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
       }
     }
   },
@@ -398,6 +544,45 @@
                   }
                 }
               }
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "required": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "validate": {
+              "type": "boolean",
+              "default": true
+            },
+            "populate": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "transaction": {
+              "type": "boolean",
+              "default": false
             }
           },
           "additionalProperties": false
@@ -415,7 +600,8 @@
             "string",
             "number",
             "boolean",
-            "date"
+            "date",
+            "reference"
           ]
         },
         "required": {
@@ -443,6 +629,22 @@
         "default": {},
         "options": {
           "type": "object"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "many": {
+          "type": "boolean",
+          "default": false
+        },
+        "onDelete": {
+          "enum": [
+            "restrict",
+            "nullify",
+            "cascade"
+          ],
+          "default": "restrict"
         }
       },
       "additionalProperties": false
@@ -516,6 +718,63 @@
             },
             "after": {
               "$ref": "#/$defs/hookMap"
+            }
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "options": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "softDelete": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "default": "deletedAt"
+            }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "createdBy": {
+              "type": "string",
+              "minLength": 1,
+              "default": "createdBy"
+            },
+            "updatedBy": {
+              "type": "string",
+              "minLength": 1,
+              "default": "updatedBy"
             }
           }
         }
