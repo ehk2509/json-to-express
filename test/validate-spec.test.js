@@ -141,3 +141,35 @@ test('validates references, indexes and auth semantics', () => {
     }
   );
 });
+
+
+test('validates workflow targets, step ordering and custom endpoint references', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'workflow-api'},
+      database: {type: 'mongodb'},
+      entities: {Order: {fields: {status: {type: 'string'}}}},
+      events: {'order.done': {}},
+      workflows: {
+        broken: {
+          steps: [
+            {name: 'update', action: 'updateById', entity: 'Missing', id: '$steps.load._id', data: {status: 'done'}},
+            {name: 'load', action: 'findById', entity: 'Order', id: '$params.id'},
+            {name: 'emit', action: 'emit', event: 'missing.event', payload: {id: '$steps.load._id'}}
+          ]
+        }
+      },
+      endpoints: {
+        run: {method: 'post', path: '/run', workflow: 'missingWorkflow'}
+      }
+    }),
+    error => {
+      assert.match(error.message, /unknown workflow/);
+      assert.match(error.message, /unknown entity/);
+      assert.match(error.message, /unavailable prior step/);
+      assert.match(error.message, /unknown event/);
+      return true;
+    }
+  );
+});
