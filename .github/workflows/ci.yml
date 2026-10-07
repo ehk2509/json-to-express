@@ -56,3 +56,53 @@ jobs:
       - name: Print generated server log on failure
         if: failure()
         run: cat .tmp/e2e-app/server.log || true
+
+
+  generated-app-postgres-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: j2e_postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d j2e_postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate PostgreSQL application
+        run: node bin/json-to-express.js generate examples/e2e-postgres.json
+      - name: Install generated application
+        working-directory: .tmp/e2e-postgres
+        run: npm install --no-audit --no-fund
+      - name: Push Prisma schema
+        working-directory: .tmp/e2e-postgres
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres
+        run: npm run db:push
+      - name: Test generated PostgreSQL contracts
+        working-directory: .tmp/e2e-postgres
+        run: npm test
+      - name: Start generated PostgreSQL application
+        working-directory: .tmp/e2e-postgres
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres
+          PORT: 3457
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Exercise generated PostgreSQL API
+        run: node scripts/e2e-generated-postgres.js
+      - name: Print PostgreSQL generated server log on failure
+        if: failure()
+        run: cat .tmp/e2e-postgres/server.log || true
