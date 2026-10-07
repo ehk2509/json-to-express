@@ -1,4 +1,5 @@
 {
+  "specVersion": "1.0",
   "generation": {
     "outputDir": "generated/shop-api"
   },
@@ -116,7 +117,11 @@
         },
         "status": {
           "type": "string",
-          "enum": ["draft", "active", "archived"],
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ],
           "default": "draft"
         },
         "featured": {
