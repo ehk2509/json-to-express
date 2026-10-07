@@ -7,7 +7,7 @@ module.exports = function packageSource(spec) {
     version: config.version,
     private: config.private,
     description: config.description,
-    main: 'src/server.js',
+    main: config.main,
     scripts: config.scripts,
     engines: {node: config.nodeEngine},
     dependencies: config.dependencies,
