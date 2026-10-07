@@ -59,6 +59,10 @@ module.exports = function outboxSource(spec) {
     'async function markDone(record) {',
     '  await Outbox.updateOne({_id: record._id}, {$set: {status: "done", lockedAt: null, lastError: null}});',
     '}', '',
+    'async function retryDead() {',
+    '  const result = await Outbox.updateMany({status: "dead"}, {$set: {status: "pending", attempts: 0, lockedAt: null, lastError: null, availableAt: new Date()}});',
+    '  return result.modifiedCount || 0;',
+    '}', '',
     'async function markFailed(record, error) {',
     '  const attempts = record.attempts + 1;',
     '  const dead = attempts >= record.maxAttempts;',
@@ -71,6 +75,6 @@ module.exports = function outboxSource(spec) {
     '    availableAt: dead ? record.availableAt : new Date(Date.now() + delay)',
     '  }});',
     '}', '',
-    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale};', ''
+    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead};', ''
   ].join('\n');
 };
