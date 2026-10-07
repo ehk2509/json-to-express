@@ -251,6 +251,12 @@ function validateSpec(inputSpec) {
           if (spec.database && spec.database.type === 'postgresql' && field.type === 'reference' && field.many === true) {
             errors.push('entities.' + entityName + '.fields.' + fieldName + '.many is not yet supported by the postgresql target');
           }
+          if (
+            spec.database && spec.database.type === 'postgresql' &&
+            field.type === 'reference' && field.onDelete === 'nullify' && field.required === true
+          ) {
+            errors.push('entities.' + entityName + '.fields.' + fieldName + ' cannot use onDelete "nullify" when required for postgresql');
+          }
 
           if (field.type === 'reference') {
             if (!field.ref) {
