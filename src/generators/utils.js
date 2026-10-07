@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('node:path');
+
 function js(value) {
   return JSON.stringify(value);
 }
@@ -22,4 +24,28 @@ function payload(value, fallbackKey = 'error') {
   return js(value);
 }
 
-module.exports = {js, joinUrl, payload};
+function filePaths(spec, entityName) {
+  const p = spec.generation.paths;
+  const source = p.source;
+  const result = {
+    app: path.posix.join(source, 'app.js'),
+    server: path.posix.join(source, 'server.js'),
+    database: path.posix.join(source, p.config, 'database.js'),
+    errorHandler: path.posix.join(source, p.middleware, 'error-handler.js'),
+    test: path.posix.join(p.tests, 'health.test.js')
+  };
+  if (entityName) {
+    result.model = path.posix.join(source, p.models, entityName + '.js');
+    result.controller = path.posix.join(source, p.controllers, entityName + 'Controller.js');
+    result.route = path.posix.join(source, p.routes, entityName + 'Routes.js');
+  }
+  return result;
+}
+
+function relativeRequire(fromFile, toFile) {
+  let relative = path.posix.relative(path.posix.dirname(fromFile), toFile).replace(/\.js$/, '');
+  if (!relative.startsWith('.')) relative = './' + relative;
+  return relative;
+}
+
+module.exports = {filePaths, js, joinUrl, payload, relativeRequire};
