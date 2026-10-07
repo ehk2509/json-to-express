@@ -43,7 +43,18 @@ function validateSpec(inputSpec) {
     });
   }
 
+  if (spec.auth && spec.auth.enabled === false && isObject(spec.entities)) {
+    for (const [entityName, entity] of Object.entries(spec.entities)) {
+      if (!isObject(entity) || !isObject(entity.operations)) continue;
+      for (const [operationName, operation] of Object.entries(entity.operations)) {
+        if (!isObject(operation) || operation.auth === undefined || operation.auth === false) continue;
+        errors.push('entities.' + entityName + '.operations.' + operationName + '.auth requires top-level auth.enabled');
+      }
+    }
+  }
+
   if (isObject(spec.entities)) {
+    const entityNames = new Set(Object.keys(spec.entities));
     for (const [entityName, entity] of Object.entries(spec.entities)) {
       if (!isObject(entity)) continue;
 
@@ -74,9 +85,44 @@ function validateSpec(inputSpec) {
         }
       }
 
+      if (Array.isArray(entity.indexes)) {
+        for (const [index, definition] of entity.indexes.entries()) {
+          if (!isObject(definition) || !isObject(definition.fields)) continue;
+          for (const fieldName of Object.keys(definition.fields)) {
+            if (!entity.fields || !Object.prototype.hasOwnProperty.call(entity.fields, fieldName)) {
+              errors.push('entities.' + entityName + '.indexes[' + index + '].fields.' + fieldName + ' references an unknown field');
+            }
+          }
+        }
+      }
+
+      if (isObject(entity.operations)) {
+        for (const [operationName, operation] of Object.entries(entity.operations)) {
+          if (!isObject(operation) || !Array.isArray(operation.populate)) continue;
+          for (const fieldName of operation.populate) {
+            const field = entity.fields && entity.fields[fieldName];
+            if (!field || field.type !== 'reference') {
+              errors.push('entities.' + entityName + '.operations.' + operationName + '.populate references non-reference field "' + fieldName + '"');
+            }
+          }
+        }
+      }
+
       if (isObject(entity.fields)) {
         for (const [fieldName, field] of Object.entries(entity.fields)) {
-          if (!isObject(field) || !Array.isArray(field.enum)) continue;
+          if (!isObject(field)) continue;
+
+          if (field.type === 'reference') {
+            if (!field.ref) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + '.ref is required for reference fields');
+            } else if (!entityNames.has(field.ref)) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + '.ref references unknown entity "' + field.ref + '"');
+            }
+          } else if (field.ref !== undefined || field.many !== undefined || field.onDelete !== undefined) {
+            errors.push('entities.' + entityName + '.fields.' + fieldName + ' reference options require type "reference"');
+          }
+
+          if (!Array.isArray(field.enum)) continue;
           if (!['string', 'number'].includes(field.type)) {
             errors.push('entities.' + entityName + '.fields.' + fieldName + '.enum is only supported for string and number fields');
           }
