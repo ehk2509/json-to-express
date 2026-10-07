@@ -49,9 +49,11 @@ module.exports = function outboxSource(spec) {
     '  const cutoff = new Date(Date.now() - ' + spec.outbox.lockTimeoutMs + ');',
     '  await Outbox.updateMany({status: "processing", lockedAt: {$lte: cutoff}}, {$set: {status: "pending", lockedAt: null, availableAt: new Date()}});',
     '}', '',
-    'async function claimNext() {',
+    'async function claimNext(queues = []) {',
+    '  const filter = {status: "pending", availableAt: {$lte: new Date()}};',
+    '  if (queues.length) filter.queue = {$in: queues};',
     '  return Outbox.findOneAndUpdate(',
-    '    {status: "pending", availableAt: {$lte: new Date()}},',
+    '    filter,'
     '    {$set: {status: "processing", lockedAt: new Date()}},',
     '    {sort: {availableAt: 1, createdAt: 1}, new: true}',
     '  );',
