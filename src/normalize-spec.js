@@ -226,7 +226,11 @@ function normalizeSpec(inputSpec) {
           start: 'node ' + serverFile,
           dev: 'node --watch ' + serverFile,
           test: 'node --test',
-          ...(hasAsyncWork ? {worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js')} : {}),
+          ...(hasAsyncWork ? {
+            worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
+            'worker:once': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --once',
+            'outbox:retry': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead'
+          } : {}),
           ...(packageConfig.scripts || {})
         },
         dependencies,
