@@ -407,6 +407,9 @@
             }
           }
         ]
+      },
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Z0-9_]*$"
       }
     },
     "docs": {
