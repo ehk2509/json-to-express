@@ -118,6 +118,23 @@ function validateSpec(spec) {
     validateHealth(errors, spec.app.health);
     validatePackage(errors, spec.app.package);
     validateResponses(errors, spec.app.responses);
+    if (spec.app.statusCodes !== undefined) {
+      if (!isObject(spec.app.statusCodes)) {
+        errors.push('app.statusCodes must be an object');
+      } else {
+        for (const key of ['notFound', 'validationError', 'invalidIdentifier', 'uniqueConstraint', 'internalError']) {
+          validateStatus(errors, spec.app.statusCodes[key], 'app.statusCodes.' + key);
+        }
+      }
+    }
+  }
+
+  if (spec.generation !== undefined) {
+    if (!isObject(spec.generation)) {
+      errors.push('generation must be an object');
+    } else {
+      validateString(errors, spec.generation.outputDir, 'generation.outputDir');
+    }
   }
 
   if (!isObject(spec.database)) {
