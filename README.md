@@ -438,6 +438,190 @@ runnable application
 
 The original monolithic generator has been split into focused modules under src/generators.
 
+## v1 application capabilities
+
+The v1 specification adds the production capabilities needed for real Express/Mongoose services.
+
+### Specification versioning
+
+New specifications can declare:
+
+~~~json
+{
+  "specVersion": "1.0"
+}
+~~~
+
+Unversioned prototype specifications are upgraded through the compatibility layer to the current 1.0 contract. Unsupported explicit versions fail fast instead of being interpreted ambiguously.
+
+### Relationships and delete policies
+
+Reference fields are declarative:
+
+~~~json
+{
+  "category": {
+    "type": "reference",
+    "ref": "Category",
+    "required": true,
+    "onDelete": "restrict"
+  }
+}
+~~~
+
+Set "many": true for arrays of references. Supported delete policies are restrict, nullify, and cascade. Operations can declare populate fields so generated Mongoose queries resolve references automatically.
+
+### Compound indexes
+
+Entities can define compound or advanced Mongoose indexes:
+
+~~~json
+{
+  "indexes": [
+    {
+      "fields": {
+        "name": 1,
+        "createdAt": -1
+      },
+      "options": {
+        "unique": false
+      }
+    }
+  ]
+}
+~~~
+
+### Authentication and RBAC
+
+JWT authentication is generated from JSON:
+
+~~~json
+{
+  "auth": {
+    "enabled": true,
+    "strategy": "jwt",
+    "secretEnv": "JWT_SECRET",
+    "algorithms": ["HS256"],
+    "userClaim": "sub",
+    "rolesClaim": "roles"
+  }
+}
+~~~
+
+Each operation can be public, authenticated, or role protected:
+
+~~~json
+{
+  "operations": {
+    "delete": {
+      "auth": {
+        "required": true,
+        "roles": ["admin"]
+      }
+    }
+  }
+}
+~~~
+
+The generated router wires authentication and authorization before controller execution.
+
+### Request validation
+
+Generated request middleware validates create/update payload types, required fields, reference ObjectIds, and resource identifiers before database access.
+
+This gives the generated API an HTTP validation boundary in addition to Mongoose persistence validation.
+
+### OpenAPI
+
+OpenAPI 3.1 is generated from the same normalized application model as the Express routes:
+
+~~~json
+{
+  "docs": {
+    "openapi": {
+      "enabled": true,
+      "file": "docs/openapi.json",
+      "title": "Catalog API",
+      "version": "1.0.0"
+    }
+  }
+}
+~~~
+
+Entity schemas, paths, request bodies, path/query parameters, status codes, and JWT security requirements therefore derive from the same IR as the runtime application.
+
+### Advanced filters
+
+List operations can allow specific query operators:
+
+~~~json
+{
+  "query": {
+    "filters": ["price", "createdAt"],
+    "operators": ["eq", "gte", "lte", "in"]
+  }
+}
+~~~
+
+Clients use allowlisted parameters such as price__gte or status__in. Supported operators are eq, ne, gt, gte, lt, lte, and in. They are translated by generated code rather than exposing arbitrary Mongo operators.
+
+### Soft delete and audit fields
+
+~~~json
+{
+  "softDelete": {
+    "enabled": true,
+    "field": "deletedAt"
+  },
+  "audit": {
+    "enabled": true,
+    "createdBy": "createdBy",
+    "updatedBy": "updatedBy"
+  }
+}
+~~~
+
+Generated reads hide soft-deleted rows, generated deletes mark them deleted, and audit fields use the authenticated user id when available.
+
+### Optional transactions
+
+Write operations can opt into Mongoose sessions:
+
+~~~json
+{
+  "operations": {
+    "create": {
+      "transaction": true
+    }
+  }
+}
+~~~
+
+The controller generator wraps the operation in a transaction while keeping transactions disabled by default for deployments that do not use a Mongo replica set.
+
+### Environment contract
+
+Application-specific variables can be declared and validated at startup:
+
+~~~json
+{
+  "environment": {
+    "EXTERNAL_API_URL": {
+      "required": true,
+      "description": "Upstream service"
+    }
+  }
+}
+~~~
+
+Database and JWT-secret variables are automatically included in the generated environment guard.
+
+### Production middleware
+
+The production block can enable request IDs, security headers, CORS, rate limiting, and compression. Optional package dependencies are added only when required.
+
+Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and MongoDB disconnect.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -448,7 +632,12 @@ Unit/integration tests cover:
 - configurable project layout and imports
 - runtime/server/middleware customization
 - CRUD method/path/status customization
-- filtering, sorting, projection, and pagination generation
+- filtering, sorting, projection, pagination, and allowlisted operators
+- reference relationships, populate behavior, delete policies, and indexes
+- JWT authentication and role authorization generation
+- generated request validation and OpenAPI
+- soft delete, auditing, and transaction generation
+- production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options
 - safe regeneration
@@ -467,12 +656,16 @@ JSON spec
   -> npm install in generated application
   -> start MongoDB
   -> start generated Express server
-  -> POST resource
-  -> GET list with filters/sort/select/pagination
-  -> GET by id
+  -> create related resources
+  -> POST resource with a reference
+  -> verify delete restrict policy
+  -> GET list with populate + advanced filters + pagination
+  -> GET by id with populate
   -> PATCH
-  -> DELETE
-  -> verify 404 after delete
+  -> soft DELETE
+  -> verify 404 after soft delete
+  -> delete formerly restricted parent
+  -> verify generated OpenAPI
 ~~~
 
 This proves that the generated project itself runs end to end.
@@ -492,17 +685,11 @@ node bin/json-to-express.js validate examples/shop.json
 node bin/json-to-express.js validate examples/e2e.json
 ~~~
 
-## Next product capabilities
+## Scope after v1
 
-The first-prototype platform gaps are now addressed by schema-first validation, modular generators, safe regeneration, query semantics, extension points, and generated-app E2E testing.
+The Express/Mongoose target now covers the original prototype hardening gaps plus relationships, indexes, request validation, JWT/RBAC, OpenAPI, safe advanced querying, soft delete, auditing, optional transactions, environment contracts, production middleware, graceful shutdown, protected custom hooks, generated contract tests, and real MongoDB E2E validation.
 
-The next layers are product features:
-
-- entity relationships and references
-- authentication and RBAC
-- OpenAPI generation
-- additional database/ORM targets
-- additional server framework targets
+Future work such as PostgreSQL/Prisma, Fastify, or NestJS is considered an additional target rather than a missing capability of the Express/Mongoose generator.
 
 ## License
 
