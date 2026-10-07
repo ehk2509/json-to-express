@@ -38,7 +38,18 @@ function visitWorkflowValue(value, visitor) {
 }
 
 function validateWorkflowReference(errors, value, workflowName, stepName, knownSteps) {
-  if (!value.startsWith('
+  if (!value.startsWith('$') || value.startsWith('$$')) return;
+  const root = value.split('.')[0];
+  if (['$body', '$params', '$query', '$auth'].includes(root)) return;
+  if (root === '$steps') {
+    const parts = value.split('.');
+    if (parts.length < 3 || !knownSteps.has(parts[1])) {
+      errors.push('workflows.' + workflowName + '.steps.' + stepName + ' references an unavailable prior step in "' + value + '"');
+    }
+    return;
+  }
+  errors.push('workflows.' + workflowName + '.steps.' + stepName + ' has unsupported reference root in "' + value + '"');
+}
 function validateSpec(inputSpec) {
   const spec = upgradeSpec(inputSpec);
   const errors = validateSchema(spec);
