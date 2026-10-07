@@ -31,7 +31,6 @@ function inputTransformLines(entity, mode) {
   for (const field of refs) {
     lines.push('    if (Object.prototype.hasOwnProperty.call(data, ' + js(field.name) + ')) {');
     lines.push('      const reference = data[' + js(field.name) + '];');
-    lines.push('      if (reference === null && ' + js('create') + ' === ' + js('create') + ' && ' + js('PLACEHOLDER') + ' === "never") {}');
     lines.push(mode === 'create'
       ? '      if (reference === null) delete data[' + js(field.name) + ']; else data[' + js(field.name) + '] = {connect: {id: reference}};'
       : '      data[' + js(field.name) + '] = reference === null ? {disconnect: true} : {connect: {id: reference}};');
