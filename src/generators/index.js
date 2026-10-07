@@ -3,6 +3,8 @@
 const path = require('node:path');
 const modelSource = require('./model');
 const controllerSource = require('./controller');
+const prismaSchemaSource = require('./prisma-schema');
+const prismaControllerSource = require('./prisma-controller');
 const routesSource = require('./routes');
 const appSource = require('./app');
 const serverSource = require('./server');
@@ -76,10 +78,17 @@ function buildFiles(spec) {
 
   if (spec.docs.openapi.enabled) files.set(spec.docs.openapi.file, openapiSource(spec));
 
+  if (spec.database.type === 'postgresql') {
+    files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
+  }
+
   for (const entity of spec.entities) {
     const entityPaths = filePaths(spec, entity.name);
-    files.set(entityPaths.model, modelSource(entity, spec));
-    files.set(entityPaths.controller, controllerSource(entity, spec));
+    if (spec.database.type === 'mongodb') files.set(entityPaths.model, modelSource(entity, spec));
+    files.set(
+      entityPaths.controller,
+      spec.database.type === 'postgresql' ? prismaControllerSource(entity, spec) : controllerSource(entity, spec)
+    );
     files.set(entityPaths.route, routesSource(entity, spec));
   }
 
