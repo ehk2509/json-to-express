@@ -255,7 +255,16 @@
       "method": "post",
       "path": "/products/:id/publish",
       "workflow": "publishProduct",
-      "status": 200
+      "status": 200,
+      "auth": {
+        "required": true,
+        "roles": [
+          "admin"
+        ],
+        "strategies": [
+          "apiKey"
+        ]
+      }
     },
     "queueReprice": {
       "method": "post",
@@ -432,6 +441,13 @@
           "userId": "ci-service",
           "roles": [
             "admin"
+          ]
+        },
+        {
+          "env": "E2E_VIEWER_API_KEY",
+          "userId": "ci-viewer",
+          "roles": [
+            "viewer"
           ]
         }
       ]
