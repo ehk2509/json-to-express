@@ -251,5 +251,35 @@
       "maxAttempts": 3,
       "backoffMs": 100
     }
+  },
+  "deployment": {
+    "docker": {
+      "enabled": true,
+      "nodeImage": "node:22-alpine",
+      "healthcheck": true
+    },
+    "compose": {
+      "enabled": true,
+      "database": true,
+      "apiPort": 3456
+    },
+    "kubernetes": {
+      "enabled": true,
+      "directory": "deploy/k8s",
+      "image": "j2e-mongo-e2e:latest",
+      "replicas": 2,
+      "serviceType": "ClusterIP",
+      "servicePort": 80,
+      "resources": {
+        "requests": {
+          "cpu": "50m",
+          "memory": "64Mi"
+        },
+        "limits": {
+          "cpu": "500m",
+          "memory": "256Mi"
+        }
+      }
+    }
   }
 }
