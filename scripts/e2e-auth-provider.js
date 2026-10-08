@@ -109,8 +109,23 @@ async function startFakeOidcProvider(options = {}) {
     server.listen(port, host, resolve);
   });
 
+  function mintToken(overrides = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    return signJwt(privateKey, {
+      iss: issuer,
+      aud: audience,
+      sub: 'oidc-e2e-user',
+      email: 'oidc@example.test',
+      roles: ['admin'],
+      iat: now,
+      exp: now + 300,
+      ...overrides
+    });
+  }
+
   return {
     issuer,
+    mintToken,
     close: () => new Promise(resolve => server.close(resolve))
   };
 }
