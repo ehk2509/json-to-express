@@ -11,6 +11,9 @@ function renderField(field) {
     const refType = 'mongoose.Schema.Types.ObjectId';
     options.type = field.many ? '[' + refType + ']' : refType;
     options.ref = field.ref;
+  } else if (field.type === 'file') {
+    const fileType = 'mongoose.Schema.Types.Mixed';
+    options.type = field.many ? '[' + fileType + ']' : fileType;
   } else {
     options.type = TYPE_MAP[field.type];
   }
