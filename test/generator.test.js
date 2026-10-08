@@ -762,3 +762,109 @@ test('generates worker deployment when Mongo outbox uses separate worker mode', 
   assert.match(worker, /name: worker-api-worker/);
   assert.match(worker, /command: \["npm", "run", "worker"\]/);
 });
+
+
+test('generates standalone JavaScript and strongly typed TypeScript SDK clients', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-sdk-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const sdkSpec = {
+    specVersion: '1.0',
+    app: {name: 'sdk-api', port: 4300, apiPrefix: '/v1'},
+    database: {type: 'mongodb'},
+    sdk: {
+      enabled: true,
+      outputDir: 'client',
+      languages: ['javascript', 'typescript'],
+      packageName: '@example/sdk-api-client',
+      private: false,
+      baseUrl: 'https://api.example.test',
+      includeCustomEndpoints: true
+    },
+    entities: {
+      Category: {
+        fields: {
+          name: {type: 'string', required: true}
+        }
+      },
+      Product: {
+        route: 'catalog-items',
+        idParam: 'productId',
+        operations: {
+          list: {
+            method: 'post',
+            path: '/search',
+            query: {
+              filters: ['name', 'price'],
+              operators: ['eq', 'gte', 'in'],
+              sortParam: 'sort',
+              selectParam: 'fields',
+              pagination: {enabled: true, pageParam: 'page', limitParam: 'limit'}
+            }
+          },
+          get: {path: '/item/:productId'}
+        },
+        fields: {
+          name: {type: 'string', required: true},
+          price: {type: 'number', required: true},
+          category: {type: 'reference', ref: 'Category', required: true},
+          published: {type: 'boolean', default: false}
+        }
+      }
+    },
+    workflows: {
+      publishProduct: {
+        steps: [
+          {name: 'done', action: 'respond', status: 200, body: {ok: true}}
+        ]
+      }
+    },
+    endpoints: {
+      publishProduct: {
+        method: 'post',
+        path: '/catalog-items/:productId/publish',
+        workflow: 'publishProduct'
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(sdkSpec, output);
+
+  for (const file of [
+    'client/package.json',
+    'client/README.md',
+    'client/javascript/index.js',
+    'client/typescript/index.ts',
+    'client/tsconfig.json'
+  ]) assert.ok(result.files.includes(file), file + ' should be generated');
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'client/package.json'), 'utf8'));
+  assert.equal(pkg.name, '@example/sdk-api-client');
+  assert.equal(pkg.private, false);
+  assert.equal(pkg.main, 'javascript/index.js');
+  assert.equal(pkg.types, 'dist/index.d.ts');
+  assert.ok(pkg.devDependencies.typescript);
+
+  const jsClient = fs.readFileSync(path.join(output, 'client/javascript/index.js'), 'utf8');
+  assert.match(jsClient, /class ApiError extends Error/);
+  assert.match(jsClient, /authorization = "Bearer " \+ token/);
+  assert.match(jsClient, /catalogItems:/);
+  assert.match(jsClient, /list: \(query, options = \{\}\) => request\("POST", "\/v1\/catalog-items\/search"/);
+  assert.match(jsClient, /get: \(id, query, options = \{\}\) => request\("GET", "\/v1\/catalog-items\/item\/:productId"/);
+  assert.match(jsClient, /publishProduct: \(input = \{\}, options = \{\}\) => request\("POST", "\/v1\/catalog-items\/:productId\/publish"/);
+  assert.match(jsClient, /https:\/\/api\.example\.test/);
+
+  const tsClient = fs.readFileSync(path.join(output, 'client/typescript/index.ts'), 'utf8');
+  assert.match(tsClient, /export interface Product/);
+  assert.match(tsClient, /category: string \| Category/);
+  assert.match(tsClient, /export interface ProductCreateInput/);
+  assert.match(tsClient, /category: string;/);
+  assert.match(tsClient, /"price__gte"\?: number;/);
+  assert.match(tsClient, /"price__in"\?: number\[\];/);
+  assert.match(tsClient, /catalogItems: ProductClient/);
+  assert.match(tsClient, /export class ApiError extends Error/);
+
+  const checked = spawnSync(process.execPath, ['--check', path.join(output, 'client/javascript/index.js')], {encoding: 'utf8'});
+  assert.equal(checked.status, 0, checked.stderr);
+});
