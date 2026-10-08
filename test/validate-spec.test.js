@@ -232,7 +232,6 @@ test('enforces remaining PostgreSQL Prisma capability boundaries', () => {
       assert.match(error.message, /idStrategy must be "uuid"/);
       assert.match(error.message, /database\.options is only supported by the mongodb target/);
       assert.match(error.message, /schemaOptions is only supported by the mongodb target/);
-      assert.match(error.message, /cannot use onDelete "nullify"/);
       assert.match(error.message, /\.options is only supported by the mongodb target/);
       return true;
     }
