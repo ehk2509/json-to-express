@@ -228,7 +228,7 @@ function normalizeSpec(inputSpec) {
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
     ...(metricsEnabled ? {'prom-client': '^15.1.3'} : {}),
     ...(cacheEnabled && cacheProvider === 'redis' ? {redis: '^4.7.0'} : {}),
-    ...(storageEnabled ? {multer: '^1.4.5-lts.1'} : {}),
+    ...(storageEnabled ? {multer: '^2.4.0'} : {}),
     ...(storageEnabled && storageProvider === 's3' ? {
       '@aws-sdk/client-s3': '^3.750.0',
       '@aws-sdk/s3-request-presigner': '^3.750.0'
