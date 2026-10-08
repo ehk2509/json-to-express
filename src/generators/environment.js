@@ -25,6 +25,19 @@ module.exports = function environmentSource(spec) {
     const name = spec.observability.tracing.endpointEnv;
     declared[name] = declared[name] || {required: true};
   }
+  if (spec.storage.enabled) {
+    if (spec.storage.provider === 'local' && spec.storage.signedUrls.enabled) {
+      const name = spec.storage.signedUrls.signingSecretEnv;
+      declared[name] = declared[name] || {required: true};
+    }
+    if (spec.storage.provider === 's3') {
+      declared[spec.storage.s3.bucketEnv] = declared[spec.storage.s3.bucketEnv] || {required: true};
+      declared[spec.storage.s3.regionEnv] = declared[spec.storage.s3.regionEnv] || {required: true};
+      if (spec.storage.s3.endpointEnv) declared[spec.storage.s3.endpointEnv] = declared[spec.storage.s3.endpointEnv] || {required: true};
+      if (spec.storage.s3.accessKeyEnv) declared[spec.storage.s3.accessKeyEnv] = declared[spec.storage.s3.accessKeyEnv] || {required: true};
+      if (spec.storage.s3.secretKeyEnv) declared[spec.storage.s3.secretKeyEnv] = declared[spec.storage.s3.secretKeyEnv] || {required: true};
+    }
+  }
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) declared[webhook.urlEnv] = declared[webhook.urlEnv] || {required: true};
   }
