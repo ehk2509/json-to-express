@@ -113,5 +113,5 @@ module.exports = function composeSource(spec) {
   }
 
   lines.push('');
-  return lines.join('\\n');
+  return lines.join('\n');
 };
