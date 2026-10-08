@@ -147,6 +147,29 @@
           "ref": "Tag",
           "many": true,
           "onDelete": "nullify"
+        },
+        "image": {
+          "type": "file",
+          "upload": {
+            "maxBytes": 1024,
+            "mimeTypes": [
+              "text/plain"
+            ],
+            "directory": "products/images",
+            "preserveExtension": true
+          }
+        },
+        "attachments": {
+          "type": "file",
+          "many": true,
+          "upload": {
+            "maxBytes": 2048,
+            "mimeTypes": [
+              "text/plain"
+            ],
+            "directory": "products/attachments",
+            "preserveExtension": true
+          }
         }
       }
     },
@@ -364,7 +387,8 @@
           "price",
           "category",
           "published",
-          "tags"
+          "tags",
+          "image"
         ],
         "filterFields": [
           "name",
@@ -391,6 +415,15 @@
           "tags": {
             "label": "Tags",
             "widget": "reference"
+          },
+          "image": {
+            "label": "Image",
+            "widget": "file",
+            "help": "Text fixture used by storage E2E"
+          },
+          "attachments": {
+            "label": "Attachments",
+            "widget": "file"
           }
         }
       },
@@ -541,6 +574,19 @@
     "redis": {
       "urlEnv": "REDIS_URL",
       "connectTimeoutMs": 3000
+    }
+  },
+  "storage": {
+    "enabled": true,
+    "provider": "local",
+    "signedUrls": {
+      "enabled": true,
+      "expiresSeconds": 300,
+      "path": "/files/:token",
+      "signingSecretEnv": "FILE_SIGNING_SECRET"
+    },
+    "local": {
+      "directory": "uploads"
     }
   }
 }
