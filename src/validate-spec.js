@@ -208,6 +208,18 @@ function validateSpec(inputSpec) {
   }
 
   const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
+  if (graphqlEnabled && isObject(spec.entities)) {
+    for (const [entityName, entity] of Object.entries(spec.entities)) {
+      if (entity && entity.fields && Object.prototype.hasOwnProperty.call(entity.fields, 'id')) {
+        errors.push('entities.' + entityName + '.fields.id is reserved by the GraphQL target');
+      }
+      for (const fieldName of Object.keys(entity && entity.fields || {})) {
+        if (!/^[_A-Za-z][_0-9A-Za-z]*$/.test(fieldName) || fieldName.startsWith('__')) {
+          errors.push('entities.' + entityName + '.fields.' + fieldName + ' is not a valid GraphQL field name');
+        }
+      }
+    }
+  }
   const workflowNames = new Set(isObject(spec.workflows) ? Object.keys(spec.workflows) : []);
   const eventNames = new Set(isObject(spec.events) ? Object.keys(spec.events) : []);
   const jobNames = new Set(isObject(spec.jobs) ? Object.keys(spec.jobs) : []);
