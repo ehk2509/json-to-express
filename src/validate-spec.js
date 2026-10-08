@@ -68,6 +68,22 @@ function validateSpec(inputSpec) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
 
+  if (spec.deployment) {
+    if (spec.deployment.docker) {
+      validateRelativePath(errors, spec.deployment.docker.file, 'deployment.docker.file');
+      validateRelativePath(errors, spec.deployment.docker.ignoreFile, 'deployment.docker.ignoreFile');
+    }
+    if (spec.deployment.compose) {
+      validateRelativePath(errors, spec.deployment.compose.file, 'deployment.compose.file');
+      if (spec.deployment.compose.enabled === true && (!spec.deployment.docker || spec.deployment.docker.enabled !== true)) {
+        errors.push('deployment.compose.enabled requires deployment.docker.enabled');
+      }
+    }
+    if (spec.deployment.kubernetes) {
+      validateRelativePath(errors, spec.deployment.kubernetes.directory, 'deployment.kubernetes.directory');
+    }
+  }
+
   if (spec.app && Array.isArray(spec.app.middlewareModules)) {
     spec.app.middlewareModules.forEach((value, index) => {
       validateRelativePath(errors, value, 'app.middlewareModules[' + index + ']');
