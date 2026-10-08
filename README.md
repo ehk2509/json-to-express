@@ -971,6 +971,108 @@ The generated Deployment includes readiness/liveness probes when the health endp
 
 The generator intentionally does not create a production MongoDB or PostgreSQL StatefulSet. Kubernetes deployments reference an external database URL through the Secret template so managed databases can be used without modifying generated application code.
 
+## Generated JavaScript and TypeScript SDKs
+
+The same normalized model that generates routes and OpenAPI can also generate a standalone client package.
+
+~~~json
+{
+  "sdk": {
+    "enabled": true,
+    "outputDir": "sdk",
+    "languages": ["javascript", "typescript"],
+    "packageName": "@acme/catalog-client",
+    "private": true,
+    "baseUrl": "https://api.example.com",
+    "includeCustomEndpoints": true
+  }
+}
+~~~
+
+Generated structure:
+
+~~~text
+sdk/
+  package.json
+  README.md
+  javascript/
+    index.js
+  typescript/
+    index.ts
+  tsconfig.json
+~~~
+
+The JavaScript client has zero runtime dependencies and uses native fetch by default. A custom fetch implementation can be injected for tests or non-standard runtimes.
+
+~~~js
+const {createClient, ApiError} = require("./sdk/javascript");
+
+const client = createClient({
+  baseUrl: "https://api.example.com",
+  getToken: async () => accessToken
+});
+
+const products = await client.products.list({
+  price__gte: 100,
+  sort: "-price",
+  page: 1,
+  limit: 20
+});
+
+const product = await client.products.create({
+  name: "Keyboard",
+  price: 149,
+  category: categoryId
+});
+~~~
+
+Authentication supports either a static token or an async getToken callback. Per-request headers and AbortSignal are supported on every generated method.
+
+HTTP failures throw ApiError with:
+
+- status
+- parsed response body
+- original Response
+
+### TypeScript SDK
+
+The TypeScript client includes:
+
+- entity response interfaces
+- create/update input types
+- relation types
+- Mongo _id or PostgreSQL id identifiers
+- typed filter/operator query objects
+- sorting, projection, and pagination parameters
+- CRUD client interfaces
+- typed custom action input objects
+- strict declaration generation
+
+~~~bash
+cd sdk
+npm install
+npm run build
+~~~
+
+The resulting dist directory contains compiled CommonJS JavaScript and .d.ts declarations.
+
+### Custom endpoint clients
+
+Declarative workflow endpoints are generated under client.actions using their exact configured HTTP method and path.
+
+For example:
+
+~~~js
+await client.actions.publishProduct({
+  params: {id: productId},
+  body: {notify: true}
+});
+~~~
+
+Path parameters are encoded automatically. TypeScript requires the params object when the endpoint path contains parameters.
+
+The SDK does not regenerate behavior independently from OpenAPI or routes: all three are emitted from the same normalized specification so custom CRUD paths, methods, API prefixes, filters, and entity relationships remain aligned.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -989,6 +1091,7 @@ Unit/integration tests cover:
 - custom endpoints, declarative workflows, events, and webhooks
 - durable outbox, retries, dead-letter recovery, and background jobs
 - Docker, Docker Compose, Kubernetes manifests, probes, secrets/config separation
+- generated JavaScript and TypeScript SDK packages
 - production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options
@@ -1063,9 +1166,9 @@ The Express/Mongoose target remains the complete v1 target, including workflows,
 
 PostgreSQL/Prisma is now a real second target for CRUD-oriented services and proves that the normalized application model is not tied to Mongoose. Its remaining parity work is the SQL implementation of workflows/outbox/jobs and many-to-many references.
 
-Both persistence targets can now emit container and Kubernetes deployment artifacts from the same JSON contract.
+Both persistence targets can now emit container/Kubernetes deployment artifacts and standalone JavaScript/TypeScript SDK packages from the same JSON contract.
 
-The next product-expansion layers are generated SDK clients and an optional admin UI, followed by additional API/server targets such as GraphQL, Fastify, and NestJS.
+The next product-expansion layer is an optional generated admin UI, followed by additional API/server targets such as GraphQL, Fastify, and NestJS.
 
 ## License
 

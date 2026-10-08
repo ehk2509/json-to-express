@@ -264,3 +264,17 @@ test('validates deployment paths and Compose Docker dependency', () => {
     }
   );
 });
+
+
+test('validates generated SDK output path safety', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'sdk-api'},
+      database: {type: 'mongodb'},
+      sdk: {enabled: true, outputDir: '../client'},
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    /sdk\.outputDir must be a safe relative path/
+  );
+});
