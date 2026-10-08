@@ -1442,6 +1442,17 @@
               "default": 5000
             }
           }
+        },
+        "memory": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxEntries": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1000
+            }
+          }
         }
       }
     }
