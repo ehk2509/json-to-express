@@ -1640,7 +1640,7 @@ test('generates secure local multipart storage across runtime OpenAPI SDK and ad
   assert.ok(result.files.includes('src/config/storage.js'));
 
   const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
-  assert.equal(pkg.dependencies.multer, '^1.4.5-lts.1');
+  assert.equal(pkg.dependencies.multer, '^2.4.0');
 
   const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
   assert.match(env, /FILE_SECRET=change-me/);
