@@ -21,6 +21,7 @@ function scalarType(field) {
   if (field.type === 'number') return 'Float';
   if (field.type === 'boolean') return 'Boolean';
   if (field.type === 'reference') return 'ID';
+  if (field.type === 'file') return 'JSON';
   return 'String';
 }
 
@@ -29,6 +30,7 @@ function outputType(field) {
     if (field.many) return '[' + field.ref + '!]!';
     return field.ref + (field.required ? '!' : '');
   }
+  if (field.type === 'file' && field.many) return '[JSON!]' + (field.required ? '!' : '');
   const type = scalarType(field);
   return type + (field.required ? '!' : '');
 }
@@ -75,7 +77,7 @@ function entityMetadata(spec) {
       operations: Object.fromEntries(Object.entries(entity.operations).map(([name, operation]) => [
         name,
         {
-          enabled: operation.enabled,
+          enabled: operation.enabled && !(name === 'create' && entity.fields.some(field => field.type === 'file' && field.required)),
           auth: operation.auth,
           validate: operation.validate,
           query: name === 'list' ? {
@@ -115,15 +117,16 @@ function typeDefs(spec) {
     }
     lines.push('}', '');
 
-    if (entity.operations.create.enabled) {
+    const graphqlCreateEnabled = entity.operations.create.enabled && !entity.fields.some(field => field.type === 'file' && field.required);
+    if (graphqlCreateEnabled) {
       lines.push('input ' + entity.name + 'CreateInput {');
-      for (const field of entity.fields) lines.push('  ' + field.name + ': ' + inputType(field, true));
+      for (const field of entity.fields.filter(field => field.type !== 'file')) lines.push('  ' + field.name + ': ' + inputType(field, true));
       lines.push('}', '');
     }
 
     if (entity.operations.update.enabled) {
       lines.push('input ' + entity.name + 'UpdateInput {');
-      for (const field of entity.fields) lines.push('  ' + field.name + ': ' + inputType(field, false));
+      for (const field of entity.fields.filter(field => field.type !== 'file')) lines.push('  ' + field.name + ': ' + inputType(field, false));
       lines.push('}', '');
     }
 
@@ -164,7 +167,9 @@ function typeDefs(spec) {
   const mutations = [];
   for (const entity of spec.entities) {
     const names = graphqlNames(entity);
-    if (entity.operations.create.enabled) mutations.push('  ' + names.create + '(input: ' + entity.name + 'CreateInput!): ' + entity.name + '!');
+    if (entity.operations.create.enabled && !entity.fields.some(field => field.type === 'file' && field.required)) {
+      mutations.push('  ' + names.create + '(input: ' + entity.name + 'CreateInput!): ' + entity.name + '!');
+    }
     if (entity.operations.update.enabled) mutations.push('  ' + names.update + '(id: ID!, input: ' + entity.name + 'UpdateInput!): ' + entity.name);
     if (entity.operations.delete.enabled) mutations.push('  ' + names.delete + '(id: ID!): Boolean!');
   }
