@@ -249,7 +249,7 @@ function normalizeSpec(inputSpec) {
     },
     docs: {
       openapi: {
-        enabled: valueOr(openapi.enabled, true),
+        enabled: valueOr(openapi.enabled, valueOr(apiConfig.rest, true)),
         file: valueOr(openapi.file, 'openapi.json'),
         title: valueOr(openapi.title, spec.app.name.trim()),
         version: valueOr(openapi.version, packageConfig.version || '0.1.0')
