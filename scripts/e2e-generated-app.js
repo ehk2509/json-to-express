@@ -10,7 +10,11 @@ const base = process.env.E2E_BASE_URL || 'http://127.0.0.1:3456';
 async function request(urlPath, options = {}) {
   const response = await fetch(base + urlPath, {
     ...options,
-    headers: {'content-type': 'application/json', ...(options.headers || {})}
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': process.env.E2E_API_KEY || 'ci-api-key',
+      ...(options.headers || {})
+    }
   });
   const text = await response.text();
   const body = text ? JSON.parse(text) : null;
