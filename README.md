@@ -1,6 +1,6 @@
 # json-to-express
 
-Generate a runnable Express application from a declarative JSON specification.
+Generate a runnable Express application from a declarative JSON specification. An experimental Fastify HTTP host is also available via `app.framework: "fastify"`. This mode runs the existing Express router/middleware stack inside Fastify using `@fastify/express` and is **not** a native Fastify route target.
 
 The project is JSON-first: runtime behavior, project layout, routes, persistence target, query behavior, middleware, hooks, package metadata, and server settings are described in JSON.
 
@@ -1644,7 +1644,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Relationship factories and full fixtures remain future work. The largest remaining framework expansion is a Fastify target.
+File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Relationship factories and full fixtures remain future work. A Fastify compatibility host is under development. Native Fastify route, plugin, hook, error, and request/response generation remains future work.
 
 ## License
 
