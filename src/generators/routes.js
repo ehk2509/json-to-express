@@ -14,6 +14,9 @@ function routesSource(entity, spec) {
     if (operation.auth && operation.auth.required) {
       middleware.push('auth.authenticate(' + js(operation.auth) + ')');
     }
+    if (hasFiles && ['create','update'].includes(name)) {
+      middleware.push('storage.uploadMiddleware(' + js(entity.name) + ')');
+    }
     if (operation.validate) {
       if (name === 'create') middleware.push('validation.body(' + js(entity.name) + ', false)');
       if (name === 'update') middleware.push('validation.body(' + js(entity.name) + ', true)');
@@ -29,6 +32,7 @@ function routesSource(entity, spec) {
     'const controller = require(' + js(relativeRequire(paths.route, paths.controller)) + ');',
     'const validation = require(' + js(relativeRequire(paths.route, filePaths(spec).validation)) + ');',
     ...(needsAuth ? ['const auth = require(' + js(relativeRequire(paths.route, filePaths(spec).auth)) + ');'] : []),
+    ...(hasFiles ? ['const storage = require(' + js(relativeRequire(paths.route, filePaths(spec).storage)) + ');'] : []),
     '',
     'const router = express.Router();', '',
     ...routeLines, '',
