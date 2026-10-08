@@ -124,9 +124,8 @@ function javascriptSource(spec) {
   if (spec.sdk.includeCustomEndpoints && spec.endpoints.length) {
     lines.push('    actions: {');
     for (const endpoint of spec.endpoints) {
-      const requiredInput = pathParams(endpoint.path).length > 0;
       lines.push(
-        '      ' + identifier(endpoint.name) + ': (input' + (requiredInput ? '' : ' = {}') + ', options = {}) => request(' +
+        '      ' + identifier(endpoint.name) + ': (input = {}, options = {}) => request(' +
         JSON.stringify(endpoint.method.toUpperCase()) + ', ' + JSON.stringify(customPath(spec, endpoint)) +
         ', {...options, params: input.params, query: input.query, body: input.body}),'
       );
@@ -341,8 +340,9 @@ function typescriptSource(spec) {
   if (spec.sdk.includeCustomEndpoints && spec.endpoints.length) {
     lines.push('    actions: {');
     for (const endpoint of spec.endpoints) {
+      const requiredInput = pathParams(endpoint.path).length > 0;
       lines.push(
-        '      ' + identifier(endpoint.name) + ': (input = {}, options = {}) => request(' +
+        '      ' + identifier(endpoint.name) + ': (input' + (requiredInput ? '' : ' = {}') + ', options = {}) => request(' +
         JSON.stringify(endpoint.method.toUpperCase()) + ', ' + JSON.stringify(customPath(spec, endpoint)) +
         ', {...options, params: input.params, query: input.query, body: input.body}),'
       );
