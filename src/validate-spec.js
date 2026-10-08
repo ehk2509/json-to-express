@@ -106,14 +106,49 @@ function validateSpec(inputSpec) {
       for (const fieldName of Object.keys(adminEntity.fields || {})) {
         if (!fields.has(fieldName)) errors.push('admin.entities.' + entityName + '.fields references unknown field ' + fieldName);
       }
-      if (adminEntity.create === true && entity.operations && entity.operations.create === false) {
+      const operationEnabled = operation => {
+        if (operation === undefined) return true;
+        if (typeof operation === 'boolean') return operation;
+        return operation.enabled !== false;
+      };
+      const operations = entity.operations || {};
+      if (adminEntity.create === true && !operationEnabled(operations.create)) {
         errors.push('admin.entities.' + entityName + '.create cannot be enabled when create operation is disabled');
       }
-      if (adminEntity.edit === true && entity.operations && entity.operations.update === false) {
+      if (adminEntity.edit === true && !operationEnabled(operations.update)) {
         errors.push('admin.entities.' + entityName + '.edit cannot be enabled when update operation is disabled');
       }
-      if (adminEntity.delete === true && entity.operations && entity.operations.delete === false) {
+      if (adminEntity.delete === true && !operationEnabled(operations.delete)) {
         errors.push('admin.entities.' + entityName + '.delete cannot be enabled when delete operation is disabled');
+      }
+
+      const pagination = operations.list && typeof operations.list === 'object' &&
+        operations.list.query && operations.list.query.pagination;
+      if (
+        adminEntity.pageSize !== undefined &&
+        pagination && pagination.enabled === true &&
+        pagination.maxLimit !== undefined &&
+        adminEntity.pageSize > pagination.maxLimit
+      ) {
+        errors.push('admin.entities.' + entityName + '.pageSize cannot exceed operations.list.query.pagination.maxLimit');
+      }
+
+      const hidden = new Set(adminEntity.hiddenFields || []);
+      for (const fieldName of adminEntity.listFields || []) {
+        if (hidden.has(fieldName)) {
+          errors.push('admin.entities.' + entityName + '.listFields cannot include hidden field ' + fieldName);
+        }
+      }
+
+      const readonly = new Set(adminEntity.readonlyFields || []);
+      if (adminEntity.create !== false && operationEnabled(operations.create)) {
+        for (const [fieldName, field] of Object.entries(entity.fields || {})) {
+          const fieldAdmin = adminEntity.fields && adminEntity.fields[fieldName] || {};
+          const isReadonly = readonly.has(fieldName) || fieldAdmin.readonly === true;
+          if (isReadonly && field.required === true && field.default === undefined) {
+            errors.push('admin.entities.' + entityName + ' cannot make required create field ' + fieldName + ' readonly without a default');
+          }
+        }
       }
     }
   }
