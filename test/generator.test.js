@@ -1376,32 +1376,6 @@ test('generates multi-strategy auth stores flows OpenAPI SDK and admin metadata'
   assert.match(jsSdk, /x-service-key/);
   assert.match(jsSdk, /credentials: options\.credentials/);
 
-  let capturedRequest;
-  const generatedSdk = require(path.join(output, 'sdk/javascript'));
-  const multipartClient = generatedSdk.createClient({
-    baseUrl: 'http://example.test',
-    fetch: async (url, init) => {
-      capturedRequest = {url, init};
-      return {
-        ok: true,
-        status: 201,
-        text: async () => JSON.stringify({
-          _id: 'asset-1',
-          name: 'Example',
-          image: {key: 'assets/images/example.png', originalName: 'example.png', mimeType: 'image/png', size: 3, checksumSha256: 'a'.repeat(64), provider: 'local'}
-        })
-      };
-    }
-  });
-  const multipartResult = await multipartClient.assets.create({
-    name: 'Example',
-    image: new Blob(['png'], {type: 'image/png'})
-  });
-  assert.equal(multipartResult.image.mimeType, 'image/png');
-  assert.ok(capturedRequest.init.body instanceof FormData);
-  assert.ok(capturedRequest.init.body.get('image') instanceof Blob);
-  assert.equal(capturedRequest.init.headers['content-type'], undefined);
-
   const tsSdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
   assert.match(tsSdk, /apiKey\?: string/);
   assert.match(tsSdk, /getApiKey\?:/);
@@ -1707,6 +1681,32 @@ test('generates secure local multipart storage across runtime OpenAPI SDK and ad
   assert.match(jsSdk, /function prepareBody/);
   assert.match(jsSdk, /new FormData/);
   assert.match(jsSdk, /config\.body instanceof FormData/);
+
+  let capturedRequest;
+  const generatedSdk = require(path.join(output, 'sdk/javascript'));
+  const multipartClient = generatedSdk.createClient({
+    baseUrl: 'http://example.test',
+    fetch: async (url, init) => {
+      capturedRequest = {url, init};
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({
+          _id: 'asset-1',
+          name: 'Example',
+          image: {key: 'assets/images/example.png', originalName: 'example.png', mimeType: 'image/png', size: 3, checksumSha256: 'a'.repeat(64), provider: 'local'}
+        })
+      };
+    }
+  });
+  const multipartResult = await multipartClient.assets.create({
+    name: 'Example',
+    image: new Blob(['png'], {type: 'image/png'})
+  });
+  assert.equal(multipartResult.image.mimeType, 'image/png');
+  assert.ok(capturedRequest.init.body instanceof FormData);
+  assert.ok(capturedRequest.init.body.get('image') instanceof Blob);
+  assert.equal(capturedRequest.init.headers['content-type'], undefined);
 
   const tsSdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
   assert.match(tsSdk, /export interface FileMetadata/);
