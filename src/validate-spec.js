@@ -64,6 +64,19 @@ function validateSpec(inputSpec) {
     }
   }
 
+  const rawGraphql = spec.api && spec.api.graphql;
+  const graphqlEnabled = rawGraphql === true || (isObject(rawGraphql) && rawGraphql.enabled !== false);
+  const graphqlPath = isObject(rawGraphql) && rawGraphql.path || '/graphql';
+  if (spec.api && spec.api.rest === false && !graphqlEnabled) {
+    errors.push('api must enable at least one of rest or graphql');
+  }
+  if (
+    graphqlEnabled && spec.app && spec.app.health && spec.app.health.enabled !== false &&
+    graphqlPath === spec.app.health.path
+  ) {
+    errors.push('api.graphql.path cannot be the same as app.health.path');
+  }
+
   if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
