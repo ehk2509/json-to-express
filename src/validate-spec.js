@@ -71,6 +71,52 @@ function validateSpec(inputSpec) {
   if (spec.sdk && spec.sdk.outputDir) {
     validateRelativePath(errors, spec.sdk.outputDir, 'sdk.outputDir');
   }
+  if (spec.admin && spec.admin.outputDir) {
+    validateRelativePath(errors, spec.admin.outputDir, 'admin.outputDir');
+  }
+
+  if (spec.admin && spec.admin.entities) {
+    for (const [entityName, adminEntity] of Object.entries(spec.admin.entities)) {
+      const entity = spec.entities && spec.entities[entityName];
+      if (!entity) {
+        errors.push('admin.entities.' + entityName + ' references unknown entity');
+        continue;
+      }
+      const fields = new Set(Object.keys(entity.fields || {}));
+      const listFilters = new Set(
+        entity.operations && entity.operations.list && entity.operations.list.query && entity.operations.list.query.filters || []
+      );
+      const checkFields = (names, label) => {
+        for (const fieldName of names || []) {
+          if (!fields.has(fieldName)) errors.push('admin.entities.' + entityName + '.' + label + ' references unknown field ' + fieldName);
+        }
+      };
+      if (adminEntity.titleField && !fields.has(adminEntity.titleField)) {
+        errors.push('admin.entities.' + entityName + '.titleField references unknown field ' + adminEntity.titleField);
+      }
+      checkFields(adminEntity.listFields, 'listFields');
+      checkFields(adminEntity.hiddenFields, 'hiddenFields');
+      checkFields(adminEntity.readonlyFields, 'readonlyFields');
+      checkFields(adminEntity.filterFields, 'filterFields');
+      for (const fieldName of adminEntity.filterFields || []) {
+        if (!listFilters.has(fieldName)) {
+          errors.push('admin.entities.' + entityName + '.filterFields field ' + fieldName + ' is not allowed by operations.list.query.filters');
+        }
+      }
+      for (const fieldName of Object.keys(adminEntity.fields || {})) {
+        if (!fields.has(fieldName)) errors.push('admin.entities.' + entityName + '.fields references unknown field ' + fieldName);
+      }
+      if (adminEntity.create === true && entity.operations && entity.operations.create === false) {
+        errors.push('admin.entities.' + entityName + '.create cannot be enabled when create operation is disabled');
+      }
+      if (adminEntity.edit === true && entity.operations && entity.operations.update === false) {
+        errors.push('admin.entities.' + entityName + '.edit cannot be enabled when update operation is disabled');
+      }
+      if (adminEntity.delete === true && entity.operations && entity.operations.delete === false) {
+        errors.push('admin.entities.' + entityName + '.delete cannot be enabled when delete operation is disabled');
+      }
+    }
+  }
 
   if (spec.deployment) {
     if (spec.deployment.docker) {
