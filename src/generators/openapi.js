@@ -11,7 +11,12 @@ function identifierSchema(spec) {
 function fieldSchema(field, spec) {
   if (field.type === 'reference') {
     const item = identifierSchema(spec);
-    return field.many ? {type: 'array', items: item} : item;
+    if (field.many) {
+      const schema = {type: 'array', items: item};
+      if (field.required) schema.minItems = 1;
+      return schema;
+    }
+    return item;
   }
   const types = {string: 'string', number: 'number', boolean: 'boolean', date: 'string'};
   const schema = {type: types[field.type]};
