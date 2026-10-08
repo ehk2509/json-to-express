@@ -157,6 +157,15 @@ function normalizeSpec(inputSpec) {
     defaultTtlSeconds: valueOr(cacheConfig.defaultTtlSeconds, 300),
     varyByAuth: valueOr(cacheConfig.varyByAuth, true)
   };
+  const rawStorage = spec.storage || {};
+  const hasFileFields = Object.values(spec.entities || {}).some(entity =>
+    Object.values(entity.fields || {}).some(field => field && field.type === 'file')
+  );
+  const storageEnabled = hasFileFields || valueOr(rawStorage.enabled, false);
+  const storageProvider = valueOr(rawStorage.provider, 'local');
+  const storageSigned = rawStorage.signedUrls || {};
+  const storageLocal = rawStorage.local || {};
+  const storageS3 = rawStorage.s3 || {};
   const generatedName = packageConfig.name || packageName(spec.app.name);
   const serverFile = path.posix.join(paths.source, 'server.js');
   const auth = spec.auth || {};
@@ -219,6 +228,11 @@ function normalizeSpec(inputSpec) {
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
     ...(metricsEnabled ? {'prom-client': '^15.1.3'} : {}),
     ...(cacheEnabled && cacheProvider === 'redis' ? {redis: '^4.7.0'} : {}),
+    ...(storageEnabled ? {multer: '^1.4.5-lts.1'} : {}),
+    ...(storageEnabled && storageProvider === 's3' ? {
+      '@aws-sdk/client-s3': '^3.750.0',
+      '@aws-sdk/s3-request-presigner': '^3.750.0'
+    } : {}),
     ...(tracingEnabled ? {
       '@opentelemetry/api': '^1.9.0',
       '@opentelemetry/sdk-trace-node': '^1.30.1',
@@ -369,6 +383,27 @@ function normalizeSpec(inputSpec) {
       }
     },
     environment: spec.environment || {},
+    storage: {
+      enabled: storageEnabled,
+      provider: storageProvider,
+      signedUrls: {
+        enabled: storageEnabled && valueOr(storageSigned.enabled, true),
+        expiresSeconds: valueOr(storageSigned.expiresSeconds, 900),
+        path: normalizePrefix(valueOr(storageSigned.path, '/files/:token')),
+        signingSecretEnv: valueOr(storageSigned.signingSecretEnv, 'FILE_SIGNING_SECRET')
+      },
+      local: {
+        directory: valueOr(storageLocal.directory, 'uploads')
+      },
+      s3: {
+        bucketEnv: valueOr(storageS3.bucketEnv, 'S3_BUCKET'),
+        regionEnv: valueOr(storageS3.regionEnv, 'AWS_REGION'),
+        endpointEnv: storageS3.endpointEnv,
+        accessKeyEnv: storageS3.accessKeyEnv,
+        secretKeyEnv: storageS3.secretKeyEnv,
+        forcePathStyle: valueOr(storageS3.forcePathStyle, false)
+      }
+    },
     cache: {
       enabled: cacheEnabled,
       provider: cacheProvider,
@@ -615,6 +650,12 @@ function normalizeSpec(inputSpec) {
         minLength: field.minLength,
         maxLength: field.maxLength,
         default: field.default,
+        upload: field.type === 'file' ? {
+          maxBytes: valueOr(field.upload && field.upload.maxBytes, 5 * 1024 * 1024),
+          mimeTypes: valueOr(field.upload && field.upload.mimeTypes, ['*/*']),
+          directory: valueOr(field.upload && field.upload.directory, defaultRoute(entityName) + '/' + fieldName),
+          preserveExtension: valueOr(field.upload && field.upload.preserveExtension, true)
+        } : undefined,
         options: field.options || {}
       }))
     };
@@ -661,6 +702,7 @@ function normalizeSpec(inputSpec) {
           minLength: field.minLength,
           maxLength: field.maxLength,
           default: field.default,
+          upload: field.upload,
           label: valueOr(fieldConfig.label, humanize(field.name)),
           help: valueOr(fieldConfig.help, ''),
           placeholder: valueOr(fieldConfig.placeholder, ''),
