@@ -29,7 +29,22 @@ async function main() {
   await waitForHealth(baseUrl);
 
   const sdk = require(path.resolve(generatedRoot, 'sdk/javascript'));
-  const client = sdk.createClient({baseUrl, apiKey: process.env.E2E_API_KEY || 'ci-api-key'});
+  const client = sdk.createClient({
+    baseUrl,
+    apiKey: process.env.E2E_API_KEY || 'ci-api-key',
+    fetch: async (url, options = {}) => {
+      if (String(url).includes('/api/products') && ['POST', 'PATCH'].includes(options.method)) {
+        const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+        console.log('SDK multipart diagnostic', JSON.stringify({
+          method: options.method,
+          isForm,
+          bodyType: options.body && options.body.constructor && options.body.constructor.name,
+          keys: isForm ? Array.from(options.body.keys()) : []
+        }));
+      }
+      return fetch(url, options);
+    }
+  });
   const suffix = Date.now().toString(36);
 
   const category = await client.categories.create({name: 'SDK Category ' + suffix});
