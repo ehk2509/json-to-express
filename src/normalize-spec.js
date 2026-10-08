@@ -53,6 +53,13 @@ function packageName(value) {
   return String(value).trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-express-app';
 }
 
+function humanize(value) {
+  return String(value)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
 function normalizePrefix(value) {
   if (value === '/') return '';
   return value.replace(/\/$/, '');
@@ -125,6 +132,7 @@ function normalizeSpec(inputSpec) {
   const outboxConfig = spec.outbox || {};
   const deployment = spec.deployment || {};
   const sdkConfig = spec.sdk || {};
+  const adminConfig = spec.admin || {};
   const dockerConfig = deployment.docker || {};
   const composeConfig = deployment.compose || {};
   const kubernetesConfig = deployment.kubernetes || {};
@@ -154,6 +162,23 @@ function normalizeSpec(inputSpec) {
   const normalized = {
     specVersion: spec.specVersion,
     generation: {outputDir: generation.outputDir, paths},
+    admin: {
+      enabled: valueOr(adminConfig.enabled, false),
+      outputDir: valueOr(adminConfig.outputDir, 'admin'),
+      title: valueOr(adminConfig.title, spec.app.name.trim() + ' Admin'),
+      baseUrl: valueOr(adminConfig.baseUrl, valueOr(sdkConfig.baseUrl, 'http://127.0.0.1:' + valueOr(spec.app.port, 3000))),
+      devPort: valueOr(adminConfig.devPort, 5173),
+      includeCustomActions: valueOr(adminConfig.includeCustomActions, true),
+      auth: {
+        tokenStorage: valueOr(adminConfig.auth && adminConfig.auth.tokenStorage, 'localStorage'),
+        tokenKey: valueOr(adminConfig.auth && adminConfig.auth.tokenKey, 'j2e-admin-token')
+      },
+      theme: {
+        brandColor: valueOr(adminConfig.theme && adminConfig.theme.brandColor, '#2563eb'),
+        mode: valueOr(adminConfig.theme && adminConfig.theme.mode, 'system')
+      },
+      entities: []
+    },
     sdk: {
       enabled: valueOr(sdkConfig.enabled, false),
       outputDir: valueOr(sdkConfig.outputDir, 'sdk'),
@@ -391,6 +416,58 @@ function normalizeSpec(inputSpec) {
         default: field.default,
         options: field.options || {}
       }))
+    };
+  });
+
+  const adminEntities = adminConfig.entities || {};
+  normalized.admin.entities = normalized.entities.map(entity => {
+    const configured = adminEntities[entity.name] || {};
+    const configuredFields = configured.fields || {};
+    const visibleFields = entity.fields.filter(field => !(configured.hiddenFields || []).includes(field.name));
+    const firstString = visibleFields.find(field => field.type === 'string');
+    const titleField = valueOr(configured.titleField, firstString ? firstString.name : (visibleFields[0] && visibleFields[0].name));
+
+    return {
+      name: entity.name,
+      route: entity.route,
+      label: valueOr(configured.label, humanize(entity.name)),
+      pluralLabel: valueOr(configured.pluralLabel, humanize(pluralize(entity.name))),
+      titleField,
+      listFields: valueOr(configured.listFields, visibleFields.slice(0, 5).map(field => field.name)),
+      filterFields: valueOr(configured.filterFields, entity.operations.list.query.filters),
+      hiddenFields: configured.hiddenFields || [],
+      readonlyFields: configured.readonlyFields || [],
+      pageSize: valueOr(
+        configured.pageSize,
+        entity.operations.list.query.pagination.enabled
+          ? entity.operations.list.query.pagination.defaultLimit
+          : 20
+      ),
+      create: valueOr(configured.create, entity.operations.create.enabled),
+      edit: valueOr(configured.edit, entity.operations.update.enabled),
+      delete: valueOr(configured.delete, entity.operations.delete.enabled),
+      fields: entity.fields.map(field => {
+        const fieldConfig = configuredFields[field.name] || {};
+        return {
+          name: field.name,
+          type: field.type,
+          ref: field.ref,
+          many: field.many,
+          required: Boolean(field.required),
+          enum: field.enum || [],
+          min: field.min,
+          max: field.max,
+          minLength: field.minLength,
+          maxLength: field.maxLength,
+          default: field.default,
+          label: valueOr(fieldConfig.label, humanize(field.name)),
+          help: valueOr(fieldConfig.help, ''),
+          placeholder: valueOr(fieldConfig.placeholder, ''),
+          widget: valueOr(fieldConfig.widget, 'auto'),
+          hidden: valueOr(fieldConfig.hidden, (configured.hiddenFields || []).includes(field.name)),
+          readonly: valueOr(fieldConfig.readonly, (configured.readonlyFields || []).includes(field.name))
+        };
+      })
     };
   });
 
