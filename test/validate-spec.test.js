@@ -444,3 +444,79 @@ test('validates GraphQL API target semantics', () => {
     }
   );
 });
+
+
+test('validates multi-strategy authentication semantics', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    app: {name: 'multi-auth'},
+    database: {type: 'mongodb'},
+    auth: {
+      enabled: true,
+      strategies: ['jwt', 'apiKey', 'session', 'oidc'],
+      jwt: {refresh: {enabled: true}},
+      apiKey: {keys: [{env: 'SERVICE_KEY', roles: ['admin']}]},
+      session: {secure: true, sameSite: 'none'},
+      local: {enabled: true},
+      oidc: {enabled: true, issuer: 'https://id.example.test'}
+    },
+    entities: {
+      Product: {
+        operations: {
+          list: {auth: {required: true, strategies: ['apiKey', 'oidc'], roles: ['admin']}}
+        },
+        fields: {name: {type: 'string'}}
+      }
+    }
+  }));
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'bad-auth'},
+      database: {type: 'mongodb'},
+      auth: {
+        enabled: true,
+        strategy: 'jwt',
+        strategies: ['apiKey'],
+        apiKey: {keys: []},
+        session: {secure: false, sameSite: 'none'},
+        local: {enabled: true},
+        oidc: {enabled: true}
+      },
+      entities: {
+        Product: {
+          operations: {
+            list: {auth: {strategies: ['session']}}
+          },
+          fields: {name: {type: 'string'}}
+        }
+      }
+    }),
+    error => {
+      assert.match(error.message, /auth\.strategy and auth\.strategies cannot both be configured/);
+      assert.match(error.message, /auth\.apiKey\.keys must contain at least one key/);
+      assert.match(error.message, /auth\.local\.enabled requires jwt or session/);
+      assert.match(error.message, /auth\.oidc\.issuer is required/);
+      assert.match(error.message, /sameSite "none" requires auth\.session\.secure true/);
+      assert.match(error.message, /references disabled auth strategy "session"/);
+      return true;
+    }
+  );
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      api: {graphql: {enabled: true, path: '/auth/login'}},
+      app: {name: 'auth-route-collision'},
+      database: {type: 'mongodb'},
+      auth: {
+        enabled: true,
+        strategies: ['jwt'],
+        local: {enabled: true, loginPath: '/auth/login'}
+      },
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    /auth\.local\.loginPath cannot be the same as api\.graphql\.path/
+  );
+});

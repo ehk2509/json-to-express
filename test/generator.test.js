@@ -309,7 +309,8 @@ test('generates JWT RBAC, production middleware, OpenAPI and environment guards'
 
   const routes = fs.readFileSync(path.join(output, 'src/routes/TeamRoutes.js'), 'utf8');
   assert.match(routes, /auth\.authenticate/);
-  assert.match(routes, /auth\.requireRoles\(\["admin"\]\)/);
+  assert.match(routes, /"roles":\["admin"\]/);
+  assert.match(routes, /"strategies":\["jwt"\]/);
   assert.match(routes, /validation\.body/);
 
   const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
@@ -338,8 +339,8 @@ test('generates JWT RBAC, production middleware, OpenAPI and environment guards'
   assert.ok(generatedPackage.dependencies.compression);
 
   const openapi = JSON.parse(fs.readFileSync(path.join(output, 'docs/openapi.json'), 'utf8'));
-  assert.equal(openapi.components.securitySchemes.bearerAuth.scheme, 'bearer');
-  assert.deepEqual(openapi.paths['/api/teams'].get.security, [{bearerAuth: []}]);
+  assert.equal(openapi.components.securitySchemes.jwtAuth.scheme, 'bearer');
+  assert.deepEqual(openapi.paths['/api/teams'].get.security, [{jwtAuth: []}]);
 });
 
 
@@ -1263,4 +1264,131 @@ test('generates GraphQL schema and resolvers from the same normalized IR', t => 
     encoding: 'utf8'
   });
   assert.equal(syntax.status, 0, syntax.stderr);
+});
+
+
+test('generates multi-strategy auth stores flows OpenAPI SDK and admin metadata', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-multi-auth-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const authSpec = {
+    specVersion: '1.0',
+    api: {rest: true, graphql: true},
+    app: {name: 'multi-auth-api'},
+    database: {type: 'postgresql'},
+    auth: {
+      enabled: true,
+      strategies: ['jwt', 'apiKey', 'session', 'oidc'],
+      jwt: {
+        secretEnv: 'AUTH_JWT_SECRET',
+        accessTtlSeconds: 600,
+        refresh: {enabled: true, ttlSeconds: 7200, returnToken: true}
+      },
+      apiKey: {
+        header: 'x-service-key',
+        keys: [{env: 'SERVICE_API_KEY', userId: 'service', roles: ['admin']}]
+      },
+      session: {cookieName: 'app_session', secure: true, sameSite: 'lax'},
+      local: {
+        enabled: true,
+        defaultRoles: ['member'],
+        passwordMinLength: 10,
+        passwordReset: {webhookUrlEnv: 'RESET_WEBHOOK_URL'}
+      },
+      oidc: {
+        enabled: true,
+        issuer: 'https://id.example.test',
+        clientIdEnv: 'OIDC_CLIENT_ID',
+        clientSecretEnv: 'OIDC_CLIENT_SECRET',
+        audience: 'api'
+      }
+    },
+    docs: {openapi: {enabled: true}},
+    sdk: {enabled: true, languages: ['javascript', 'typescript']},
+    admin: {enabled: true},
+    entities: {
+      Team: {
+        operations: {
+          list: {auth: {required: true, roles: ['admin'], strategies: ['apiKey', 'oidc']}}
+        },
+        fields: {name: {type: 'string', required: true}}
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(authSpec, output);
+  assert.ok(result.files.includes('src/middleware/auth.js'));
+  assert.ok(result.files.includes('src/config/auth-store.js'));
+  assert.ok(result.files.includes('src/routes/AuthRoutes.js'));
+
+  const auth = fs.readFileSync(path.join(output, 'src/middleware/auth.js'), 'utf8');
+  assert.match(auth, /crypto\.scryptSync/);
+  assert.match(auth, /timingSafeEqual/);
+  assert.match(auth, /strategy === "apiKey"/);
+  assert.match(auth, /strategy === "session"/);
+  assert.match(auth, /strategy === "oidc"/);
+  assert.match(auth, /rotateRefreshToken/);
+  assert.match(auth, /code_challenge_method/);
+  assert.match(auth, /createRemoteJWKSet/);
+
+  const authRoutes = fs.readFileSync(path.join(output, 'src/routes/AuthRoutes.js'), 'utf8');
+  assert.match(authRoutes, /\/auth\/register/);
+  assert.match(authRoutes, /\/auth\/login/);
+  assert.match(authRoutes, /\/auth\/refresh/);
+  assert.match(authRoutes, /\/auth\/forgot-password/);
+  assert.match(authRoutes, /\/auth\/reset-password/);
+  assert.match(authRoutes, /\/auth\/oidc\/login/);
+  assert.match(authRoutes, /\/auth\/oidc\/callback/);
+
+  const prisma = fs.readFileSync(path.join(output, 'prisma/schema.prisma'), 'utf8');
+  assert.match(prisma, /model J2EAuthUser/);
+  assert.match(prisma, /model J2EAuthToken/);
+  assert.match(prisma, /@@map\("_j2e_auth_users"\)/);
+  assert.match(prisma, /@@map\("_j2e_auth_tokens"\)/);
+
+  const routes = fs.readFileSync(path.join(output, 'src/routes/TeamRoutes.js'), 'utf8');
+  assert.match(routes, /"roles":\["admin"\]/);
+  assert.match(routes, /"strategies":\["apiKey","oidc"\]/);
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
+  assert.equal(openapi.components.securitySchemes.jwtAuth.type, 'http');
+  assert.equal(openapi.components.securitySchemes.apiKeyAuth.name, 'x-service-key');
+  assert.equal(openapi.components.securitySchemes.sessionAuth.in, 'cookie');
+  assert.equal(openapi.components.securitySchemes.oidcAuth.type, 'openIdConnect');
+  assert.deepEqual(openapi.paths['/api/teams'].get.security, [{apiKeyAuth: []}, {oidcAuth: []}]);
+  assert.ok(openapi.paths['/auth/login']);
+  assert.ok(openapi.paths['/auth/refresh']);
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /AUTH_JWT_SECRET=change-me/);
+  assert.match(env, /SERVICE_API_KEY=change-me/);
+  assert.match(env, /OIDC_CLIENT_ID=/);
+  assert.match(env, /OIDC_CLIENT_SECRET=/);
+  assert.match(env, /RESET_WEBHOOK_URL=/);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies.jsonwebtoken);
+  assert.ok(pkg.dependencies.jose);
+
+  const jsSdk = fs.readFileSync(path.join(output, 'sdk/javascript/index.js'), 'utf8');
+  assert.match(jsSdk, /getApiKey/);
+  assert.match(jsSdk, /x-service-key/);
+  assert.match(jsSdk, /credentials: options\.credentials/);
+
+  const tsSdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
+  assert.match(tsSdk, /apiKey\?: string/);
+  assert.match(tsSdk, /getApiKey\?:/);
+  assert.match(tsSdk, /credentials\?: RequestCredentials/);
+
+  const admin = fs.readFileSync(path.join(output, 'admin/src/config.js'), 'utf8');
+  assert.match(admin, /"jwtEnabled": true/);
+  assert.match(admin, /"sessionEnabled": true/);
+  assert.match(admin, /"header": "x-service-key"/);
+  assert.match(admin, /"loginPath": "\/auth\/login"/);
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
+  }
 });

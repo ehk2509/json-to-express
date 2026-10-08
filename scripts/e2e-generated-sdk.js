@@ -29,7 +29,7 @@ async function main() {
   await waitForHealth(baseUrl);
 
   const sdk = require(path.resolve(generatedRoot, 'sdk/javascript'));
-  const client = sdk.createClient({baseUrl});
+  const client = sdk.createClient({baseUrl, apiKey: process.env.E2E_API_KEY || 'ci-api-key'});
   const suffix = Date.now().toString(36);
 
   const category = await client.categories.create({name: 'SDK Category ' + suffix});

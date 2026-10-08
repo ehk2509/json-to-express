@@ -74,16 +74,17 @@ function normalizePaths(generation) {
   return {...DEFAULT_PATHS, ...((generation && generation.paths) || {})};
 }
 
-function normalizeAuthRule(value) {
-  if (value === false || value === undefined) return {required: false, roles: []};
-  if (value === true) return {required: true, roles: []};
+function normalizeAuthRule(value, defaultStrategies = []) {
+  if (value === false || value === undefined) return {required: false, roles: [], strategies: []};
+  if (value === true) return {required: true, roles: [], strategies: defaultStrategies};
   return {
     required: valueOr(value.required, true),
-    roles: value.roles || []
+    roles: value.roles || [],
+    strategies: value.strategies || defaultStrategies
   };
 }
 
-function normalizeOperation(name, value, idParam, authEnabled) {
+function normalizeOperation(name, value, idParam, authEnabled, authStrategies) {
   const defaults = JSON.parse(JSON.stringify(DEFAULT_OPERATIONS[name]));
   if (defaults.path.includes(':id') && idParam !== 'id') defaults.path = defaults.path.replace(':id', ':' + idParam);
 
@@ -102,7 +103,10 @@ function normalizeOperation(name, value, idParam, authEnabled) {
     };
   }
 
-  operation.auth = normalizeAuthRule(configured.auth === undefined ? (authEnabled ? true : false) : configured.auth);
+  operation.auth = normalizeAuthRule(
+    configured.auth === undefined ? (authEnabled ? true : false) : configured.auth,
+    authStrategies
+  );
   operation.populate = configured.populate || [];
   operation.validate = valueOr(configured.validate, true);
   operation.transaction = valueOr(configured.transaction, false);
@@ -129,6 +133,29 @@ function normalizeSpec(inputSpec) {
   const serverFile = path.posix.join(paths.source, 'server.js');
   const auth = spec.auth || {};
   const authEnabled = valueOr(auth.enabled, false);
+  const jwtConfig = auth.jwt || {};
+  const refreshConfig = jwtConfig.refresh || {};
+  const apiKeyConfig = auth.apiKey || {};
+  const sessionConfig = auth.session || {};
+  const localConfig = auth.local || {};
+  const passwordResetConfig = localConfig.passwordReset || {};
+  const oidcConfig = auth.oidc || {};
+  const inferredStrategies = [];
+  if (apiKeyConfig.enabled === true) inferredStrategies.push('apiKey');
+  if (sessionConfig.enabled === true) inferredStrategies.push('session');
+  if (oidcConfig.enabled === true) inferredStrategies.push('oidc');
+  if (jwtConfig.enabled === true) inferredStrategies.push('jwt');
+  const authStrategies = authEnabled
+    ? (auth.strategies || (auth.strategy ? [auth.strategy] : (inferredStrategies.length ? inferredStrategies : ['jwt'])))
+    : [];
+  const jwtEnabled = authStrategies.includes('jwt');
+  const apiKeyEnabled = authStrategies.includes('apiKey');
+  const sessionEnabled = authStrategies.includes('session');
+  const oidcEnabled = authStrategies.includes('oidc') || oidcConfig.enabled === true;
+  const localEnabled = authEnabled && localConfig.enabled === true;
+  const refreshEnabled = authEnabled && jwtEnabled && valueOr(refreshConfig.enabled, false);
+  const authStoreEnabled = localEnabled || refreshEnabled || sessionEnabled || oidcEnabled;
+  const authRoutesEnabled = localEnabled || refreshEnabled || sessionEnabled || oidcEnabled;
   const apiConfig = spec.api || {};
   const rawGraphql = apiConfig.graphql;
   const graphqlConfig = typeof rawGraphql === 'boolean' ? {enabled: rawGraphql} : (rawGraphql || {});
@@ -152,7 +179,8 @@ function normalizeSpec(inputSpec) {
     express: '^4.21.1',
     ...(isMongo ? {mongoose: '^8.8.0'} : {}),
     ...(isPostgres ? {'@prisma/client': '^6.16.2'} : {}),
-    ...(authEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
+    ...(jwtEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
+    ...(oidcEnabled ? {jose: '^5.9.6'} : {}),
     ...(graphqlEnabled ? {
       graphql: '^16.10.0',
       '@graphql-tools/schema': '^10.0.21',
@@ -231,11 +259,74 @@ function normalizeSpec(inputSpec) {
     },
     auth: {
       enabled: authEnabled,
-      strategy: 'jwt',
-      secretEnv: valueOr(auth.secretEnv, 'JWT_SECRET'),
-      algorithms: auth.algorithms || ['HS256'],
-      userClaim: valueOr(auth.userClaim, 'sub'),
-      rolesClaim: valueOr(auth.rolesClaim, 'roles')
+      strategies: authStrategies,
+      basePath: valueOr(auth.basePath, '/auth'),
+      storeEnabled: authStoreEnabled,
+      routesEnabled: authRoutesEnabled,
+      jwt: {
+        enabled: jwtEnabled,
+        secretEnv: valueOr(jwtConfig.secretEnv, valueOr(auth.secretEnv, 'JWT_SECRET')),
+        algorithms: jwtConfig.algorithms || auth.algorithms || ['HS256'],
+        userClaim: valueOr(jwtConfig.userClaim, valueOr(auth.userClaim, 'sub')),
+        rolesClaim: valueOr(jwtConfig.rolesClaim, valueOr(auth.rolesClaim, 'roles')),
+        issuer: jwtConfig.issuer,
+        audience: jwtConfig.audience,
+        accessTtlSeconds: valueOr(jwtConfig.accessTtlSeconds, 900),
+        refresh: {
+          enabled: refreshEnabled,
+          path: valueOr(refreshConfig.path, '/auth/refresh'),
+          ttlSeconds: valueOr(refreshConfig.ttlSeconds, 2592000),
+          cookieName: valueOr(refreshConfig.cookieName, 'j2e_refresh'),
+          returnToken: valueOr(refreshConfig.returnToken, false)
+        }
+      },
+      apiKey: {
+        enabled: apiKeyEnabled,
+        header: valueOr(apiKeyConfig.header, 'x-api-key').toLowerCase(),
+        keys: (apiKeyConfig.keys || []).map((key, index) => ({
+          env: key.env,
+          userId: valueOr(key.userId, 'api-key-' + (index + 1)),
+          roles: key.roles || []
+        }))
+      },
+      session: {
+        enabled: sessionEnabled,
+        cookieName: valueOr(sessionConfig.cookieName, 'j2e_session'),
+        ttlSeconds: valueOr(sessionConfig.ttlSeconds, 86400),
+        secure: valueOr(sessionConfig.secure, true),
+        sameSite: valueOr(sessionConfig.sameSite, 'lax'),
+        path: valueOr(sessionConfig.path, '/')
+      },
+      local: {
+        enabled: localEnabled,
+        allowRegistration: valueOr(localConfig.allowRegistration, true),
+        defaultRoles: localConfig.defaultRoles || ['user'],
+        passwordMinLength: valueOr(localConfig.passwordMinLength, 12),
+        registerPath: valueOr(localConfig.registerPath, '/auth/register'),
+        loginPath: valueOr(localConfig.loginPath, '/auth/login'),
+        logoutPath: valueOr(localConfig.logoutPath, '/auth/logout'),
+        forgotPasswordPath: valueOr(localConfig.forgotPasswordPath, '/auth/forgot-password'),
+        resetPasswordPath: valueOr(localConfig.resetPasswordPath, '/auth/reset-password'),
+        passwordReset: {
+          ttlSeconds: valueOr(passwordResetConfig.ttlSeconds, 3600),
+          webhookUrlEnv: passwordResetConfig.webhookUrlEnv,
+          resetUrl: passwordResetConfig.resetUrl,
+          exposeToken: valueOr(passwordResetConfig.exposeToken, false)
+        }
+      },
+      oidc: {
+        enabled: oidcEnabled,
+        issuer: oidcConfig.issuer,
+        audience: oidcConfig.audience,
+        clientIdEnv: valueOr(oidcConfig.clientIdEnv, 'OIDC_CLIENT_ID'),
+        clientSecretEnv: oidcConfig.clientSecretEnv,
+        rolesClaim: valueOr(oidcConfig.rolesClaim, 'roles'),
+        scopes: oidcConfig.scopes || ['openid', 'profile', 'email'],
+        loginPath: valueOr(oidcConfig.loginPath, '/auth/oidc/login'),
+        callbackPath: valueOr(oidcConfig.callbackPath, '/auth/oidc/callback'),
+        redirectUri: oidcConfig.redirectUri,
+        successRedirect: oidcConfig.successRedirect
+      }
     },
     environment: spec.environment || {},
     outbox: {
@@ -358,7 +449,10 @@ function normalizeSpec(inputSpec) {
       path: endpoint.path,
       workflow: endpoint.workflow,
       status: valueOr(endpoint.status, 200),
-      auth: normalizeAuthRule(endpoint.auth === undefined ? (authEnabled ? true : false) : endpoint.auth)
+      auth: normalizeAuthRule(
+        endpoint.auth === undefined ? (authEnabled ? true : false) : endpoint.auth,
+        authStrategies
+      )
     })),
     events: Object.fromEntries(Object.entries(spec.events || {}).map(([name, event]) => [
       name,
@@ -391,7 +485,8 @@ function normalizeSpec(inputSpec) {
         operationName,
         entity.operations && entity.operations[operationName],
         idParam,
-        authEnabled
+        authEnabled,
+        authStrategies
       );
     }
 

@@ -1,0 +1,113 @@
+'use strict';
+
+const {filePaths, js, relativeRequire} = require('./utils');
+
+function mongoSource() {
+  return [
+    "'use strict';", '',
+    "const mongoose = require('mongoose');", '',
+    'const UserSchema = new mongoose.Schema({',
+    '  email: {type: String, required: true, unique: true, lowercase: true, trim: true},',
+    '  passwordHash: {type: String, required: true},',
+    '  roles: {type: [String], default: []}',
+    '}, {timestamps: true, versionKey: false});',
+    '',
+    'const TokenSchema = new mongoose.Schema({',
+    '  kind: {type: String, required: true, index: true},',
+    '  tokenHash: {type: String, required: true, unique: true, index: true},',
+    '  userId: {type: String, required: true, index: true},',
+    '  roles: {type: [String], default: []},',
+    '  expiresAt: {type: Date, required: true, index: true},',
+    '  revokedAt: {type: Date, default: null, index: true},',
+    '  metadata: {type: mongoose.Schema.Types.Mixed, default: null}',
+    '}, {timestamps: true, versionKey: false});',
+    'TokenSchema.index({kind: 1, userId: 1, revokedAt: 1});',
+    '',
+    "const AuthUser = mongoose.models.J2EAuthUser || mongoose.model('J2EAuthUser', UserSchema);",
+    "const AuthToken = mongoose.models.J2EAuthToken || mongoose.model('J2EAuthToken', TokenSchema);",
+    '',
+    'async function createUser({email, passwordHash, roles}) {',
+    '  return AuthUser.create({email: String(email).toLowerCase(), passwordHash, roles});',
+    '}',
+    'async function findUserByEmail(email) {',
+    '  return AuthUser.findOne({email: String(email).toLowerCase()}).lean();',
+    '}',
+    'async function updateUserPassword(userId, passwordHash) {',
+    '  return AuthUser.findByIdAndUpdate(userId, {$set: {passwordHash}}, {new: true}).lean();',
+    '}',
+    'async function createToken(record) {',
+    '  return AuthToken.create(record);',
+    '}',
+    'async function findToken(kind, tokenHash) {',
+    '  return AuthToken.findOne({kind, tokenHash, revokedAt: null, expiresAt: {$gt: new Date()}}).lean();',
+    '}',
+    'async function consumeToken(kind, tokenHash) {',
+    '  return AuthToken.findOneAndUpdate(',
+    '    {kind, tokenHash, revokedAt: null, expiresAt: {$gt: new Date()}},',
+    '    {$set: {revokedAt: new Date()}},',
+    '    {new: false}',
+    '  ).lean();',
+    '}',
+    'async function revokeToken(kind, tokenHash) {',
+    '  const result = await AuthToken.updateOne({kind, tokenHash, revokedAt: null}, {$set: {revokedAt: new Date()}});',
+    '  return result.modifiedCount || 0;',
+    '}',
+    'async function revokeUserTokens(kinds, userId) {',
+    '  const result = await AuthToken.updateMany({kind: {$in: kinds}, userId, revokedAt: null}, {$set: {revokedAt: new Date()}});',
+    '  return result.modifiedCount || 0;',
+    '}',
+    '',
+    'module.exports = {createUser, findUserByEmail, updateUserPassword, createToken, findToken, consumeToken, revokeToken, revokeUserTokens};',
+    ''
+  ].join('\n');
+}
+
+function postgresSource(spec) {
+  const paths = filePaths(spec);
+  return [
+    "'use strict';", '',
+    'const connectDatabase = require(' + js(relativeRequire(paths.authStore, paths.database)) + ');',
+    'const prisma = connectDatabase.client;',
+    '',
+    'async function createUser({email, passwordHash, roles}) {',
+    '  return prisma.j2EAuthUser.create({data: {email: String(email).toLowerCase(), passwordHash, roles}});',
+    '}',
+    'async function findUserByEmail(email) {',
+    '  return prisma.j2EAuthUser.findUnique({where: {email: String(email).toLowerCase()}});',
+    '}',
+    'async function updateUserPassword(userId, passwordHash) {',
+    '  return prisma.j2EAuthUser.update({where: {id: userId}, data: {passwordHash}});',
+    '}',
+    'async function createToken(record) {',
+    '  return prisma.j2EAuthToken.create({data: {...record, metadata: record.metadata === undefined ? null : record.metadata}});',
+    '}',
+    'async function findToken(kind, tokenHash) {',
+    '  return prisma.j2EAuthToken.findFirst({where: {kind, tokenHash, revokedAt: null, expiresAt: {gt: new Date()}}});',
+    '}',
+    'async function consumeToken(kind, tokenHash) {',
+    '  const record = await findToken(kind, tokenHash);',
+    '  if (!record) return null;',
+    '  const result = await prisma.j2EAuthToken.updateMany({',
+    '    where: {id: record.id, revokedAt: null},',
+    '    data: {revokedAt: new Date()}',
+    '  });',
+    '  return result.count === 1 ? record : null;',
+    '}',
+    'async function revokeToken(kind, tokenHash) {',
+    '  const result = await prisma.j2EAuthToken.updateMany({where: {kind, tokenHash, revokedAt: null}, data: {revokedAt: new Date()}});',
+    '  return result.count || 0;',
+    '}',
+    'async function revokeUserTokens(kinds, userId) {',
+    '  const result = await prisma.j2EAuthToken.updateMany({where: {kind: {in: kinds}, userId, revokedAt: null}, data: {revokedAt: new Date()}});',
+    '  return result.count || 0;',
+    '}',
+    '',
+    'module.exports = {createUser, findUserByEmail, updateUserPassword, createToken, findToken, consumeToken, revokeToken, revokeUserTokens};',
+    ''
+  ].join('\n');
+}
+
+module.exports = function authStoreSource(spec) {
+  if (!spec.auth.storeEnabled) return null;
+  return spec.database.type === 'postgresql' ? postgresSource(spec) : mongoSource(spec);
+};

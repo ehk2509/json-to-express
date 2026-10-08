@@ -32,7 +32,7 @@ async function main() {
   const configModule = await import(pathToFileURL(path.resolve(generatedRoot, 'admin/src/config.js')).href);
   const apiModule = await import(pathToFileURL(path.resolve(generatedRoot, 'admin/src/api.js')).href);
   const config = configModule.config;
-  const api = apiModule.createApi(config, {baseUrl});
+  const api = apiModule.createApi(config, {baseUrl, apiKey: process.env.E2E_API_KEY || 'ci-api-key'});
 
   assert.ok(config.title);
   assert.equal(config.idField, idField);

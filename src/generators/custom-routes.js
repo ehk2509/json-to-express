@@ -17,8 +17,7 @@ module.exports = function customRoutesSource(spec) {
   for (const endpoint of spec.endpoints) {
     const middleware = [];
     if (endpoint.auth.required) {
-      middleware.push('auth.authenticate');
-      if (endpoint.auth.roles.length) middleware.push('auth.requireRoles(' + js(endpoint.auth.roles) + ')');
+      middleware.push('auth.authenticate(' + js(endpoint.auth) + ')');
     }
     const handler = [
       'async function(req, res, next) {',

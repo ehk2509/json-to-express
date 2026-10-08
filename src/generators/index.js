@@ -14,6 +14,8 @@ const packageSource = require('./package');
 const readmeSource = require('./readme');
 const healthTestSource = require('./health-generator');
 const authSource = require('./auth');
+const authStoreSource = require('./auth-store');
+const authRoutesSource = require('./auth-routes');
 const validationSource = require('./validation');
 const environmentSource = require('./environment');
 const openapiSource = require('./openapi');
@@ -38,7 +40,15 @@ function envExample(spec) {
     [spec.database.uriEnv]: spec.database.defaultUri
   };
 
-  if (spec.auth.enabled) values[spec.auth.secretEnv] = 'change-me';
+  if (spec.auth.jwt.enabled) values[spec.auth.jwt.secretEnv] = 'change-me';
+  if (spec.auth.apiKey.enabled) {
+    for (const key of spec.auth.apiKey.keys) values[key.env] = 'change-me';
+  }
+  if (spec.auth.oidc.enabled) {
+    values[spec.auth.oidc.clientIdEnv] = '';
+    if (spec.auth.oidc.clientSecretEnv) values[spec.auth.oidc.clientSecretEnv] = '';
+  }
+  if (spec.auth.local.passwordReset.webhookUrlEnv) values[spec.auth.local.passwordReset.webhookUrlEnv] = '';
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) {
       if (!(webhook.urlEnv in values)) values[webhook.urlEnv] = '';
@@ -79,6 +89,10 @@ function buildFiles(spec) {
 
   const auth = authSource(spec);
   if (auth) files.set(paths.auth, auth);
+  const authStore = authStoreSource(spec);
+  if (authStore) files.set(paths.authStore, authStore);
+  const authRoutes = authRoutesSource(spec);
+  if (authRoutes) files.set(paths.authRoutes, authRoutes);
 
   if (spec.app.health.enabled) files.set(paths.test, healthTestSource(spec));
   files.set(path.posix.join(spec.generation.paths.tests, 'contract.test.js'), contractTestSource(spec));

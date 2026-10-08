@@ -34,18 +34,47 @@ export function createApi(config, options = {}) {
   const fetchImpl = options.fetch || globalThis.fetch;
   if (typeof fetchImpl !== 'function') throw new Error('A fetch implementation is required');
 
+  function storage() {
+    if (typeof window === 'undefined') return null;
+    return window[config.auth.tokenStorage] || null;
+  }
+
   function token() {
     if (typeof options.getToken === 'function') return options.getToken();
     if (options.token !== undefined) return options.token;
-    if (!config.authEnabled || typeof window === 'undefined') return undefined;
-    const storage = window[config.auth.tokenStorage];
-    return storage ? storage.getItem(config.auth.tokenKey) || undefined : undefined;
+    if (!config.authEnabled) return undefined;
+    const target = storage();
+    return target ? target.getItem(config.auth.tokenKey) || undefined : undefined;
+  }
+
+  function apiKey() {
+    if (typeof options.getApiKey === 'function') return options.getApiKey();
+    if (options.apiKey !== undefined) return options.apiKey;
+    if (!config.authEnabled) return undefined;
+    const target = storage();
+    return target ? target.getItem(config.auth.tokenKey + '-api-key') || undefined : undefined;
+  }
+
+  function persistToken(value) {
+    const target = storage();
+    if (!target) return;
+    if (value) target.setItem(config.auth.tokenKey, value);
+    else target.removeItem(config.auth.tokenKey);
+  }
+
+  function persistApiKey(value) {
+    const target = storage();
+    if (!target) return;
+    if (value) target.setItem(config.auth.tokenKey + '-api-key', value);
+    else target.removeItem(config.auth.tokenKey + '-api-key');
   }
 
   async function request(method, route, requestOptions = {}) {
     const headers = {...(requestOptions.headers || {})};
     const authToken = await token();
     if (authToken) headers.authorization = 'Bearer ' + authToken;
+    const authApiKey = await apiKey();
+    if (authApiKey && config.authBackend.apiKey.enabled) headers[config.authBackend.apiKey.header] = authApiKey;
 
     let body;
     if (requestOptions.body !== undefined && method !== 'GET' && method !== 'HEAD') {
@@ -57,7 +86,7 @@ export function createApi(config, options = {}) {
 
     const response = await fetchImpl(
       appendQuery(baseUrl + buildPath(route, requestOptions.params), requestOptions.query),
-      {method, headers, body, signal: requestOptions.signal}
+      {method, headers, body, signal: requestOptions.signal, credentials: 'include'}
     );
 
     if (response.status === 204) {
@@ -125,5 +154,23 @@ export function createApi(config, options = {}) {
     });
   }
 
-  return {request, entity, action};
+  async function login(email, password) {
+    if (!config.authBackend.local.enabled) throw new Error('Local login is not enabled');
+    const result = await request('POST', config.authBackend.local.loginPath, {body: {email, password}});
+    if (result && result.accessToken) persistToken(result.accessToken);
+    return result;
+  }
+
+  async function logout() {
+    if (config.authBackend.local.logoutPath) {
+      try { await request('POST', config.authBackend.local.logoutPath); } catch {}
+    }
+    persistToken('');
+    persistApiKey('');
+  }
+
+  return {
+    request, entity, action,
+    auth: {login, logout, persistToken, persistApiKey, token, apiKey}
+  };
 }

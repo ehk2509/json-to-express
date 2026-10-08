@@ -7,7 +7,7 @@ The project is JSON-first: runtime behavior, project layout, routes, persistence
 Two persistence targets now share the same normalized application model:
 
 - MongoDB + Mongoose — full v1 target, including workflows/outbox/jobs
-- PostgreSQL + Prisma — CRUD/relations/query/auth/OpenAPI target with a dedicated real-Postgres E2E
+- PostgreSQL + Prisma — full application target with CRUD, relations, workflows/outbox/jobs, auth, REST/GraphQL, SDK/admin, and a dedicated real-Postgres E2E
 
 ## What is generated
 
@@ -286,17 +286,11 @@ The Prisma CRUD target supports:
 - OpenAPI UUID contracts
 - Prisma unique/FK/not-found error mapping
 
-### Current PostgreSQL boundary
+### PostgreSQL-specific boundaries
 
-The PostgreSQL target intentionally rejects features whose runtime is still Mongo-specific instead of emitting partially valid code:
+PostgreSQL/Prisma now covers the same major application features as MongoDB/Mongoose, including workflows, durable outbox/jobs, many-to-many relations, multi-strategy auth, REST, and GraphQL.
 
-- declarative workflows/custom workflow endpoints
-- events and durable outbox
-- background jobs
-- many-reference relations
-- Mongoose schemaOptions and field options
-
-These are target-expansion gaps, not silent fallbacks. The validator reports them before generation.
+Remaining differences are ORM-specific options: Mongoose-only `schemaOptions` and raw field `options` are rejected for PostgreSQL instead of being silently ignored.
 
 ## Entities and Mongoose
 
@@ -590,22 +584,72 @@ Entities can define compound or advanced Mongoose indexes:
 
 ### Authentication and RBAC
 
-JWT authentication is generated from JSON:
+Authentication can use one or several strategies from the same JSON contract:
 
 ~~~json
 {
   "auth": {
     "enabled": true,
-    "strategy": "jwt",
-    "secretEnv": "JWT_SECRET",
-    "algorithms": ["HS256"],
-    "userClaim": "sub",
-    "rolesClaim": "roles"
+    "strategies": ["jwt", "apiKey", "session", "oidc"],
+    "jwt": {
+      "secretEnv": "JWT_SECRET",
+      "accessTtlSeconds": 900,
+      "refresh": {
+        "enabled": true,
+        "ttlSeconds": 2592000
+      }
+    },
+    "apiKey": {
+      "header": "x-api-key",
+      "keys": [
+        {
+          "env": "INTERNAL_API_KEY",
+          "userId": "internal-service",
+          "roles": ["admin"]
+        }
+      ]
+    },
+    "session": {
+      "cookieName": "j2e_session",
+      "ttlSeconds": 86400,
+      "secure": true,
+      "sameSite": "lax"
+    },
+    "local": {
+      "enabled": true,
+      "allowRegistration": true,
+      "defaultRoles": ["user"],
+      "passwordMinLength": 12
+    },
+    "oidc": {
+      "enabled": true,
+      "issuer": "https://id.example.com",
+      "clientIdEnv": "OIDC_CLIENT_ID",
+      "scopes": ["openid", "profile", "email"]
+    }
   }
 }
 ~~~
 
-Each operation can be public, authenticated, or role protected:
+The legacy form with `"strategy": "jwt"` remains supported.
+
+Generated authentication can include:
+
+- JWT bearer verification and short-lived access-token issuance
+- opaque refresh-token rotation with hashed durable storage
+- API-key authentication with timing-safe comparison
+- durable HttpOnly cookie sessions
+- local email/password registration and login using scrypt password hashing
+- logout and stateful token/session revocation
+- forgot/reset-password with one-time hashed reset tokens
+- optional password-reset webhook delivery
+- OIDC discovery and remote JWKS verification
+- OIDC Authorization Code + PKCE login/callback flow
+- shared RBAC for REST, custom workflow endpoints, and GraphQL
+
+MongoDB generates internal Mongoose auth-user/token models. PostgreSQL generates equivalent Prisma models. Stateful session, refresh, reset, and OIDC-state tokens are persisted only as SHA-256 hashes.
+
+Each operation can restrict both roles and accepted strategies:
 
 ~~~json
 {
@@ -613,14 +657,17 @@ Each operation can be public, authenticated, or role protected:
     "delete": {
       "auth": {
         "required": true,
-        "roles": ["admin"]
+        "roles": ["admin"],
+        "strategies": ["jwt", "session"]
       }
     }
   }
 }
 ~~~
 
-The generated router wires authentication and authorization before controller execution.
+When `strategies` is omitted from an operation, all globally enabled strategies are accepted. Authentication and role checks happen before controller or workflow execution.
+
+Local auth adds configurable endpoints for register, login, logout, refresh, forgot-password, reset-password, OIDC login, and OIDC callback. OpenAPI documents these endpoints and emits JWT, API-key, session-cookie, and OpenID Connect security schemes.
 
 ### Request validation
 
@@ -645,7 +692,7 @@ OpenAPI 3.1 is generated from the same normalized application model as the Expre
 }
 ~~~
 
-Entity schemas, paths, request bodies, path/query parameters, status codes, and JWT security requirements therefore derive from the same IR as the runtime application.
+Entity schemas, paths, request bodies, path/query parameters, status codes, authentication endpoints, and enabled JWT/API-key/session/OIDC security requirements therefore derive from the same IR as the runtime application.
 
 ### Advanced filters
 
@@ -711,7 +758,7 @@ Application-specific variables can be declared and validated at startup:
 }
 ~~~
 
-Database and JWT-secret variables are automatically included in the generated environment guard.
+Database URLs plus enabled authentication secrets—JWT secrets, API-key values, OIDC client credentials, and optional reset-webhook URLs—are automatically included in the generated environment guard.
 
 ### Production middleware
 
@@ -826,7 +873,7 @@ Webhook URLs are read from environment variables instead of being stored in the 
 
 failure can be fail or continue. fail propagates delivery failure through the workflow request; continue logs the delivery error and lets the request complete.
 
-Custom endpoint auth uses the same JWT/RBAC rules as CRUD operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
+Custom endpoint auth uses the same multi-strategy/RBAC rules as CRUD and GraphQL operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
 
 ## Durable outbox and background jobs
 
@@ -984,7 +1031,7 @@ deploy/k8s/
   worker-deployment.yaml   # only when a separate worker exists
 ~~~
 
-ConfigMap contains non-secret defaults. Database URLs, JWT secrets, webhook URLs, and required environment variables are represented only in secret.example.yaml with <set-me> placeholders.
+ConfigMap contains non-secret defaults. Database URLs, JWT/API-key/OIDC secrets, webhook URLs, and required environment variables are represented only in secret.example.yaml with <set-me> placeholders.
 
 The generated Deployment includes readiness/liveness probes when the health endpoint is enabled, non-root security settings, resource requests/limits, configurable replicas, and the configured container image.
 
@@ -1022,7 +1069,7 @@ The generated GraphQL schema includes:
 - a JSON scalar for generic workflow params/query/body/results
 - standard GraphQL introspection
 
-GraphQL is not generated as a second persistence layer. Its CRUD resolvers invoke the same generated controllers used by REST and reuse the same validation/auth primitives. That keeps soft delete, hooks, transactions, relation delete policies, database errors, JWT/RBAC, workflows, outbox events, and background jobs aligned.
+GraphQL is not generated as a second persistence layer. Its CRUD resolvers invoke the same generated controllers used by REST and reuse the same validation/auth primitives. That keeps soft delete, hooks, transactions, relation delete policies, database errors, multi-strategy auth/RBAC, workflows, outbox events, and background jobs aligned.
 
 Relations are resolved through DataLoader-backed entity caches. PostgreSQL many-to-many fields also get relation loaders so a GraphQL relation can resolve even when the corresponding REST operation did not request a Prisma include.
 
@@ -1083,7 +1130,7 @@ const product = await client.products.create({
 });
 ~~~
 
-Authentication supports either a static token or an async getToken callback. Per-request headers and AbortSignal are supported on every generated method.
+Authentication supports bearer token/getToken, API key/getApiKey, and browser cookie sessions through the fetch credentials option. Per-request headers and AbortSignal are supported on every generated method.
 
 HTTP failures throw ApiError with:
 
@@ -1208,8 +1255,12 @@ The generated UI includes:
 - create/edit/delete capability awareness
 - delete confirmation
 - structured API errors and notifications
-- JWT bearer-token gate when API auth is enabled
-- localStorage or sessionStorage token persistence
+- local email/password login when generated local auth is enabled
+- API-key login when enabled
+- bearer JWT/OIDC token entry
+- cookie-session requests with credentials included
+- OIDC SSO redirect when enabled
+- localStorage or sessionStorage credential persistence
 - row-bound custom workflow actions
 - global custom workflow actions
 - JSON body/query editor for generic actions
@@ -1247,7 +1298,7 @@ Unit/integration tests cover:
 - CRUD method/path/status customization
 - filtering, sorting, projection, pagination, and allowlisted operators
 - reference relationships, populate behavior, delete policies, and indexes
-- JWT authentication and role authorization generation
+- JWT, API-key, durable session, local login/refresh/reset, OIDC, and RBAC generation
 - generated request validation and OpenAPI
 - soft delete, auditing, and transaction generation
 - custom endpoints, declarative workflows, events, and webhooks
@@ -1331,7 +1382,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next expansion layer is additional server targets such as Fastify, plus deeper authentication strategies and production observability.
+The next expansion layer is additional server targets such as Fastify plus deeper production observability and operational telemetry.
 
 ## License
 

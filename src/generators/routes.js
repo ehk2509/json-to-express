@@ -12,8 +12,7 @@ function routesSource(entity, spec) {
     if (!operation.enabled) continue;
     const middleware = [];
     if (operation.auth && operation.auth.required) {
-      middleware.push('auth.authenticate');
-      if (operation.auth.roles.length) middleware.push('auth.requireRoles(' + js(operation.auth.roles) + ')');
+      middleware.push('auth.authenticate(' + js(operation.auth) + ')');
     }
     if (operation.validate) {
       if (name === 'create') middleware.push('validation.body(' + js(entity.name) + ', false)');

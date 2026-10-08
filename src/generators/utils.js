@@ -33,6 +33,8 @@ function filePaths(spec, entityName) {
     database: path.posix.join(source, p.config, 'database.js'),
     errorHandler: path.posix.join(source, p.middleware, 'error-handler.js'),
     auth: path.posix.join(source, p.middleware, 'auth.js'),
+    authStore: path.posix.join(source, p.config, 'auth-store.js'),
+    authRoutes: path.posix.join(source, p.routes, 'AuthRoutes.js'),
     validation: path.posix.join(source, p.middleware, 'validation.js'),
     environment: path.posix.join(source, p.config, 'environment.js'),
     workflowEngine: path.posix.join(source, p.workflows, 'engine.js'),

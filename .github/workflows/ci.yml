@@ -23,6 +23,11 @@ jobs:
 
   generated-app-e2e:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters
+      E2E_API_KEY: ci-api-key
+      E2E_VIEWER_API_KEY: ci-viewer-key
+      OIDC_CLIENT_ID: j2e-e2e-client
     services:
       mongodb:
         image: mongo:7
@@ -51,7 +56,11 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3456/health > /dev/null; then break; fi
             sleep 2
           done
-          curl --fail http://127.0.0.1:3456/health
+          if ! curl --fail http://127.0.0.1:3456/health; then
+            docker compose logs --no-color
+            docker compose down -v
+            exit 1
+          fi
           docker compose down -v
       - name: Install generated application
         working-directory: .tmp/e2e-app
@@ -105,6 +114,11 @@ jobs:
 
   generated-app-postgres-e2e:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters
+      E2E_API_KEY: ci-api-key
+      E2E_VIEWER_API_KEY: ci-viewer-key
+      OIDC_CLIENT_ID: j2e-e2e-client
     services:
       postgres:
         image: postgres:16
@@ -140,7 +154,11 @@ jobs:
             if curl --fail --silent http://127.0.0.1:3457/health > /dev/null; then break; fi
             sleep 2
           done
-          curl --fail http://127.0.0.1:3457/health
+          if ! curl --fail http://127.0.0.1:3457/health; then
+            docker compose logs --no-color
+            docker compose down -v
+            exit 1
+          fi
           docker compose down -v
       - name: Install generated application
         working-directory: .tmp/e2e-postgres

@@ -385,7 +385,30 @@
           "default": false
         },
         "strategy": {
-          "const": "jwt"
+          "enum": [
+            "jwt",
+            "apiKey",
+            "session",
+            "oidc"
+          ]
+        },
+        "strategies": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "jwt",
+              "apiKey",
+              "session",
+              "oidc"
+            ]
+          }
+        },
+        "basePath": {
+          "type": "string",
+          "pattern": "^/",
+          "default": "/auth"
         },
         "secretEnv": {
           "type": "string",
@@ -394,6 +417,7 @@
         },
         "algorithms": {
           "type": "array",
+          "minItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
@@ -411,6 +435,302 @@
           "type": "string",
           "minLength": 1,
           "default": "roles"
+        },
+        "jwt": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "secretEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "JWT_SECRET"
+            },
+            "algorithms": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "HS256"
+              ]
+            },
+            "userClaim": {
+              "type": "string",
+              "minLength": 1,
+              "default": "sub"
+            },
+            "rolesClaim": {
+              "type": "string",
+              "minLength": 1,
+              "default": "roles"
+            },
+            "issuer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "audience": {
+              "type": "string",
+              "minLength": 1
+            },
+            "accessTtlSeconds": {
+              "type": "integer",
+              "minimum": 60,
+              "default": 900
+            },
+            "refresh": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/",
+                  "default": "/auth/refresh"
+                },
+                "ttlSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "default": 2592000
+                },
+                "cookieName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "j2e_refresh"
+                },
+                "returnToken": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        "apiKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "header": {
+              "type": "string",
+              "minLength": 1,
+              "default": "x-api-key"
+            },
+            "keys": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "env"
+                ],
+                "properties": {
+                  "env": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]*$"
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "cookieName": {
+              "type": "string",
+              "minLength": 1,
+              "default": "j2e_session"
+            },
+            "ttlSeconds": {
+              "type": "integer",
+              "minimum": 300,
+              "default": 86400
+            },
+            "secure": {
+              "type": "boolean",
+              "default": true
+            },
+            "sameSite": {
+              "enum": [
+                "strict",
+                "lax",
+                "none"
+              ],
+              "default": "lax"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "default": "/"
+            }
+          }
+        },
+        "local": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "allowRegistration": {
+              "type": "boolean",
+              "default": true
+            },
+            "defaultRoles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "user"
+              ]
+            },
+            "passwordMinLength": {
+              "type": "integer",
+              "minimum": 8,
+              "default": 12
+            },
+            "registerPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/register"
+            },
+            "loginPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/login"
+            },
+            "logoutPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/logout"
+            },
+            "forgotPasswordPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/forgot-password"
+            },
+            "resetPasswordPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/reset-password"
+            },
+            "passwordReset": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ttlSeconds": {
+                  "type": "integer",
+                  "minimum": 300,
+                  "default": 3600
+                },
+                "webhookUrlEnv": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]*$"
+                },
+                "resetUrl": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "exposeToken": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "issuer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "audience": {
+              "type": "string",
+              "minLength": 1
+            },
+            "clientIdEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "OIDC_CLIENT_ID"
+            },
+            "clientSecretEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "rolesClaim": {
+              "type": "string",
+              "minLength": 1,
+              "default": "roles"
+            },
+            "scopes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "openid",
+                "profile",
+                "email"
+              ]
+            },
+            "loginPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/oidc/login"
+            },
+            "callbackPath": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/auth/oidc/callback"
+            },
+            "redirectUri": {
+              "type": "string",
+              "minLength": 1
+            },
+            "successRedirect": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },
@@ -1321,6 +1641,19 @@
               "items": {
                 "type": "string",
                 "minLength": 1
+              }
+            },
+            "strategies": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "jwt",
+                  "apiKey",
+                  "session",
+                  "oidc"
+                ]
               }
             }
           }
