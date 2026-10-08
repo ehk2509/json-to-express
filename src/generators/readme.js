@@ -119,6 +119,24 @@ module.exports = function readmeSource(spec) {
       ] : []),
       'REST and GraphQL apply the same per-operation strategy allowlists and RBAC rules.', ''
     ] : []),
+    ...(spec.storage.enabled ? [
+      '## File uploads and object storage', '',
+      'Storage provider: ' + spec.storage.provider + '.', '',
+      ...(spec.storage.provider === 'local' ? [
+        'Local storage directory: ' + spec.storage.local.directory + '.', '',
+        ...(spec.storage.signedUrls.enabled ? [
+          'Signed download URLs expire after ' + spec.storage.signedUrls.expiresSeconds + ' seconds and use ' + spec.storage.signedUrls.signingSecretEnv + '.', ''
+        ] : [])
+      ] : [
+        'S3 bucket environment: ' + spec.storage.s3.bucketEnv + '.', '',
+        'S3 region environment: ' + spec.storage.s3.regionEnv + '.', '',
+        'The generated runtime is compatible with AWS S3 and S3-compatible endpoints.', ''
+      ]),
+      'File fields are accepted through multipart/form-data on create/update routes. MIME type and maxBytes policies are enforced per field.', '',
+      'Responses persist metadata only (key, originalName, mimeType, size, checksum, provider, uploadedAt) and add signed URLs at request time.', '',
+      'Replacing or deleting records automatically cleans up the corresponding stored objects. Failed uploads are rolled back before the request completes.', '',
+      'Read caching is disabled automatically for entities with signed file URLs so expired signed URLs are never served from cache.', ''
+    ] : []),
     ...(spec.cache.enabled ? [
       '## Caching', '',
       'Cache provider: ' + spec.cache.provider + '.', '',
