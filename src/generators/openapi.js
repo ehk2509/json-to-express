@@ -8,6 +8,12 @@ function identifierSchema(spec) {
     : {type: 'string', pattern: '^[a-fA-F0-9]{24}$'};
 }
 
+function filterSchema(field, spec) {
+  if (!field) return {};
+  if (field.type === 'reference') return identifierSchema(spec);
+  return fieldSchema(field, spec);
+}
+
 function fieldSchema(field, spec) {
   if (field.type === 'reference') {
     const item = identifierSchema(spec);
@@ -91,7 +97,19 @@ module.exports = function openapiSource(spec) {
       }
       if (name === 'list') {
         operation.parameters = operation.parameters || [];
-        for (const filter of op.query.filters) operation.parameters.push({name: filter, in: 'query', schema: {}});
+        for (const filter of op.query.filters) {
+          const field = entity.fields.find(item => item.name === filter);
+          const baseSchema = filterSchema(field, spec);
+          operation.parameters.push({name: filter, in: 'query', schema: baseSchema});
+          for (const operator of op.query.operators) {
+            if (operator === 'eq') continue;
+            operation.parameters.push({
+              name: filter + '__' + operator,
+              in: 'query',
+              schema: operator === 'in' ? {type: 'array', items: baseSchema} : baseSchema
+            });
+          }
+        }
         if (op.query.sortParam) operation.parameters.push({name: op.query.sortParam, in: 'query', schema: {type: 'string'}});
         if (op.query.selectParam) operation.parameters.push({name: op.query.selectParam, in: 'query', schema: {type: 'string'}});
         if (op.query.pagination.enabled) {
