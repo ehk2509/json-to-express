@@ -52,7 +52,7 @@ function mongoSource(spec) {
     ...imports,
     'const eventBus = require(' + js(relativeRequire(enginePath, filePaths(spec).eventBus)) + ');',
     'const outbox = require(' + js(relativeRequire(enginePath, filePaths(spec).outbox)) + ');',
-    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(enginePath, filePaths(spec).observability)) + ');'] : []), ''
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(enginePath, filePaths(spec).observability)) + ');'] : []), '',
     ...commonRuntime(spec),
     'const models = ' + models + ';', '',
     'async function executeDatabaseStep(step, context, session) {',
@@ -170,7 +170,7 @@ function postgresSource(spec) {
     'const prisma = connectDatabase.client;',
     'const eventBus = require(' + js(relativeRequire(paths.workflowEngine, paths.eventBus)) + ');',
     'const outbox = require(' + js(relativeRequire(paths.workflowEngine, paths.outbox)) + ');',
-    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.workflowEngine, paths.observability)) + ');'] : []), ''
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.workflowEngine, paths.observability)) + ');'] : []), '',
     ...commonRuntime(spec),
     'const entities = ' + js(entityInfo) + ';', '',
     'function transformData(entityName, raw, mode) {',
