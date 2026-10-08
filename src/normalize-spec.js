@@ -124,6 +124,7 @@ function normalizeSpec(inputSpec) {
   const openapi = spec.docs && spec.docs.openapi || {};
   const outboxConfig = spec.outbox || {};
   const deployment = spec.deployment || {};
+  const sdkConfig = spec.sdk || {};
   const dockerConfig = deployment.docker || {};
   const composeConfig = deployment.compose || {};
   const kubernetesConfig = deployment.kubernetes || {};
@@ -153,6 +154,15 @@ function normalizeSpec(inputSpec) {
   const normalized = {
     specVersion: spec.specVersion,
     generation: {outputDir: generation.outputDir, paths},
+    sdk: {
+      enabled: valueOr(sdkConfig.enabled, false),
+      outputDir: valueOr(sdkConfig.outputDir, 'sdk'),
+      languages: valueOr(sdkConfig.languages, ['javascript', 'typescript']),
+      packageName: valueOr(sdkConfig.packageName, generatedName + '-client'),
+      private: valueOr(sdkConfig.private, true),
+      baseUrl: valueOr(sdkConfig.baseUrl, 'http://127.0.0.1:' + valueOr(spec.app.port, 3000)),
+      includeCustomEndpoints: valueOr(sdkConfig.includeCustomEndpoints, true)
+    },
     deployment: {
       docker: {
         enabled: valueOr(dockerConfig.enabled, false),
