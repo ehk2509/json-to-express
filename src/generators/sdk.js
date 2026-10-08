@@ -319,7 +319,7 @@ function typescriptSource(spec) {
     'function prepareBody(data: Record<string, unknown>, fileFields: Array<{name: string; many: boolean}> = []): unknown {',
     '  if (!data || !fileFields.length || typeof FormData === "undefined") return data;',
     '  const fileNames = new Set(fileFields.map(field => field.name));',
-    '  const hasFile = fileFields.some(field => { const value = data[field.name]; return isBlobLike(value) || (Array.isArray(value) && value.some(isBlobLike)); });'
+    '  const hasFile = fileFields.some(field => { const value = data[field.name]; return isBlobLike(value) || (Array.isArray(value) && value.some(isBlobLike)); });',
     '  if (!hasFile) return data;',
     '  const form = new FormData();',
     '  for (const [name, value] of Object.entries(data)) {',
