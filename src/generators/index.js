@@ -26,6 +26,7 @@ const workerSource = require('./worker');
 const dockerfileSource = require('./dockerfile');
 const composeSource = require('./compose');
 const kubernetesFiles = require('./kubernetes');
+const sdkFiles = require('./sdk');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -88,6 +89,9 @@ function buildFiles(spec) {
   if (spec.deployment.compose.enabled) files.set(spec.deployment.compose.file, composeSource(spec));
   if (spec.deployment.kubernetes.enabled) {
     for (const [relativePath, content] of kubernetesFiles(spec)) files.set(relativePath, content);
+  }
+  if (spec.sdk.enabled) {
+    for (const [relativePath, content] of sdkFiles(spec)) files.set(relativePath, content);
   }
 
   if (spec.database.type === 'postgresql') {
