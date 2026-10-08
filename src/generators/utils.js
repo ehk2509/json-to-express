@@ -39,6 +39,7 @@ function filePaths(spec, entityName) {
     eventBus: path.posix.join(source, p.workflows, 'events.js'),
     outbox: path.posix.join(source, p.workflows, 'outbox.js'),
     worker: path.posix.join(source, p.workflows, 'worker.js'),
+    graphql: path.posix.join(source, p.graphql, 'index.js'),
     endpointRoutes: path.posix.join(source, p.routes, 'CustomRoutes.js'),
     test: path.posix.join(p.tests, 'health.test.js')
   };
