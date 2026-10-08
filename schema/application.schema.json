@@ -1487,7 +1487,7 @@
             },
             "path": {
               "type": "string",
-              "pattern": "^/.*:token",
+              "pattern": "^/",
               "default": "/files/:token"
             },
             "signingSecretEnv": {
