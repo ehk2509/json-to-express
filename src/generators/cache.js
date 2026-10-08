@@ -123,7 +123,8 @@ module.exports = function cacheSource(spec) {
         '      const oldest = memoryEntries.keys().next().value;',
         '      if (oldest !== undefined) memoryEntries.delete(oldest);',
         '    }',
-        '    memoryEntries.set(key, {value, expiresAt: Date.now() + ttlSeconds * 1000});'
+        '    const snapshot = JSON.parse(JSON.stringify(value));',
+        '    memoryEntries.set(key, {value: snapshot, expiresAt: Date.now() + ttlSeconds * 1000});'
       ]),
     '    return true;',
     '  } catch (error) { report("cache.write_failed", error); return false; }',
@@ -190,7 +191,11 @@ module.exports = function cacheSource(spec) {
     '',
     'async function disconnect() {',
     ...(config.provider === 'redis'
-      ? ['  if (redis && redis.isOpen) await redis.quit();', '  redis = null; redisConnectPromise = null;']
+      ? [
+        '  try { if (redis && redis.isOpen) await redis.quit(); }',
+        '  catch (error) { report("cache.disconnect_failed", error); }',
+        '  redis = null; redisConnectPromise = null;'
+      ]
       : ['  memoryEntries.clear();']),
     '}',
     '',
