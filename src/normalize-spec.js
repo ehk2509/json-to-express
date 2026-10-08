@@ -129,6 +129,17 @@ function normalizeSpec(inputSpec) {
   const production = spec.app.production || {};
   const cors = production.cors || {};
   const rateLimit = production.rateLimit || {};
+  const observabilityConfig = spec.observability || {};
+  const observabilityEnabled = valueOr(observabilityConfig.enabled, false);
+  const loggingConfig = observabilityConfig.logging || {};
+  const metricsConfig = observabilityConfig.metrics || {};
+  const tracingConfig = observabilityConfig.tracing || {};
+  const observabilityHealth = observabilityConfig.health || {};
+  const livenessConfig = observabilityHealth.liveness || {};
+  const readinessConfig = observabilityHealth.readiness || {};
+  const loggingEnabled = observabilityEnabled && valueOr(loggingConfig.enabled, true);
+  const metricsEnabled = observabilityEnabled && valueOr(metricsConfig.enabled, true);
+  const tracingEnabled = observabilityEnabled && valueOr(tracingConfig.enabled, false);
   const generatedName = packageConfig.name || packageName(spec.app.name);
   const serverFile = path.posix.join(paths.source, 'server.js');
   const auth = spec.auth || {};
@@ -189,6 +200,17 @@ function normalizeSpec(inputSpec) {
     ...(valueOr(cors.enabled, false) ? {cors: '^2.8.5'} : {}),
     ...(valueOr(rateLimit.enabled, false) ? {'express-rate-limit': '^7.4.1'} : {}),
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
+    ...(metricsEnabled ? {'prom-client': '^15.1.3'} : {}),
+    ...(tracingEnabled ? {
+      '@opentelemetry/api': '^1.9.0',
+      '@opentelemetry/sdk-trace-node': '^1.30.1',
+      '@opentelemetry/sdk-trace-base': '^1.30.1',
+      '@opentelemetry/resources': '^1.30.1',
+      '@opentelemetry/semantic-conventions': '^1.30.0',
+      ...(valueOr(tracingConfig.exporter, 'otlp-http') === 'otlp-http'
+        ? {'@opentelemetry/exporter-trace-otlp-http': '^0.57.2'}
+        : {})
+    } : {}),
     ...(packageConfig.dependencies || {})
   };
   const devDependencies = {
@@ -329,6 +351,40 @@ function normalizeSpec(inputSpec) {
       }
     },
     environment: spec.environment || {},
+    observability: {
+      enabled: observabilityEnabled,
+      logging: {
+        enabled: loggingEnabled,
+        level: valueOr(loggingConfig.level, 'info'),
+        format: valueOr(loggingConfig.format, 'json'),
+        requestIds: valueOr(loggingConfig.requestIds, true)
+      },
+      metrics: {
+        enabled: metricsEnabled,
+        path: normalizePrefix(valueOr(metricsConfig.path, '/metrics')),
+        collectDefaultMetrics: valueOr(metricsConfig.collectDefaultMetrics, true),
+        prefix: valueOr(metricsConfig.prefix, 'j2e_')
+      },
+      tracing: {
+        enabled: tracingEnabled,
+        serviceName: valueOr(tracingConfig.serviceName, generatedName),
+        exporter: valueOr(tracingConfig.exporter, 'otlp-http'),
+        endpointEnv: valueOr(tracingConfig.endpointEnv, 'OTEL_EXPORTER_OTLP_ENDPOINT'),
+        sampleRate: valueOr(tracingConfig.sampleRate, 1)
+      },
+      health: {
+        liveness: {
+          enabled: observabilityEnabled && valueOr(livenessConfig.enabled, true),
+          path: normalizePrefix(valueOr(livenessConfig.path, '/health/live'))
+        },
+        readiness: {
+          enabled: observabilityEnabled && valueOr(readinessConfig.enabled, true),
+          path: normalizePrefix(valueOr(readinessConfig.path, '/health/ready')),
+          database: valueOr(readinessConfig.database, true),
+          outbox: valueOr(readinessConfig.outbox, true)
+        }
+      }
+    },
     outbox: {
       enabled: hasAsyncWork,
       worker: valueOr(outboxConfig.worker, 'embedded'),
