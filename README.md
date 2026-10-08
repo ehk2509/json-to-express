@@ -1073,6 +1073,111 @@ Path parameters are encoded automatically. TypeScript requires the params object
 
 The SDK does not regenerate behavior independently from OpenAPI or routes: all three are emitted from the same normalized specification so custom CRUD paths, methods, API prefixes, filters, and entity relationships remain aligned.
 
+## Generated admin UI
+
+A complete standalone React/Vite admin application can be generated from the same entity and operation metadata.
+
+~~~json
+{
+  "admin": {
+    "enabled": true,
+    "outputDir": "admin",
+    "title": "Catalog Console",
+    "baseUrl": "http://127.0.0.1:3000",
+    "devPort": 5173,
+    "includeCustomActions": true,
+    "auth": {
+      "tokenStorage": "sessionStorage",
+      "tokenKey": "catalog-admin-token"
+    },
+    "theme": {
+      "brandColor": "#2563eb",
+      "mode": "system"
+    },
+    "entities": {
+      "Product": {
+        "label": "Product",
+        "pluralLabel": "Products",
+        "titleField": "name",
+        "listFields": ["name", "price", "category", "published"],
+        "filterFields": ["name", "price"],
+        "pageSize": 20,
+        "readonlyFields": ["published"],
+        "fields": {
+          "name": {
+            "label": "Product name",
+            "placeholder": "Mechanical keyboard"
+          },
+          "category": {
+            "label": "Category",
+            "widget": "reference"
+          }
+        }
+      }
+    }
+  }
+}
+~~~
+
+When per-entity configuration is omitted, the admin derives sensible defaults from the normalized entity definition, CRUD capabilities, list query contract, field constraints, references, and database target.
+
+Generated structure:
+
+~~~text
+admin/
+  package.json
+  vite.config.js
+  index.html
+  README.md
+  src/
+    App.jsx
+    api.js
+    config.js
+    main.jsx
+    styles.css
+~~~
+
+The generated UI includes:
+
+- responsive dashboard and resource navigation
+- CRUD tables and forms
+- configurable columns and labels
+- allowlisted filters
+- sorting and bounded pagination
+- required/min/max/minLength/maxLength/enum client validation
+- text, textarea, number, boolean, date/datetime, enum and relation controls
+- relation selectors populated from referenced resources
+- populated-reference display labels
+- create/edit/delete capability awareness
+- delete confirmation
+- structured API errors and notifications
+- JWT bearer-token gate when API auth is enabled
+- localStorage or sessionStorage token persistence
+- row-bound custom workflow actions
+- global custom workflow actions
+- JSON body/query editor for generic actions
+- light, dark, or system theme with configurable brand color
+
+### Development
+
+~~~bash
+cd admin
+npm install
+npm run dev
+~~~
+
+The generated Vite development server automatically proxies the application's API prefix to admin.baseUrl. This means the default development workflow does not require enabling CORS just because the admin runs on another local port.
+
+### Production
+
+~~~bash
+npm run build
+~~~
+
+dist is a static SPA. Set VITE_API_BASE_URL at build time when the deployed API URL differs from admin.baseUrl. If the admin and API are served from different origins, configure the generated backend CORS policy accordingly.
+
+The admin does not depend on sdk.enabled. Its small ESM API runtime is generated independently from the same normalized routes, methods, identifiers, query semantics, and custom endpoints.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -1092,6 +1197,7 @@ Unit/integration tests cover:
 - durable outbox, retries, dead-letter recovery, and background jobs
 - Docker, Docker Compose, Kubernetes manifests, probes, secrets/config separation
 - generated JavaScript and TypeScript SDK packages
+- generated React admin UI, forms, relations, filters and custom actions
 - production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options
@@ -1166,9 +1272,9 @@ The Express/Mongoose target remains the complete v1 target, including workflows,
 
 PostgreSQL/Prisma is now a real second target for CRUD-oriented services and proves that the normalized application model is not tied to Mongoose. Its remaining parity work is the SQL implementation of workflows/outbox/jobs and many-to-many references.
 
-Both persistence targets can now emit container/Kubernetes deployment artifacts and standalone JavaScript/TypeScript SDK packages from the same JSON contract.
+Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next product-expansion layer is an optional generated admin UI, followed by additional API/server targets such as GraphQL, Fastify, and NestJS.
+The next expansion layer is additional API/server targets such as GraphQL and Fastify, plus deeper authentication strategies and PostgreSQL workflow/outbox parity.
 
 ## License
 
