@@ -5,7 +5,18 @@ const {js} = require('./utils');
 module.exports = function environmentSource(spec) {
   const declared = {...spec.environment};
   declared[spec.database.uriEnv] = declared[spec.database.uriEnv] || {required: true};
-  if (spec.auth.enabled) declared[spec.auth.secretEnv] = declared[spec.auth.secretEnv] || {required: true};
+  if (spec.auth.jwt.enabled) declared[spec.auth.jwt.secretEnv] = declared[spec.auth.jwt.secretEnv] || {required: true};
+  if (spec.auth.apiKey.enabled) {
+    for (const key of spec.auth.apiKey.keys) declared[key.env] = declared[key.env] || {required: true};
+  }
+  if (spec.auth.oidc.enabled) {
+    declared[spec.auth.oidc.clientIdEnv] = declared[spec.auth.oidc.clientIdEnv] || {required: true};
+    if (spec.auth.oidc.clientSecretEnv) declared[spec.auth.oidc.clientSecretEnv] = declared[spec.auth.oidc.clientSecretEnv] || {required: true};
+  }
+  if (spec.auth.local.passwordReset.webhookUrlEnv) {
+    const name = spec.auth.local.passwordReset.webhookUrlEnv;
+    declared[name] = declared[name] || {required: true};
+  }
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) declared[webhook.urlEnv] = declared[webhook.urlEnv] || {required: true};
   }
