@@ -191,7 +191,9 @@ function typeLines(spec) {
       lines.push('export interface ' + entity.name + 'ListQuery {');
       for (const field of q.filters) {
         const definition = entity.fields.find(item => item.name === field);
-        const type = definition ? tsScalar(definition, false).replace(' | Date', '') : 'QueryPrimitive';
+        const type = definition
+          ? (definition.type === 'reference' ? 'string' : tsScalar(definition, false).replace(' | Date', ''))
+          : 'QueryPrimitive';
         lines.push('  ' + JSON.stringify(field) + '?: ' + type + ';');
         for (const operator of q.operators) {
           if (operator === 'eq') continue;
