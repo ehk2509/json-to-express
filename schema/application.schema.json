@@ -363,6 +363,14 @@
       },
       "additionalProperties": false
     },
+    "seeds": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"},
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "object"}
+      }
+    },
     "entities": {
       "type": "object",
       "minProperties": 1,
