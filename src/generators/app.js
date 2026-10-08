@@ -9,6 +9,7 @@ function appSource(spec) {
     return 'const ' + entity.name + 'Routes = require(' + js(relativeRequire(appPath, paths.route)) + ');';
   });
   if (spec.endpoints.length) imports.push('const CustomRoutes = require(' + js(relativeRequire(appPath, filePaths(spec).endpointRoutes)) + ');');
+  if (spec.auth.routesEnabled) imports.push('const AuthRoutes = require(' + js(relativeRequire(appPath, filePaths(spec).authRoutes)) + ');');
   const middlewareImports = spec.app.middlewareModules.map((modulePath, index) =>
     'const customMiddleware' + index + ' = require(' + js(relativeRequire(appPath, modulePath)) + ');'
   );
@@ -54,6 +55,7 @@ function appSource(spec) {
     'const app = express();', '',
     ...middleware,
     ...health,
+    ...(spec.auth.routesEnabled ? ['app.use(AuthRoutes);'] : []),
     ...(spec.api.graphql.enabled ? [
       'app.all(' + js(spec.api.graphql.path) + ', ' +
         (spec.app.express.json.enabled ? '' : 'express.json({limit: ' + js(spec.app.express.json.limit) + '}), ') +
