@@ -43,8 +43,77 @@ module.exports = function openapiSource(spec) {
     components: {schemas: {}, securitySchemes: {}}
   };
 
-  if (spec.auth.enabled) {
-    document.components.securitySchemes.bearerAuth = {type: 'http', scheme: 'bearer', bearerFormat: 'JWT'};
+  if (spec.auth.jwt.enabled) {
+    document.components.securitySchemes.jwtAuth = {type: 'http', scheme: 'bearer', bearerFormat: 'JWT'};
+  }
+  if (spec.auth.apiKey.enabled) {
+    document.components.securitySchemes.apiKeyAuth = {type: 'apiKey', in: 'header', name: spec.auth.apiKey.header};
+  }
+  if (spec.auth.session.enabled) {
+    document.components.securitySchemes.sessionAuth = {type: 'apiKey', in: 'cookie', name: spec.auth.session.cookieName};
+  }
+  if (spec.auth.oidc.enabled) {
+    document.components.securitySchemes.oidcAuth = {
+      type: 'openIdConnect',
+      openIdConnectUrl: String(spec.auth.oidc.issuer).replace(/\/$/, '') + '/.well-known/openid-configuration'
+    };
+  }
+
+  const securityFor = rule => {
+    if (!rule || !rule.required) return undefined;
+    const names = {jwt: 'jwtAuth', apiKey: 'apiKeyAuth', session: 'sessionAuth', oidc: 'oidcAuth'};
+    return (rule.strategies || spec.auth.strategies)
+      .filter(strategy => names[strategy] && document.components.securitySchemes[names[strategy]])
+      .map(strategy => ({[names[strategy]]: []}));
+  };
+
+  if (spec.auth.local.enabled && spec.auth.local.allowRegistration) {
+    document.paths[spec.auth.local.registerPath] = {
+      post: {
+        operationId: 'authRegister',
+        requestBody: {required: true, content: {'application/json': {schema: {
+          type: 'object', required: ['email', 'password'],
+          properties: {email: {type: 'string', format: 'email'}, password: {type: 'string', minLength: spec.auth.local.passwordMinLength}}
+        }}}},
+        responses: {'201': {description: 'Registered'}, '409': {description: 'Account already exists'}}
+      }
+    };
+  }
+  if (spec.auth.local.enabled) {
+    document.paths[spec.auth.local.loginPath] = {
+      post: {
+        operationId: 'authLogin',
+        requestBody: {required: true, content: {'application/json': {schema: {
+          type: 'object', required: ['email', 'password'],
+          properties: {email: {type: 'string', format: 'email'}, password: {type: 'string'}}
+        }}}},
+        responses: {'200': {description: 'Authenticated'}, '401': {description: 'Invalid credentials'}}
+      }
+    };
+    document.paths[spec.auth.local.forgotPasswordPath] = {
+      post: {operationId: 'authForgotPassword', responses: {'202': {description: 'Reset request accepted'}}}
+    };
+    document.paths[spec.auth.local.resetPasswordPath] = {
+      post: {operationId: 'authResetPassword', responses: {'200': {description: 'Password reset'}}}
+    };
+  }
+  if (spec.auth.jwt.refresh.enabled) {
+    document.paths[spec.auth.jwt.refresh.path] = {
+      post: {operationId: 'authRefresh', responses: {'200': {description: 'Tokens rotated'}, '401': {description: 'Invalid refresh token'}}}
+    };
+  }
+  if (spec.auth.local.enabled || spec.auth.session.enabled || spec.auth.jwt.refresh.enabled) {
+    document.paths[spec.auth.local.logoutPath] = {
+      post: {operationId: 'authLogout', responses: {'204': {description: 'Logged out'}}}
+    };
+  }
+  if (spec.auth.oidc.enabled) {
+    document.paths[spec.auth.oidc.loginPath] = {
+      get: {operationId: 'authOidcLogin', responses: {'302': {description: 'Redirect to OIDC provider'}}}
+    };
+    document.paths[spec.auth.oidc.callbackPath] = {
+      get: {operationId: 'authOidcCallback', responses: {'200': {description: 'OIDC login completed'}, '302': {description: 'Configured success redirect'}}}
+    };
   }
 
   for (const endpoint of spec.endpoints) {
@@ -61,7 +130,7 @@ module.exports = function openapiSource(spec) {
       responses: {[String(endpoint.status)]: {description: 'Success'}},
       ...(parameters.length ? {parameters} : {})
     };
-    if (endpoint.auth.required) operation.security = [{bearerAuth: []}];
+    if (endpoint.auth.required) operation.security = securityFor(endpoint.auth);
     document.paths[full][endpoint.method] = operation;
   }
 
@@ -123,7 +192,7 @@ module.exports = function openapiSource(spec) {
           content: {'application/json': {schema: {$ref: '#/components/schemas/' + entity.name}}}
         };
       }
-      if (op.auth.required) operation.security = [{bearerAuth: []}];
+      if (op.auth.required) operation.security = securityFor(op.auth);
       document.paths[full][op.method] = operation;
     }
   }
