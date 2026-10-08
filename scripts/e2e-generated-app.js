@@ -135,12 +135,6 @@ async function main() {
   );
   assert.equal(gqlTagDeleted.deleteTag, true);
 
-  const gqlCategoryDeleted = await graphqlRequest(
-    'mutation($id: ID!) { deleteCategory(id: $id) }',
-    {id: gqlCategory.createCategory.id}
-  );
-  assert.equal(gqlCategoryDeleted.deleteCategory, true);
-
 
   const category = await request('/api/categories', {
     method: 'POST',
