@@ -69,6 +69,21 @@ function databaseService(spec) {
   ];
 }
 
+function cacheService(spec) {
+  if (!spec.cache.enabled || spec.cache.provider !== 'redis') return [];
+  return [
+    '  cache:',
+    '    image: redis:7-alpine',
+    '    command: ["redis-server", "--save", "", "--appendonly", "no"]',
+    '    healthcheck:',
+    '      test: ["CMD", "redis-cli", "ping"]',
+    '      interval: 5s',
+    '      timeout: 3s',
+    '      retries: 10',
+    '    restart: unless-stopped'
+  ];
+}
+
 function serviceBlock(name, spec, command, exposePort) {
   const dockerfile = spec.deployment.docker.file;
   const lines = [
@@ -88,13 +103,15 @@ function serviceBlock(name, spec, command, exposePort) {
 
   lines.push('    environment:', ...environmentLines(spec));
 
+  const dependencies = [];
   if (spec.deployment.compose.database) {
+    if (spec.database.type === 'postgresql') dependencies.push(['migrate', 'service_completed_successfully']);
+    else dependencies.push(['database', 'service_healthy']);
+  }
+  if (spec.cache.enabled && spec.cache.provider === 'redis') dependencies.push(['cache', 'service_healthy']);
+  if (dependencies.length) {
     lines.push('    depends_on:');
-    if (spec.database.type === 'postgresql') {
-      lines.push('      migrate:', '        condition: service_completed_successfully');
-    } else {
-      lines.push('      database:', '        condition: service_healthy');
-    }
+    for (const [dependency, condition] of dependencies) lines.push('      ' + dependency + ':', '        condition: ' + condition);
   }
 
   if (name === 'api') lines.push(...appHealthcheck(spec, 4));
@@ -131,6 +148,7 @@ module.exports = function composeSource(spec) {
   }
 
   lines.push(...migrationService(spec));
+  lines.push(...cacheService(spec));
 
   if (spec.deployment.compose.database) {
     lines.push(...databaseService(spec), '', 'volumes:', '  db-data:');
