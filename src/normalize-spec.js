@@ -532,7 +532,11 @@ function normalizeSpec(inputSpec) {
           test: 'node --test',
           ...(isPostgres ? {
             'prisma:generate': 'prisma generate --schema ' + prismaSchemaPath,
-            'db:push': 'prisma db push --schema ' + prismaSchemaPath
+            'db:push': 'prisma db push --schema ' + prismaSchemaPath,
+            'db:migrate:dev': 'prisma migrate dev --schema ' + prismaSchemaPath,
+            'db:migrate:deploy': 'prisma migrate deploy --schema ' + prismaSchemaPath,
+            'db:migrate:status': 'prisma migrate status --schema ' + prismaSchemaPath,
+            'db:seed': 'node prisma/seed.js'
           } : {}),
           ...(hasAsyncWork ? {
             worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
@@ -597,6 +601,7 @@ function normalizeSpec(inputSpec) {
         backoffMs: valueOr(job.backoffMs, valueOr(outboxConfig.backoffMs, 1000))
       }
     ])),
+    seeds: spec.seeds || {},
     entities: []
   };
 
