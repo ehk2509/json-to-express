@@ -660,7 +660,7 @@ function normalizeSpec(inputSpec) {
         upload: field.type === 'file' ? {
           maxBytes: valueOr(field.upload && field.upload.maxBytes, 5 * 1024 * 1024),
           mimeTypes: valueOr(field.upload && field.upload.mimeTypes, ['*/*']),
-          directory: valueOr(field.upload && field.upload.directory, defaultRoute(entityName) + '/' + fieldName),
+          directory: valueOr(field.upload && field.upload.directory, defaultRoute(name) + '/' + fieldName),
           preserveExtension: valueOr(field.upload && field.upload.preserveExtension, true)
         } : undefined,
         options: field.options || {}
