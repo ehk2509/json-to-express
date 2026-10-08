@@ -14,6 +14,10 @@ function environmentLines(spec) {
     values[name] = '\${' + name + ':-}';
   }
 
+  if (spec.cache.enabled && spec.cache.provider === 'redis') {
+    values[spec.cache.redis.urlEnv] = 'redis://cache:6379';
+  }
+
   return Object.entries(values).map(([name, value]) => '      ' + name + ': ' + yamlScalar(value));
 }
 
