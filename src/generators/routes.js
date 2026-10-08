@@ -7,6 +7,7 @@ function routesSource(entity, spec) {
   const routeLines = [];
   const paths = filePaths(spec, entity.name);
   const needsAuth = Object.values(entity.operations).some(op => op.enabled && op.auth && op.auth.required);
+  const hasFiles = entity.fields.some(field => field.type === 'file');
 
   for (const [name, operation] of Object.entries(entity.operations)) {
     if (!operation.enabled) continue;
