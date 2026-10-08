@@ -779,6 +779,52 @@
           }
         }
       }
+    },
+    "sdk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "outputDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "sdk"
+        },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "javascript",
+              "typescript"
+            ]
+          },
+          "default": [
+            "javascript",
+            "typescript"
+          ]
+        },
+        "packageName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "private": {
+          "type": "boolean",
+          "default": true
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "includeCustomEndpoints": {
+          "type": "boolean",
+          "default": true
+        }
+      }
     }
   },
   "$defs": {
