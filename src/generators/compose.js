@@ -86,16 +86,35 @@ function serviceBlock(name, spec, command, exposePort) {
   lines.push('    environment:', ...environmentLines(spec));
 
   if (spec.deployment.compose.database) {
-    lines.push(
-      '    depends_on:',
-      '      database:',
-      '        condition: service_healthy'
-    );
+    lines.push('    depends_on:');
+    if (spec.database.type === 'postgresql') {
+      lines.push('      migrate:', '        condition: service_completed_successfully');
+    } else {
+      lines.push('      database:', '        condition: service_healthy');
+    }
   }
 
   if (name === 'api') lines.push(...appHealthcheck(spec, 4));
   lines.push('    restart: unless-stopped');
   return lines;
+}
+
+function migrationService(spec) {
+  if (!spec.deployment.compose.database || spec.database.type !== 'postgresql') return [];
+  return [
+    '  migrate:',
+    '    build:',
+    '      context: .',
+    '      dockerfile: ' + yamlScalar(spec.deployment.docker.file),
+    '      target: build',
+    '    command: ["npm", "run", "db:push"]',
+    '    environment:',
+    ...environmentLines(spec),
+    '    depends_on:',
+    '      database:',
+    '        condition: service_healthy',
+    '    restart: "no"'
+  ];
 }
 
 module.exports = function composeSource(spec) {
@@ -107,6 +126,8 @@ module.exports = function composeSource(spec) {
   if (spec.outbox.enabled && spec.outbox.worker === 'separate') {
     lines.push(...serviceBlock('worker', spec, '["npm", "run", "worker"]', false));
   }
+
+  lines.push(...migrationService(spec));
 
   if (spec.deployment.compose.database) {
     lines.push(...databaseService(spec), '', 'volumes:', '  db-data:');
