@@ -36,7 +36,7 @@ module.exports = function storageSource(spec) {
     '',
     'function storageError(message, statusCode = 400) { const error = new Error(message); error.statusCode = statusCode; return error; }',
     'function safeKey(raw) {',
-    '  const value = String(raw || "").replace(/\\/g, "/");',
+    '  const value = String(raw || "").split(String.fromCharCode(92)).join("/");',
     '  const normalized = path.posix.normalize(value).replace(/^\\/+/, "");',
     '  if (!normalized || normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) throw storageError("Invalid storage key");',
     '  return normalized;',
