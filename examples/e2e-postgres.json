@@ -98,7 +98,15 @@
           ]
         },
         "update": {
-          "transaction": true
+          "transaction": true,
+          "populate": [
+            "tags"
+          ]
+        },
+        "create": {
+          "populate": [
+            "tags"
+          ]
         }
       },
       "fields": {
