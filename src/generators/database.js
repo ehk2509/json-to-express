@@ -13,7 +13,8 @@ module.exports = function databaseSource(spec) {
       '  return prisma;',
       '}', '',
       'connectDatabase.client = prisma;',
-      'connectDatabase.disconnect = () => prisma.$disconnect();', '',
+      'connectDatabase.disconnect = () => prisma.$disconnect();',
+      'connectDatabase.ping = async () => { await prisma.$queryRawUnsafe("SELECT 1"); return true; };', ''
       'module.exports = connectDatabase;', ''
     ].join('\n');
   }
@@ -28,7 +29,12 @@ module.exports = function databaseSource(spec) {
     '  return mongoose.connection;',
     '}', '',
     'connectDatabase.client = mongoose;',
-    'connectDatabase.disconnect = () => mongoose.disconnect();', '',
+    'connectDatabase.disconnect = () => mongoose.disconnect();',
+    'connectDatabase.ping = async () => {',
+    '  if (mongoose.connection.readyState !== 1) throw new Error("MongoDB is not connected");',
+    '  await mongoose.connection.db.admin().ping();',
+    '  return true;',
+    '};', ''
     'module.exports = connectDatabase;', ''
   ].join('\n');
 };
