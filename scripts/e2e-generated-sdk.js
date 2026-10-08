@@ -29,22 +29,7 @@ async function main() {
   await waitForHealth(baseUrl);
 
   const sdk = require(path.resolve(generatedRoot, 'sdk/javascript'));
-  const client = sdk.createClient({
-    baseUrl,
-    apiKey: process.env.E2E_API_KEY || 'ci-api-key',
-    fetch: async (url, options = {}) => {
-      if (String(url).includes('/api/products') && ['POST', 'PATCH'].includes(options.method)) {
-        const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
-        console.log('SDK multipart diagnostic', JSON.stringify({
-          method: options.method,
-          isForm,
-          bodyType: options.body && options.body.constructor && options.body.constructor.name,
-          keys: isForm ? Array.from(options.body.keys()) : []
-        }));
-      }
-      return fetch(url, options);
-    }
-  });
+  const client = sdk.createClient({baseUrl, apiKey: process.env.E2E_API_KEY || 'ci-api-key'});
   const suffix = Date.now().toString(36);
 
   const category = await client.categories.create({name: 'SDK Category ' + suffix});
@@ -55,20 +40,13 @@ async function main() {
   const tagId = tag[idField];
   assert.ok(tagId);
 
-  const productInput = {
+  const product = await client.products.create({
     name: 'SDK Keyboard ' + suffix,
     price: 149,
     category: categoryId,
     tags: [tagId],
     image: new Blob(['sdk-image'], {type: 'text/plain'})
-  };
-  console.log('SDK product input diagnostic', JSON.stringify({
-    keys: Object.keys(productInput),
-    imageType: productInput.image && productInput.image.constructor && productInput.image.constructor.name,
-    blobLike: Boolean(productInput.image && typeof productInput.image.arrayBuffer === 'function' && typeof productInput.image.stream === 'function')
-  }));
-  console.log('SDK product create diagnostic', String(client.products.create));
-  const product = await client.products.create(productInput);
+  });
   const productId = product[idField];
   assert.ok(productId);
   assert.equal(product.image.mimeType, 'text/plain');
