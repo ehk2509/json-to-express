@@ -49,12 +49,23 @@ function appSource(spec) {
     "const express = require('express');",
     ...prodImports,
     'const errorHandler = require(' + js(relativeRequire(appPath, filePaths(spec).errorHandler)) + ');',
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(appPath, filePaths(spec).observability)) + ');'] : []),
     ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(appPath, filePaths(spec).graphql)) + ');'] : []),
     ...imports,
     ...middlewareImports, '',
     'const app = express();', '',
+    ...(spec.observability.enabled ? ['app.use(observability.requestMiddleware);'] : []),
     ...middleware,
     ...health,
+    ...(spec.observability.health.liveness.enabled ? [
+      'app.get(' + js(spec.observability.health.liveness.path) + ', observability.livenessHandler);'
+    ] : []),
+    ...(spec.observability.health.readiness.enabled ? [
+      'app.get(' + js(spec.observability.health.readiness.path) + ', observability.readinessHandler);'
+    ] : []),
+    ...(spec.observability.metrics.enabled ? [
+      'app.get(' + js(spec.observability.metrics.path) + ', observability.metricsHandler);'
+    ] : []),
     ...(spec.auth.routesEnabled ? ['app.use(AuthRoutes);'] : []),
     ...(spec.api.graphql.enabled ? [
       'app.all(' + js(spec.api.graphql.path) + ', ' +
