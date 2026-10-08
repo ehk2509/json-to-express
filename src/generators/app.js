@@ -18,7 +18,9 @@ function appSource(spec) {
   if (spec.app.production.rateLimit.enabled) prodImports.push("const {rateLimit} = require('express-rate-limit');");
   if (spec.app.production.compression) prodImports.push("const compression = require('compression');");
 
-  const mounts = spec.entities.map(entity => 'app.use(' + js(joinUrl(spec.app.apiPrefix, entity.route)) + ', ' + entity.name + 'Routes);');
+  const mounts = spec.api.rest
+    ? spec.entities.map(entity => 'app.use(' + js(joinUrl(spec.app.apiPrefix, entity.route)) + ', ' + entity.name + 'Routes);')
+    : [];
   const middleware = [];
 
   if (spec.app.express.trustProxy !== false) middleware.push('app.set("trust proxy", ' + js(spec.app.express.trustProxy) + ');');
@@ -46,13 +48,19 @@ function appSource(spec) {
     "const express = require('express');",
     ...prodImports,
     'const errorHandler = require(' + js(relativeRequire(appPath, filePaths(spec).errorHandler)) + ');',
+    ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(appPath, filePaths(spec).graphql)) + ');'] : []),
     ...imports,
     ...middlewareImports, '',
     'const app = express();', '',
     ...middleware,
     ...health,
+    ...(spec.api.graphql.enabled ? [
+      'app.all(' + js(spec.api.graphql.path) + ', ' +
+        (spec.app.express.json.enabled ? '' : 'express.json({limit: ' + js(spec.app.express.json.limit) + '}), ') +
+        'graphqlApi.handler);'
+    ] : []),
     ...mounts,
-    ...(spec.endpoints.length ? ['app.use(' + js(spec.app.apiPrefix || '/') + ', CustomRoutes);'] : []), '',
+    ...(spec.api.rest && spec.endpoints.length ? ['app.use(' + js(spec.app.apiPrefix || '/') + ', CustomRoutes);'] : []), '',
     'app.use((req, res) => res.status(' + spec.app.statusCodes.notFound + ').json(' + payload(spec.app.responses.notFound) + '));',
     'app.use(errorHandler);', '',
     'module.exports = app;', ''

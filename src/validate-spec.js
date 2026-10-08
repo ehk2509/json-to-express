@@ -64,6 +64,19 @@ function validateSpec(inputSpec) {
     }
   }
 
+  const rawGraphql = spec.api && spec.api.graphql;
+  const graphqlEnabled = rawGraphql === true || (isObject(rawGraphql) && rawGraphql.enabled !== false);
+  const graphqlPath = isObject(rawGraphql) && rawGraphql.path || '/graphql';
+  if (spec.api && spec.api.rest === false && !graphqlEnabled) {
+    errors.push('api must enable at least one of rest or graphql');
+  }
+  if (
+    graphqlEnabled && spec.app && spec.app.health && spec.app.health.enabled !== false &&
+    graphqlPath === spec.app.health.path
+  ) {
+    errors.push('api.graphql.path cannot be the same as app.health.path');
+  }
+
   if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
@@ -195,6 +208,18 @@ function validateSpec(inputSpec) {
   }
 
   const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
+  if (graphqlEnabled && isObject(spec.entities)) {
+    for (const [entityName, entity] of Object.entries(spec.entities)) {
+      if (entity && entity.fields && Object.prototype.hasOwnProperty.call(entity.fields, 'id')) {
+        errors.push('entities.' + entityName + '.fields.id is reserved by the GraphQL target');
+      }
+      for (const fieldName of Object.keys(entity && entity.fields || {})) {
+        if (!/^[_A-Za-z][_0-9A-Za-z]*$/.test(fieldName) || fieldName.startsWith('__')) {
+          errors.push('entities.' + entityName + '.fields.' + fieldName + ' is not a valid GraphQL field name');
+        }
+      }
+    }
+  }
   const workflowNames = new Set(isObject(spec.workflows) ? Object.keys(spec.workflows) : []);
   const eventNames = new Set(isObject(spec.events) ? Object.keys(spec.events) : []);
   const jobNames = new Set(isObject(spec.jobs) ? Object.keys(spec.jobs) : []);

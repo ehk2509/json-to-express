@@ -52,6 +52,10 @@
             "workflows": {
               "type": "string",
               "minLength": 1
+            },
+            "graphql": {
+              "type": "string",
+              "minLength": 1
             }
           }
         }
@@ -899,6 +903,38 @@
           "additionalProperties": {
             "$ref": "#/$defs/adminEntity"
           }
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rest": {
+          "type": "boolean",
+          "default": true
+        },
+        "graphql": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/",
+                  "default": "/graphql"
+                }
+              }
+            }
+          ]
         }
       }
     }

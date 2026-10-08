@@ -394,5 +394,12 @@
         ]
       }
     }
+  },
+  "api": {
+    "rest": true,
+    "graphql": {
+      "enabled": true,
+      "path": "/graphql"
+    }
   }
 }

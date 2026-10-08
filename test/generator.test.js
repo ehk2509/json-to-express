@@ -1194,3 +1194,73 @@ test('generates PostgreSQL many-to-many relations across API SDK OpenAPI and adm
   assert.match(admin, /"many": true/);
   assert.match(admin, /"ref": "Tag"/);
 });
+
+
+test('generates GraphQL schema and resolvers from the same normalized IR', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-graphql-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const graphqlSpec = {
+    specVersion: '1.0',
+    api: {rest: false, graphql: {enabled: true, path: '/gql'}},
+    app: {name: 'graphql-api'},
+    database: {type: 'postgresql'},
+    entities: {
+      Tag: {
+        fields: {name: {type: 'string', required: true}}
+      },
+      Product: {
+        operations: {
+          list: {
+            query: {
+              filters: ['name', 'price', 'tags'],
+              operators: ['eq', 'gte', 'in'],
+              pagination: {enabled: true, defaultLimit: 20, maxLimit: 100}
+            }
+          }
+        },
+        fields: {
+          name: {type: 'string', required: true},
+          price: {type: 'number', required: true, min: 0},
+          tags: {type: 'reference', ref: 'Tag', many: true}
+        }
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(graphqlSpec, output);
+  assert.ok(result.files.includes('src/graphql/index.js'));
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies.graphql);
+  assert.ok(pkg.dependencies['@graphql-tools/schema']);
+  assert.ok(pkg.dependencies.dataloader);
+
+  const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
+  assert.match(app, /app\.all\("\/gql"/);
+  assert.doesNotMatch(app, /app\.use\("\/api\/products"/);
+
+  const graphql = fs.readFileSync(path.join(output, 'src/graphql/index.js'), 'utf8');
+  assert.match(graphql, /type Product \{/);
+  assert.match(graphql, /id: ID!/);
+  assert.match(graphql, /tags: \[Tag!\]!/);
+  assert.match(graphql, /input ProductCreateInput/);
+  assert.match(graphql, /input ProductFilterInput/);
+  assert.match(graphql, /tags__in: \[ID!\]/);
+  assert.match(graphql, /listProducts/);
+  assert.match(graphql, /getProduct/);
+  assert.match(graphql, /createProduct/);
+  assert.match(graphql, /updateProduct/);
+  assert.match(graphql, /deleteProduct/);
+  assert.match(graphql, /new DataLoader/);
+  assert.match(graphql, /invokeController/);
+  assert.match(graphql, /validation\.validateBody/);
+  assert.match(graphql, /resolveRelation/);
+
+  const syntax = spawnSync(process.execPath, ['--check', path.join(output, 'src/graphql/index.js')], {
+    cwd: output,
+    encoding: 'utf8'
+  });
+  assert.equal(syntax.status, 0, syntax.stderr);
+});

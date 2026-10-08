@@ -404,3 +404,43 @@ test('accepts PostgreSQL many-to-many references and rejects incompatible indexe
     }
   );
 });
+
+
+test('validates GraphQL API target semantics', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    api: {rest: false, graphql: {enabled: true, path: '/graphql'}},
+    app: {name: 'graphql-only'},
+    database: {type: 'mongodb'},
+    entities: {
+      Product: {fields: {name: {type: 'string'}}}
+    }
+  }));
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      api: {rest: false, graphql: false},
+      app: {name: 'no-api'},
+      database: {type: 'mongodb'},
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    /api must enable at least one of rest or graphql/
+  );
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      api: {graphql: {enabled: true, path: '/health'}},
+      app: {name: 'collision', health: {enabled: true, path: '/health'}},
+      database: {type: 'mongodb'},
+      entities: {Product: {fields: {id: {type: 'string'}, '__secret': {type: 'string'}}}}
+    }),
+    error => {
+      assert.match(error.message, /api\.graphql\.path cannot be the same as app\.health\.path/);
+      assert.match(error.message, /fields\.id is reserved by the GraphQL target/);
+      assert.match(error.message, /fields\.__secret is not a valid GraphQL field name/);
+      return true;
+    }
+  );
+});

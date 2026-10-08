@@ -16,6 +16,17 @@ async function request(urlPath, options = {}) {
   return {response, body};
 }
 
+
+async function graphqlRequest(query, variables = {}) {
+  const {response, body} = await request('/graphql', {
+    method: 'POST',
+    body: JSON.stringify({query, variables})
+  });
+  assert.equal(response.status, 200);
+  if (body.errors) throw new Error('GraphQL errors: ' + JSON.stringify(body.errors));
+  return body.data;
+}
+
 async function waitForHealth() {
   let lastError;
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -30,6 +41,79 @@ async function waitForHealth() {
 
 async function main() {
   await waitForHealth();
+
+  const gqlCategory = await graphqlRequest(
+    'mutation($input: CategoryCreateInput!) { createCategory(input: $input) { id name } }',
+    {input: {name: 'GraphQL Accessories'}}
+  );
+  assert.ok(gqlCategory.createCategory.id);
+
+  const gqlTag = await graphqlRequest(
+    'mutation($input: TagCreateInput!) { createTag(input: $input) { id name } }',
+    {input: {name: 'GraphQL Featured'}}
+  );
+  assert.ok(gqlTag.createTag.id);
+
+  const gqlProduct = await graphqlRequest(
+    'mutation($input: ProductCreateInput!) { createProduct(input: $input) { id name price category { id name } tags { id name } } }',
+    {input: {
+      name: 'GraphQL Keyboard',
+      price: 249,
+      category: gqlCategory.createCategory.id,
+      tags: [gqlTag.createTag.id]
+    }}
+  );
+  assert.equal(gqlProduct.createProduct.category.name, 'GraphQL Accessories');
+  assert.equal(gqlProduct.createProduct.tags[0].name, 'GraphQL Featured');
+  const gqlProductId = gqlProduct.createProduct.id;
+
+  const gqlListed = await graphqlRequest(
+    'query($filter: ProductFilterInput) { listProducts(filter: $filter, sort: "-price", page: 1, limit: 5) { id name price category { name } tags { name } } }',
+    {filter: {name: 'GraphQL Keyboard', price__gte: 200, tags: gqlTag.createTag.id}}
+  );
+  assert.equal(gqlListed.listProducts.length, 1);
+  assert.equal(gqlListed.listProducts[0].id, gqlProductId);
+  assert.equal(gqlListed.listProducts[0].tags[0].name, 'GraphQL Featured');
+
+  const gqlUpdated = await graphqlRequest(
+    'mutation($id: ID!, $input: ProductUpdateInput!) { updateProduct(id: $id, input: $input) { id price tags { id } } }',
+    {id: gqlProductId, input: {price: 260, tags: []}}
+  );
+  assert.equal(gqlUpdated.updateProduct.price, 260);
+  assert.deepEqual(gqlUpdated.updateProduct.tags, []);
+
+  const gqlQueued = await graphqlRequest(
+    'mutation($params: JSON, $body: JSON) { actionQueueReprice(params: $params, body: $body) }',
+    {params: {id: gqlProductId}, body: {price: 275}}
+  );
+  assert.equal(gqlQueued.actionQueueReprice.queued, true);
+
+  let gqlRepriced;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const current = await graphqlRequest(
+      'query($id: ID!) { getProduct(id: $id) { id price } }',
+      {id: gqlProductId}
+    );
+    if (current.getProduct && current.getProduct.price === 275) {
+      gqlRepriced = current.getProduct;
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(gqlRepriced);
+
+  const gqlDeleted = await graphqlRequest(
+    'mutation($id: ID!) { deleteProduct(id: $id) }',
+    {id: gqlProductId}
+  );
+  assert.equal(gqlDeleted.deleteProduct, true);
+
+  const gqlTagDeleted = await graphqlRequest(
+    'mutation($id: ID!) { deleteTag(id: $id) }',
+    {id: gqlTag.createTag.id}
+  );
+  assert.equal(gqlTagDeleted.deleteTag, true);
+
 
   const category = await request('/api/categories', {
     method: 'POST',
