@@ -378,7 +378,11 @@ function typescriptSource(spec) {
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
     '      const isForm = typeof FormData !== "undefined" && config.body instanceof FormData;',
     '      if (isForm) { delete headers["content-type"]; body = config.body; }',
-    '      else { headers["content-type"] = headers["content-type"] || "application/json"; body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body as BodyInit; }',
+    '      else {',
+    '        headers["content-type"] = headers["content-type"] || "application/json";',
+    '        if (headers["content-type"].includes("application/json")) body = JSON.stringify(config.body);',
+    '        else body = config.body as BodyInit;',
+    '      }',
     '    }',
     '    const response = await fetchImpl(appendQuery(baseUrl + buildPath(route, config.params), config.query), {method, headers, body, signal: config.signal, credentials: options.credentials});',
     '    if (response.status === 204) {',
@@ -407,8 +411,8 @@ function typescriptSource(spec) {
       const method = JSON.stringify(operation.method.toUpperCase());
       if (name === 'list') methods.push('      list: (query, options = {}) => request<' + entity.name + '[]>(' + method + ', ' + JSON.stringify(route) + ', {...options, query: query as Record<string, QueryValue>}),');
       if (name === 'get') methods.push('      get: (id, query, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, query}),');
-      if (name === 'create') methods.push('      create: (data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, body: prepareBody(data as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
-      if (name === 'update') methods.push('      update: (id, data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: prepareBody(data as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
+      if (name === 'create') methods.push('      create: (data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, body: prepareBody(data as unknown as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
+      if (name === 'update') methods.push('      update: (id, data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: prepareBody(data as unknown as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
       if (name === 'delete') methods.push('      delete: (id, options = {}) => request<' + (operation.status === 204 ? 'void' : entity.name) + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}}),');
     }
     lines.push('    ' + groupName(entity) + ': {', ...methods, '    },');
