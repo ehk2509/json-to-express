@@ -99,6 +99,16 @@
             "category",
             "tags"
           ]
+        },
+        "create": {
+          "populate": [
+            "tags"
+          ]
+        },
+        "update": {
+          "populate": [
+            "tags"
+          ]
         }
       },
       "fields": {
