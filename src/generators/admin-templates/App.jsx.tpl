@@ -97,37 +97,107 @@ function Toast({message, onClose}) {
 }
 
 function TokenGate({children}) {
-  const [token, setToken] = useState(() => {
-    if (!config.authEnabled) return '';
-    const storage = window[config.auth.tokenStorage];
-    return storage.getItem(config.auth.tokenKey) || '';
+  const api = useMemo(() => createApi(config), []);
+  const sessionMarker = config.auth.tokenKey + '-session';
+  const storage = window[config.auth.tokenStorage];
+  const [authenticated, setAuthenticated] = useState(() => {
+    if (!config.authEnabled) return true;
+    return Boolean(
+      storage.getItem(config.auth.tokenKey) ||
+      storage.getItem(config.auth.tokenKey + '-api-key') ||
+      window.sessionStorage.getItem(sessionMarker)
+    );
   });
-  const [draft, setDraft] = useState(token);
+  const [tokenDraft, setTokenDraft] = useState(storage.getItem(config.auth.tokenKey) || '');
+  const [apiKeyDraft, setApiKeyDraft] = useState(storage.getItem(config.auth.tokenKey + '-api-key') || '');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   if (!config.authEnabled) return children;
 
-  if (!token) {
+  async function login(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api.auth.login(email, password);
+      if (config.authBackend.sessionEnabled && !(result && result.accessToken)) {
+        window.sessionStorage.setItem(sessionMarker, '1');
+      }
+      setAuthenticated(true);
+    } catch (loginError) {
+      setError(loginError.message || 'Login failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function saveBearer() {
+    const value = tokenDraft.trim();
+    api.auth.persistToken(value);
+    setAuthenticated(Boolean(value));
+  }
+
+  function saveApiKey() {
+    const value = apiKeyDraft.trim();
+    api.auth.persistApiKey(value);
+    setAuthenticated(Boolean(value));
+  }
+
+  if (!authenticated) {
     return <main className="auth-screen">
       <section className="auth-card">
         <div className="brand-mark">J2E</div>
         <h1>{config.title}</h1>
-        <p>Paste a bearer token to access protected admin operations.</p>
-        <textarea aria-label="Bearer token" value={draft} onChange={event => setDraft(event.target.value)}
-          rows="5" placeholder="eyJ..." />
-        <Button variant="primary" disabled={!draft.trim()} onClick={() => {
-          const value = draft.trim();
-          window[config.auth.tokenStorage].setItem(config.auth.tokenKey, value);
-          setToken(value);
-        }}>Continue</Button>
+        <p>Authenticate using one of the strategies enabled by this generated backend.</p>
+
+        {config.authBackend.local.enabled &&
+          <form onSubmit={login}>
+            <label>Email</label>
+            <input type="email" value={email} onChange={event => setEmail(event.target.value)}
+              autoComplete="username" required />
+            <label>Password</label>
+            <input type="password" value={password} onChange={event => setPassword(event.target.value)}
+              autoComplete="current-password" required />
+            {error && <p className="field-error">{error}</p>}
+            <Button variant="primary" disabled={busy || !email || !password}>
+              {busy ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>}
+
+        {config.authBackend.oidc.enabled && config.authBackend.sessionEnabled &&
+          <Button variant="primary" onClick={() => {
+            window.location.href = String(config.baseUrl || '').replace(/\/$/, '') + config.authBackend.oidc.loginPath;
+          }}>Continue with SSO</Button>}
+
+        {config.authBackend.apiKey.enabled &&
+          <>
+            <label>API key</label>
+            <input type="password" aria-label="API key" value={apiKeyDraft}
+              onChange={event => setApiKeyDraft(event.target.value)} placeholder="API key" />
+            <Button disabled={!apiKeyDraft.trim()} onClick={saveApiKey}>Use API key</Button>
+          </>}
+
+        {(config.authBackend.jwtEnabled || config.authBackend.strategies.includes('oidc')) &&
+          <>
+            <label>Bearer token</label>
+            <textarea aria-label="Bearer token" value={tokenDraft}
+              onChange={event => setTokenDraft(event.target.value)} rows="4" placeholder="eyJ..." />
+            <Button disabled={!tokenDraft.trim()} onClick={saveBearer}>Use bearer token</Button>
+          </>}
       </section>
     </main>;
   }
 
   return React.cloneElement(children, {
-    onLogout: () => {
-      window[config.auth.tokenStorage].removeItem(config.auth.tokenKey);
-      setToken('');
-      setDraft('');
+    onLogout: async () => {
+      await api.auth.logout();
+      window.sessionStorage.removeItem(sessionMarker);
+      setTokenDraft('');
+      setApiKeyDraft('');
+      setAuthenticated(false);
     }
   });
 }
@@ -609,7 +679,7 @@ function Shell({onLogout}) {
           </>}
       </nav>
       <div className="sidebar-footer">
-        {config.authEnabled && <Button onClick={onLogout}>Clear token</Button>}
+        {config.authEnabled && <Button onClick={onLogout}>Sign out</Button>}
         <small>{config.databaseType === 'postgresql' ? 'PostgreSQL / Prisma' : 'MongoDB / Mongoose'}</small>
       </div>
     </aside>
