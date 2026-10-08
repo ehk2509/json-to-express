@@ -11,6 +11,7 @@ function serverSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.server, paths.observability)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(paths.server, paths.cache)) + ');'] : []),
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
+    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');"] : []),
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['const outboxWorker = require(' + js(relativeRequire(paths.server, paths.worker)) + ');'] : []), '',
     'validateEnvironment();',
@@ -25,15 +26,25 @@ function serverSource(spec) {
         ? '  outboxWorker.startWorker().catch(error => observability.logger.error("worker.loop.failed", {error: error.message}));'
         : '  outboxWorker.startWorker().catch(error => console.error("Outbox worker failed:", error));'
     ] : []),
+    ...(spec.app.framework === 'fastify' ? [
+      '  await fastify.register(fastifyExpress);',
+      '  fastify.use(app);',
+      '  await fastify.listen({port, host});',
+      '  server = fastify;',
+      '  ' + (spec.observability.enabled
+        ? 'observability.logger.info("server.started", {host, port});'
+        : 'console.log(' + js(spec.app.startupMessage) + '.replace("{host}", host).replace("{port}", String(port)));')
+    ] : [
     '  server = app.listen(port, host, () => ' +
       (spec.observability.enabled
         ? 'observability.logger.info("server.started", {host, port})'
         : 'console.log(' + js(spec.app.startupMessage) + '.replace("{host}", host).replace("{port}", String(port)))') +
-      ');',
+      ');'
+    ]),
     '}', '',
     'async function shutdown(signal) {',
     '  console.log(signal + " received, shutting down");',
-    '  if (server) await new Promise(resolve => server.close(resolve));',
+    ...(spec.app.framework === 'fastify' ? ['  if (server) await server.close();'] : ['  if (server) await new Promise(resolve => server.close(resolve));']),
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['  outboxWorker.stopWorker();'] : []),
     ...(spec.cache.enabled ? ['  await cache.disconnect();'] : []),
     '  if (connectDatabase.disconnect) await connectDatabase.disconnect();',
