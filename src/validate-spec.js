@@ -188,6 +188,109 @@ function validateSpec(inputSpec) {
     });
   }
 
+  if (spec.auth && spec.auth.enabled === true) {
+    const auth = spec.auth;
+    const inferredStrategies = [];
+    if (auth.apiKey && auth.apiKey.enabled === true) inferredStrategies.push('apiKey');
+    if (auth.session && auth.session.enabled === true) inferredStrategies.push('session');
+    if (auth.oidc && auth.oidc.enabled === true) inferredStrategies.push('oidc');
+    if (auth.jwt && auth.jwt.enabled === true) inferredStrategies.push('jwt');
+    const strategies = auth.strategies || (auth.strategy ? [auth.strategy] : (inferredStrategies.length ? inferredStrategies : ['jwt']));
+    const strategySet = new Set(strategies);
+
+    if (auth.strategy && auth.strategies) {
+      errors.push('auth.strategy and auth.strategies cannot both be configured');
+    }
+    if (strategySet.has('apiKey') && (!auth.apiKey || !Array.isArray(auth.apiKey.keys) || auth.apiKey.keys.length === 0)) {
+      errors.push('auth.apiKey.keys must contain at least one key when apiKey strategy is enabled');
+    }
+    if (auth.apiKey && Array.isArray(auth.apiKey.keys)) {
+      const seenKeyEnvs = new Set();
+      for (const key of auth.apiKey.keys) {
+        if (key && key.env) {
+          if (seenKeyEnvs.has(key.env)) errors.push('auth.apiKey.keys contains duplicate env "' + key.env + '"');
+          seenKeyEnvs.add(key.env);
+        }
+      }
+    }
+
+    const localEnabled = Boolean(auth.local && auth.local.enabled === true);
+    const oidcEnabled = Boolean(auth.oidc && auth.oidc.enabled === true) || strategySet.has('oidc');
+    const sessionEnabled = strategySet.has('session');
+    const jwtEnabled = strategySet.has('jwt');
+    const refreshEnabled = Boolean(auth.jwt && auth.jwt.refresh && auth.jwt.refresh.enabled === true);
+
+    if (sessionEnabled && !localEnabled && !oidcEnabled) {
+      errors.push('auth session strategy requires auth.local.enabled or auth.oidc.enabled so sessions can be issued');
+    }
+    if (localEnabled && !jwtEnabled && !sessionEnabled) {
+      errors.push('auth.local.enabled requires jwt or session in auth strategies');
+    }
+    if (refreshEnabled && !jwtEnabled) {
+      errors.push('auth.jwt.refresh.enabled requires jwt in auth strategies');
+    }
+    if (oidcEnabled) {
+      if (!auth.oidc || !auth.oidc.issuer) errors.push('auth.oidc.issuer is required when OIDC is enabled');
+      if (!auth.oidc || !auth.oidc.clientIdEnv) {
+        // The normalizer supplies OIDC_CLIENT_ID, so the field may be omitted.
+      }
+    }
+    if (
+      auth.session && auth.session.sameSite === 'none' &&
+      auth.session.secure === false
+    ) {
+      errors.push('auth.session.sameSite "none" requires auth.session.secure true');
+    }
+
+    const authPaths = [];
+    if (localEnabled) {
+      const local = auth.local;
+      if (local.allowRegistration !== false) authPaths.push(['auth.local.registerPath', local.registerPath || '/auth/register']);
+      authPaths.push(['auth.local.loginPath', local.loginPath || '/auth/login']);
+      authPaths.push(['auth.local.logoutPath', local.logoutPath || '/auth/logout']);
+      authPaths.push(['auth.local.forgotPasswordPath', local.forgotPasswordPath || '/auth/forgot-password']);
+      authPaths.push(['auth.local.resetPasswordPath', local.resetPasswordPath || '/auth/reset-password']);
+    }
+    if (refreshEnabled) authPaths.push(['auth.jwt.refresh.path', auth.jwt.refresh.path || '/auth/refresh']);
+    if (oidcEnabled) {
+      authPaths.push(['auth.oidc.loginPath', auth.oidc.loginPath || '/auth/oidc/login']);
+      authPaths.push(['auth.oidc.callbackPath', auth.oidc.callbackPath || '/auth/oidc/callback']);
+    }
+    const seenAuthPaths = new Map();
+    for (const [label, routePath] of authPaths) {
+      if (seenAuthPaths.has(routePath)) {
+        errors.push(label + ' duplicates auth route ' + routePath);
+      } else {
+        seenAuthPaths.set(routePath, label);
+      }
+      if (spec.app && spec.app.health && spec.app.health.enabled !== false && routePath === spec.app.health.path) {
+        errors.push(label + ' cannot be the same as app.health.path');
+      }
+      if (graphqlEnabled && routePath === graphqlPath) {
+        errors.push(label + ' cannot be the same as api.graphql.path');
+      }
+    }
+
+    const validateRuleStrategies = (rule, label) => {
+      if (!isObject(rule) || !Array.isArray(rule.strategies)) return;
+      for (const strategy of rule.strategies) {
+        if (!strategySet.has(strategy)) errors.push(label + '.strategies references disabled auth strategy "' + strategy + '"');
+      }
+    };
+    if (isObject(spec.entities)) {
+      for (const [entityName, entity] of Object.entries(spec.entities)) {
+        for (const [operationName, operation] of Object.entries(entity && entity.operations || {})) {
+          if (isObject(operation)) validateRuleStrategies(operation.auth, 'entities.' + entityName + '.operations.' + operationName + '.auth');
+        }
+      }
+    }
+    if (isObject(spec.endpoints)) {
+      for (const [endpointName, endpoint] of Object.entries(spec.endpoints)) {
+        if (isObject(endpoint)) validateRuleStrategies(endpoint.auth, 'endpoints.' + endpointName + '.auth');
+      }
+    }
+  }
+
   if (spec.auth && spec.auth.enabled === false && isObject(spec.entities)) {
     for (const [entityName, entity] of Object.entries(spec.entities)) {
       if (!isObject(entity) || !isObject(entity.operations)) continue;
