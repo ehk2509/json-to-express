@@ -217,8 +217,13 @@ async function main() {
 
   const fetched = await request('/api/products/' + id);
   assert.equal(fetched.response.status, 200);
+  assert.equal(fetched.response.headers.get('x-cache'), 'MISS');
   assert.equal(fetched.body.category.name, 'Accessories');
   assert.equal(fetched.body.tags.length, 2);
+
+  const fetchedCached = await request('/api/products/' + id);
+  assert.equal(fetchedCached.response.status, 200);
+  assert.equal(fetchedCached.response.headers.get('x-cache'), 'HIT');
 
   const updated = await request('/api/products/' + id, {
     method: 'PATCH',
@@ -228,6 +233,14 @@ async function main() {
   assert.equal(updated.body.price, 120);
   assert.equal(updated.body.tags.length, 1);
   assert.equal(updated.body.tags[0].name, 'Featured');
+
+  const afterUpdate = await request('/api/products/' + id);
+  assert.equal(afterUpdate.response.status, 200);
+  assert.equal(afterUpdate.response.headers.get('x-cache'), 'MISS');
+  assert.equal(afterUpdate.body.price, 120);
+
+  const afterUpdateCached = await request('/api/products/' + id);
+  assert.equal(afterUpdateCached.response.headers.get('x-cache'), 'HIT');
 
   const tagDeleted = await request('/api/tags/' + tagA.body._id, {method: 'DELETE'});
   assert.equal(tagDeleted.response.status, 204);
@@ -249,6 +262,13 @@ async function main() {
   assert.equal(webhookPayload.name, 'Keyboard');
   assert.equal(webhookPayload.published, true);
 
+  const publishedRecord = await request('/api/products/' + id);
+  assert.equal(publishedRecord.response.status, 200);
+  assert.equal(publishedRecord.response.headers.get('x-cache'), 'MISS');
+  assert.equal(publishedRecord.body.published, true);
+  const publishedRecordCached = await request('/api/products/' + id);
+  assert.equal(publishedRecordCached.response.headers.get('x-cache'), 'HIT');
+
   const queued = await request('/api/products/' + id + '/reprice', {
     method: 'POST',
     body: JSON.stringify({price: 135})
@@ -257,16 +277,19 @@ async function main() {
   assert.equal(queued.body.queued, true);
 
   let repriced;
+  let repricedCacheState;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const current = await request('/api/products/' + id);
     if (current.response.status === 200 && current.body.price === 135) {
       repriced = current.body;
+      repricedCacheState = current.response.headers.get('x-cache');
       break;
     }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(repriced);
   assert.equal(repriced.price, 135);
+  assert.equal(repricedCacheState, 'MISS');
 
   const removed = await request('/api/products/' + id, {method: 'DELETE'});
   assert.equal(removed.response.status, 204);
