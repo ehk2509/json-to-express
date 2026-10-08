@@ -29,6 +29,16 @@ module.exports = function readmeSource(spec) {
   ];
 
   const deployment = [];
+  if (spec.admin.enabled) {
+    deployment.push(
+      '## Generated admin UI', '',
+      'A standalone React/Vite admin application is generated in ' + spec.admin.outputDir + '.', '',
+      '    cd ' + spec.admin.outputDir,
+      '    npm install',
+      '    npm run dev', '',
+      'Production build: npm run build. Override the API URL with VITE_API_BASE_URL when needed.', ''
+    );
+  }
   if (spec.sdk.enabled) {
     deployment.push(
       '## Generated SDK', '',

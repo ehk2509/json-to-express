@@ -71,6 +71,87 @@ function validateSpec(inputSpec) {
   if (spec.sdk && spec.sdk.outputDir) {
     validateRelativePath(errors, spec.sdk.outputDir, 'sdk.outputDir');
   }
+  if (spec.admin && spec.admin.outputDir) {
+    validateRelativePath(errors, spec.admin.outputDir, 'admin.outputDir');
+  }
+
+  if (spec.admin && spec.admin.entities) {
+    for (const [entityName, adminEntity] of Object.entries(spec.admin.entities)) {
+      const entity = spec.entities && spec.entities[entityName];
+      if (!entity) {
+        errors.push('admin.entities.' + entityName + ' references unknown entity');
+        continue;
+      }
+      const fields = new Set(Object.keys(entity.fields || {}));
+      const listFilters = new Set(
+        entity.operations && entity.operations.list && entity.operations.list.query && entity.operations.list.query.filters || []
+      );
+      const checkFields = (names, label) => {
+        for (const fieldName of names || []) {
+          if (!fields.has(fieldName)) errors.push('admin.entities.' + entityName + '.' + label + ' references unknown field ' + fieldName);
+        }
+      };
+      if (adminEntity.titleField && !fields.has(adminEntity.titleField)) {
+        errors.push('admin.entities.' + entityName + '.titleField references unknown field ' + adminEntity.titleField);
+      }
+      checkFields(adminEntity.listFields, 'listFields');
+      checkFields(adminEntity.hiddenFields, 'hiddenFields');
+      checkFields(adminEntity.readonlyFields, 'readonlyFields');
+      checkFields(adminEntity.filterFields, 'filterFields');
+      for (const fieldName of adminEntity.filterFields || []) {
+        if (!listFilters.has(fieldName)) {
+          errors.push('admin.entities.' + entityName + '.filterFields field ' + fieldName + ' is not allowed by operations.list.query.filters');
+        }
+      }
+      for (const fieldName of Object.keys(adminEntity.fields || {})) {
+        if (!fields.has(fieldName)) errors.push('admin.entities.' + entityName + '.fields references unknown field ' + fieldName);
+      }
+      const operationEnabled = operation => {
+        if (operation === undefined) return true;
+        if (typeof operation === 'boolean') return operation;
+        return operation.enabled !== false;
+      };
+      const operations = entity.operations || {};
+      if (adminEntity.create === true && !operationEnabled(operations.create)) {
+        errors.push('admin.entities.' + entityName + '.create cannot be enabled when create operation is disabled');
+      }
+      if (adminEntity.edit === true && !operationEnabled(operations.update)) {
+        errors.push('admin.entities.' + entityName + '.edit cannot be enabled when update operation is disabled');
+      }
+      if (adminEntity.delete === true && !operationEnabled(operations.delete)) {
+        errors.push('admin.entities.' + entityName + '.delete cannot be enabled when delete operation is disabled');
+      }
+
+      const pagination = operations.list && typeof operations.list === 'object' &&
+        operations.list.query && operations.list.query.pagination;
+      if (
+        adminEntity.pageSize !== undefined &&
+        pagination && pagination.enabled === true &&
+        pagination.maxLimit !== undefined &&
+        adminEntity.pageSize > pagination.maxLimit
+      ) {
+        errors.push('admin.entities.' + entityName + '.pageSize cannot exceed operations.list.query.pagination.maxLimit');
+      }
+
+      const hidden = new Set(adminEntity.hiddenFields || []);
+      for (const fieldName of adminEntity.listFields || []) {
+        if (hidden.has(fieldName)) {
+          errors.push('admin.entities.' + entityName + '.listFields cannot include hidden field ' + fieldName);
+        }
+      }
+
+      const readonly = new Set(adminEntity.readonlyFields || []);
+      if (adminEntity.create !== false && operationEnabled(operations.create)) {
+        for (const [fieldName, field] of Object.entries(entity.fields || {})) {
+          const fieldAdmin = adminEntity.fields && adminEntity.fields[fieldName] || {};
+          const isReadonly = readonly.has(fieldName) || fieldAdmin.readonly === true;
+          if (isReadonly && field.required === true && field.default === undefined) {
+            errors.push('admin.entities.' + entityName + ' cannot make required create field ' + fieldName + ' readonly without a default');
+          }
+        }
+      }
+    }
+  }
 
   if (spec.deployment) {
     if (spec.deployment.docker) {

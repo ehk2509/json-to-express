@@ -27,6 +27,7 @@ const dockerfileSource = require('./dockerfile');
 const composeSource = require('./compose');
 const kubernetesFiles = require('./kubernetes');
 const sdkFiles = require('./sdk');
+const adminFiles = require('./admin');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -92,6 +93,9 @@ function buildFiles(spec) {
   }
   if (spec.sdk.enabled) {
     for (const [relativePath, content] of sdkFiles(spec)) files.set(relativePath, content);
+  }
+  if (spec.admin.enabled) {
+    for (const [relativePath, content] of adminFiles(spec)) files.set(relativePath, content);
   }
 
   if (spec.database.type === 'postgresql') {

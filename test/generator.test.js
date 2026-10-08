@@ -869,3 +869,136 @@ test('generates standalone JavaScript and strongly typed TypeScript SDK clients'
   const checked = spawnSync(process.execPath, ['--check', path.join(output, 'client/javascript/index.js')], {encoding: 'utf8'});
   assert.equal(checked.status, 0, checked.stderr);
 });
+
+
+test('generates a complete configurable React admin UI from entity metadata', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-admin-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const adminSpec = {
+    specVersion: '1.0',
+    app: {name: 'admin-api', port: 4400, apiPrefix: '/v1'},
+    database: {type: 'mongodb'},
+    admin: {
+      enabled: true,
+      outputDir: 'backoffice',
+      title: 'Catalog Console',
+      baseUrl: 'https://api.example.test',
+      devPort: 4180,
+      includeCustomActions: true,
+      auth: {tokenStorage: 'sessionStorage', tokenKey: 'catalog-token'},
+      theme: {brandColor: '#7c3aed', mode: 'dark'},
+      entities: {
+        Product: {
+          label: 'Catalog item',
+          pluralLabel: 'Catalog items',
+          titleField: 'name',
+          listFields: ['name', 'price', 'category', 'published'],
+          filterFields: ['name', 'price'],
+          readonlyFields: ['published'],
+          pageSize: 25,
+          fields: {
+            name: {label: 'Product name', placeholder: 'Mechanical keyboard'},
+            category: {label: 'Category', widget: 'reference'},
+            published: {label: 'Published', readonly: true}
+          }
+        }
+      }
+    },
+    entities: {
+      Category: {
+        fields: {
+          name: {type: 'string', required: true}
+        }
+      },
+      Product: {
+        operations: {
+          list: {
+            populate: ['category'],
+            query: {
+              filters: ['name', 'price'],
+              operators: ['eq', 'gte', 'lte'],
+              pagination: {enabled: true, defaultLimit: 20, maxLimit: 100}
+            }
+          }
+        },
+        fields: {
+          name: {type: 'string', required: true, minLength: 2},
+          price: {type: 'number', required: true, min: 0},
+          category: {type: 'reference', ref: 'Category', required: true},
+          published: {type: 'boolean', default: false}
+        }
+      }
+    },
+    workflows: {
+      publishProduct: {
+        steps: [{name: 'done', action: 'respond', body: {ok: true}}]
+      }
+    },
+    endpoints: {
+      publishProduct: {
+        method: 'post',
+        path: '/products/:id/publish',
+        workflow: 'publishProduct'
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(adminSpec, output);
+
+  for (const file of [
+    'backoffice/package.json',
+    'backoffice/vite.config.js',
+    'backoffice/index.html',
+    'backoffice/README.md',
+    'backoffice/src/config.js',
+    'backoffice/src/api.js',
+    'backoffice/src/App.jsx',
+    'backoffice/src/main.jsx',
+    'backoffice/src/styles.css'
+  ]) assert.ok(result.files.includes(file), file + ' should be generated');
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'backoffice/package.json'), 'utf8'));
+  assert.equal(pkg.name, 'admin-api-admin');
+  assert.equal(pkg.type, 'module');
+  assert.ok(pkg.dependencies.react);
+  assert.ok(pkg.dependencies['react-dom']);
+  assert.ok(pkg.devDependencies.vite);
+
+  const config = fs.readFileSync(path.join(output, 'backoffice/src/config.js'), 'utf8');
+  assert.match(config, /Catalog Console/);
+  assert.match(config, /https:\/\/api\.example\.test/);
+  assert.match(config, /sessionStorage/);
+  assert.match(config, /catalog-token/);
+  assert.match(config, /#7c3aed/);
+  assert.match(config, /Catalog items/);
+  assert.match(config, /"pageSize": 25/);
+  assert.match(config, /"label": "Product name"/);
+  assert.match(config, /"widget": "reference"/);
+  assert.match(config, /"entity": "Product"/);
+  assert.match(config, /"path": "\/v1\/products\/:id\/publish"/);
+
+  const app = fs.readFileSync(path.join(output, 'backoffice/src/App.jsx'), 'utf8');
+  assert.match(app, /function RecordForm/);
+  assert.match(app, /function EntityPage/);
+  assert.match(app, /function ActionDialog/);
+  assert.match(app, /window\.confirm/);
+  assert.match(app, /relationOptions/);
+  assert.match(app, /price__gte|filterFields/);
+  assert.match(app, /TokenGate/);
+
+  const api = fs.readFileSync(path.join(output, 'backoffice/src/api.js'), 'utf8');
+  assert.match(api, /class ApiError extends Error/);
+  assert.match(api, /authorization = 'Bearer '/);
+  assert.match(api, /function entity\(resource\)/);
+  assert.match(api, /function action\(actionConfig/);
+
+  for (const file of ['src/api.js', 'src/config.js', 'vite.config.js']) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, 'backoffice', file)], {
+      cwd: path.join(output, 'backoffice'),
+      encoding: 'utf8'
+    });
+    assert.equal(checked.status, 0, file + ' failed syntax check:\n' + checked.stderr);
+  }
+});

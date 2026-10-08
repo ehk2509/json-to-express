@@ -825,6 +825,82 @@
           "default": true
         }
       }
+    },
+    "admin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "outputDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "admin"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "devPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 5173
+        },
+        "includeCustomActions": {
+          "type": "boolean",
+          "default": true
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tokenStorage": {
+              "enum": [
+                "localStorage",
+                "sessionStorage"
+              ],
+              "default": "localStorage"
+            },
+            "tokenKey": {
+              "type": "string",
+              "minLength": 1,
+              "default": "j2e-admin-token"
+            }
+          }
+        },
+        "theme": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "brandColor": {
+              "type": "string",
+              "minLength": 1,
+              "default": "#2563eb"
+            },
+            "mode": {
+              "enum": [
+                "light",
+                "dark",
+                "system"
+              ],
+              "default": "system"
+            }
+          }
+        },
+        "entities": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/adminEntity"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -1296,6 +1372,111 @@
         "delayMs": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "adminField": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "help": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "widget": {
+          "enum": [
+            "auto",
+            "text",
+            "textarea",
+            "number",
+            "checkbox",
+            "date",
+            "datetime",
+            "select",
+            "reference"
+          ]
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "readonly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "adminEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pluralLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "titleField": {
+          "type": "string",
+          "minLength": 1
+        },
+        "listFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "filterFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hiddenFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "readonlyFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "create": {
+          "type": "boolean"
+        },
+        "edit": {
+          "type": "boolean"
+        },
+        "delete": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/adminField"
+          }
         }
       }
     }

@@ -278,3 +278,47 @@ test('validates generated SDK output path safety', () => {
     /sdk\.outputDir must be a safe relative path/
   );
 });
+
+
+test('validates admin UI paths entities fields and operation capabilities', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'admin-api'},
+      database: {type: 'mongodb'},
+      admin: {
+        enabled: true,
+        outputDir: '../admin',
+        entities: {
+          Missing: {listFields: ['name']},
+          Product: {
+            titleField: 'missing',
+            listFields: ['unknown'],
+            filterFields: ['price'],
+            fields: {ghost: {label: 'Ghost'}},
+            create: true
+          }
+        }
+      },
+      entities: {
+        Product: {
+          operations: {create: false, list: {query: {filters: ['name']}}},
+          fields: {
+            name: {type: 'string'},
+            price: {type: 'number'}
+          }
+        }
+      }
+    }),
+    error => {
+      assert.match(error.message, /admin\.outputDir must be a safe relative path/);
+      assert.match(error.message, /admin\.entities\.Missing references unknown entity/);
+      assert.match(error.message, /titleField references unknown field missing/);
+      assert.match(error.message, /listFields references unknown field unknown/);
+      assert.match(error.message, /filterFields field price is not allowed/);
+      assert.match(error.message, /fields references unknown field ghost/);
+      assert.match(error.message, /create cannot be enabled when create operation is disabled/);
+      return true;
+    }
+  );
+});

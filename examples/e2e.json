@@ -293,5 +293,64 @@
     "private": true,
     "baseUrl": "http://127.0.0.1:3456",
     "includeCustomEndpoints": true
+  },
+  "admin": {
+    "enabled": true,
+    "outputDir": "admin",
+    "title": "Mongo E2E Admin",
+    "baseUrl": "http://127.0.0.1:3456",
+    "devPort": 4173,
+    "includeCustomActions": true,
+    "auth": {
+      "tokenStorage": "sessionStorage",
+      "tokenKey": "j2e-e2e-admin-token"
+    },
+    "theme": {
+      "brandColor": "#2563eb",
+      "mode": "system"
+    },
+    "entities": {
+      "Product": {
+        "label": "Product",
+        "pluralLabel": "Products",
+        "titleField": "name",
+        "listFields": [
+          "name",
+          "price",
+          "category",
+          "published"
+        ],
+        "filterFields": [
+          "name",
+          "price"
+        ],
+        "pageSize": 10,
+        "fields": {
+          "name": {
+            "label": "Product name",
+            "placeholder": "Keyboard"
+          },
+          "price": {
+            "label": "Price"
+          },
+          "category": {
+            "label": "Category",
+            "widget": "reference"
+          },
+          "published": {
+            "label": "Published",
+            "widget": "checkbox"
+          }
+        }
+      },
+      "Category": {
+        "label": "Category",
+        "pluralLabel": "Categories",
+        "titleField": "name",
+        "listFields": [
+          "name"
+        ]
+      }
+    }
   }
 }
