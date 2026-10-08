@@ -65,6 +65,23 @@ jobs:
           npm install --no-audit --no-fund
           npm run check
           npm run build
+      - name: Build generated admin UI
+        working-directory: .tmp/e2e-app/admin
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Start generated admin preview
+        working-directory: .tmp/e2e-app/admin
+        run: |
+          npm run preview > admin.log 2>&1 &
+          echo $! > admin.pid
+      - name: Smoke generated admin UI
+        run: |
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /tmp/admin.html; then break; fi
+            sleep 1
+          done
+          grep -q 'id="root"' /tmp/admin.html
       - name: Start generated application
         working-directory: .tmp/e2e-app
         env:
@@ -77,6 +94,8 @@ jobs:
           echo $! > server.pid
       - name: Exercise generated JavaScript SDK
         run: node scripts/e2e-generated-sdk.js .tmp/e2e-app http://127.0.0.1:3456 _id
+      - name: Exercise generated admin runtime
+        run: node scripts/e2e-generated-admin.js .tmp/e2e-app http://127.0.0.1:3456 _id
       - name: Exercise generated CRUD API
         run: node scripts/e2e-generated-app.js
       - name: Print generated server log on failure
@@ -140,6 +159,23 @@ jobs:
           npm install --no-audit --no-fund
           npm run check
           npm run build
+      - name: Build generated PostgreSQL admin UI
+        working-directory: .tmp/e2e-postgres/admin
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Start generated PostgreSQL admin preview
+        working-directory: .tmp/e2e-postgres/admin
+        run: |
+          npm run preview > admin.log 2>&1 &
+          echo $! > admin.pid
+      - name: Smoke generated PostgreSQL admin UI
+        run: |
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /tmp/admin-postgres.html; then break; fi
+            sleep 1
+          done
+          grep -q 'id="root"' /tmp/admin-postgres.html
       - name: Start generated PostgreSQL application
         working-directory: .tmp/e2e-postgres
         env:
@@ -151,6 +187,8 @@ jobs:
           echo $! > server.pid
       - name: Exercise generated PostgreSQL SDK
         run: node scripts/e2e-generated-sdk.js .tmp/e2e-postgres http://127.0.0.1:3457 id
+      - name: Exercise generated PostgreSQL admin runtime
+        run: node scripts/e2e-generated-admin.js .tmp/e2e-postgres http://127.0.0.1:3457 id
       - name: Exercise generated PostgreSQL API
         run: node scripts/e2e-generated-postgres.js
       - name: Print PostgreSQL generated server log on failure
