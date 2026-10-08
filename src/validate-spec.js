@@ -634,6 +634,21 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.factories && isObject(spec.factories)) {
+    if (!spec.database || spec.database.type !== 'postgresql') errors.push('factories are currently supported only for postgresql');
+    for (const [entityName, config] of Object.entries(spec.factories)) {
+      if (!spec.entities || !spec.entities[entityName]) {
+        errors.push('factories.' + entityName + ' references an unknown entity');
+      } else if (isObject(config) && isObject(config.template)) {
+        const fields = spec.entities[entityName].fields || {};
+        for (const fieldName of Object.keys(config.template)) {
+          if (!fields[fieldName] || ['reference', 'file'].includes(fields[fieldName].type)) {
+            errors.push('factories.' + entityName + '.template.' + fieldName + ' must be a scalar entity field');
+          }
+        }
+      }
+    }
+  }
   if (spec.seeds && isObject(spec.seeds)) {
     if (!spec.database || spec.database.type !== 'postgresql') {
       errors.push('seeds are currently supported only for postgresql');
