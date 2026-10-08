@@ -10,7 +10,7 @@ module.exports = function seedSource(spec) {
     const fields = entities[name].fields.filter(field => field.type === 'date' || field.type === 'datetime').map(field => field.name);
     batches.push({name, rows: Array.from({length: config.count}, (_, index) =>
       Object.fromEntries(Object.entries(config.template).map(([key, value]) =>
-        [key, typeof value === 'string' ? value.replace(/\\{\\{index\\}\\}/g, String(index + 1)) : value]))), dateFields: fields});
+        [key, typeof value === 'string' ? value.replace(/\{\{index\}\}/g, String(index + 1)) : value]))), dateFields: fields});
   }
   return [
     "'use strict';",
