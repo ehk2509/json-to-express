@@ -29,6 +29,14 @@ module.exports = function readmeSource(spec) {
   ];
 
   const deployment = [];
+  if (spec.sdk.enabled) {
+    deployment.push(
+      '## Generated SDK', '',
+      'A standalone API client package is generated in ' + spec.sdk.outputDir + '.', '',
+      ...(spec.sdk.languages.includes('javascript') ? ['JavaScript: require("./' + spec.sdk.outputDir + '/javascript")', ''] : []),
+      ...(spec.sdk.languages.includes('typescript') ? ['TypeScript: cd ' + spec.sdk.outputDir + ' && npm install && npm run build', ''] : [])
+    );
+  }
   if (spec.deployment.docker.enabled) {
     deployment.push('## Docker', '', '    docker build -t ' + spec.app.package.name + ' -f ' + spec.deployment.docker.file + ' .', '');
   }
