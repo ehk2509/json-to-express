@@ -33,6 +33,24 @@ function configObject(spec) {
     devPort: spec.admin.devPort,
     authEnabled: spec.auth.enabled,
     auth: spec.admin.auth,
+    authBackend: {
+      strategies: spec.auth.strategies,
+      jwtEnabled: spec.auth.jwt.enabled,
+      apiKey: {
+        enabled: spec.auth.apiKey.enabled,
+        header: spec.auth.apiKey.header
+      },
+      sessionEnabled: spec.auth.session.enabled,
+      local: {
+        enabled: spec.auth.local.enabled,
+        loginPath: spec.auth.local.loginPath,
+        logoutPath: spec.auth.local.logoutPath
+      },
+      oidc: {
+        enabled: spec.auth.oidc.enabled,
+        loginPath: spec.auth.oidc.loginPath
+      }
+    },
     theme: spec.admin.theme,
     databaseType: spec.database.type,
     idField: spec.database.type === 'postgresql' ? 'id' : '_id',
