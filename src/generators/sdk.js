@@ -105,7 +105,7 @@ function runtimePrelude(baseUrl, apiKeyHeader) {
     '    let body;',
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
     '      const isForm = typeof FormData !== "undefined" && config.body instanceof FormData;',
-    '      if (isForm) { delete headers["content-type"]; body = config.body; }',
+    '      if (isForm) { delete headers["content-type"]; body = config.body as FormData; }',
     '      else { headers["content-type"] = headers["content-type"] || "application/json"; body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body; }',
     '    }',
     '    const response = await fetchImpl(appendQuery(baseUrl + buildPath(route, config.params), config.query), {',
