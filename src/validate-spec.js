@@ -68,6 +68,10 @@ function validateSpec(inputSpec) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
 
+  if (spec.sdk && spec.sdk.outputDir) {
+    validateRelativePath(errors, spec.sdk.outputDir, 'sdk.outputDir');
+  }
+
   if (spec.deployment) {
     if (spec.deployment.docker) {
       validateRelativePath(errors, spec.deployment.docker.file, 'deployment.docker.file');
