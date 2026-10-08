@@ -81,6 +81,7 @@ function relationDeleteLines(entity, spec) {
 
 module.exports = function prismaControllerSource(entity, spec) {
   const paths = filePaths(spec, entity.name);
+  const hasFiles = entity.fields.some(field => field.type === 'file');
   const delegateName = lowerFirst(entity.name);
   const delegate = 'prisma.' + delegateName;
   const id = 'req.params[' + js(entity.idParam) + ']';
@@ -90,6 +91,7 @@ module.exports = function prismaControllerSource(entity, spec) {
   ];
   if (entity.hooks) imports.push('const hooks = require(' + js(relativeRequire(paths.controller, entity.hooks.module)) + ');');
   if (spec.cache.enabled) imports.push('const cache = require(' + js(relativeRequire(paths.controller, filePaths(spec).cache)) + ');');
+  if (hasFiles) imports.push('const storage = require(' + js(relativeRequire(paths.controller, filePaths(spec).storage)) + ');');
   const functions = [];
   const exports = [];
 
@@ -154,7 +156,8 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    Object.assign(options, selection);');
     lines.push('    const items = await ' + delegate + '.findMany(options);');
     lines.push(...hookLines(entity,'after','list','items',delegate));
-    lines.push('    res.status(' + list.status + ').json(items);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    const responseItems = await storage.enrich(' + js(entity.name) + ', items, req);');
+    lines.push('    res.status(' + list.status + ').json(' + (hasFiles ? 'responseItems' : 'items') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('list');
   }
 
@@ -166,7 +169,8 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    const item = await ' + delegate + '.findFirst({where, ...selection});');
     lines.push('    if (!item) return res.status(' + get.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     lines.push(...hookLines(entity,'after','get','item',delegate));
-    lines.push('    res.status(' + get.status + ').json(item);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+    lines.push('    res.status(' + get.status + ').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('get');
   }
 
@@ -176,8 +180,10 @@ module.exports = function prismaControllerSource(entity, spec) {
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) { data[' + js(entity.audit.createdBy) + '] = req.auth.userId; data[' + js(entity.audit.updatedBy) + '] = req.auth.userId; }');
     lines.push(...selectionExpression(create));
     lines.push('    const item = await withTransaction(' + create.transaction + ', db => db.' + delegateName + '.create({data, ...selection}));');
+    if (hasFiles) lines.push('    storage.commitUploads(req);');
     lines.push(...hookLines(entity,'after','create','item',delegate));
-    lines.push('    res.status(' + create.status + ').json(item);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+    lines.push('    res.status(' + create.status + ').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('create');
   }
 
@@ -191,8 +197,13 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    if (!existing) return res.status(' + update.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     lines.push(...selectionExpression(update));
     lines.push('    const item = await withTransaction(' + update.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection}));');
+    if (hasFiles) {
+      lines.push('    await storage.cleanupReplaced(' + js(entity.name) + ', existing, data);');
+      lines.push('    storage.commitUploads(req);');
+    }
     lines.push(...hookLines(entity,'after','update','item',delegate));
-    lines.push('    res.status(' + update.status + ').json(item);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+    lines.push('    res.status(' + update.status + ').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('update');
   }
 
@@ -213,8 +224,12 @@ module.exports = function prismaControllerSource(entity, spec) {
     }
     lines.push('    });');
     lines.push('    if (!item) return res.status(' + remove.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
+    if (hasFiles) lines.push('    await storage.cleanupEntity(' + js(entity.name) + ', item);');
     lines.push(...hookLines(entity,'after','delete','item',delegate));
-    if (remove.status === 204) lines.push('    res.status(204).end();'); else lines.push('    res.status(' + remove.status + ').json(item);');
+    if (remove.status === 204) lines.push('    res.status(204).end();'); else {
+      if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+      lines.push('    res.status(' + remove.status + ').json(' + (hasFiles ? 'responseItem' : 'item') + ');');
+    }
     lines.push('  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('remove');
   }
