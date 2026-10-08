@@ -767,6 +767,66 @@ The production block can enable request IDs, security headers, CORS, rate limiti
 
 Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and database disconnect.
 
+## Declarative caching
+
+Caching is opt-in and generated from the same JSON contract:
+
+~~~json
+{
+  "cache": {
+    "enabled": true,
+    "provider": "redis",
+    "defaultTtlSeconds": 300,
+    "prefix": "j2e:",
+    "varyByAuth": true,
+    "redis": {
+      "urlEnv": "REDIS_URL",
+      "connectTimeoutMs": 5000
+    }
+  },
+  "entities": {
+    "Product": {
+      "operations": {
+        "list": {
+          "cache": true
+        },
+        "get": {
+          "cache": {
+            "enabled": true,
+            "ttlSeconds": 60,
+            "varyByAuth": true
+          }
+        }
+      }
+    }
+  }
+}
+~~~
+
+Supported providers:
+
+- `memory` — bounded in-process cache for single-process deployments
+- `redis` — shared cache for workers, replicas, and distributed deployments
+
+Only `list` and `get` operations can be cached. Cache keys include normalized route params, query parameters, the entity cache generation, and—by default—the authenticated user/strategy/roles so one user's representation cannot be served to another user.
+
+Responses expose:
+
+~~~text
+X-Cache: MISS
+X-Cache: HIT
+~~~
+
+Invalidation does not scan Redis keys. Each entity has a version counter; successful create/update/delete operations increment that generation, making existing entries unreachable until their TTL expires. Declarative workflow and background-job mutations trigger the same invalidation path.
+
+Relation-aware invalidation also bumps caches for entities that reference the mutated entity. This prevents populated responses such as a cached Product containing an updated Category from remaining stale.
+
+Redis failures are cache fail-open for reads/writes. The database remains the source of truth, while stale Redis entries remain bounded by their configured TTL.
+
+Docker Compose automatically generates a `redis:7-alpine` cache service and wires `REDIS_URL=redis://cache:6379`. Kubernetes keeps Redis external and emits the configured Redis URL as a secret placeholder, which is better suited to managed production Redis.
+
+The in-memory provider is intentionally rejected for generated topologies with a separate outbox worker or multiple Kubernetes replicas because invalidation cannot be shared across processes.
+
 ## Production observability and telemetry
 
 Observability is opt-in and generated from the same JSON specification:
@@ -1407,6 +1467,7 @@ Unit/integration tests cover:
 - generated React admin UI, forms, relations, filters and custom actions
 - production middleware and environment guards
 - structured logging, correlation IDs, Prometheus metrics, liveness/readiness, and OpenTelemetry generation
+- declarative memory/Redis caching, auth-aware cache keys, entity-version invalidation, and workflow/job cache coherence
 - custom middleware and hooks
 - Mongoose field/schema options
 - safe regeneration
@@ -1482,7 +1543,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The largest remaining roadmap areas are declarative caching, file/object storage, seeds and migration workflows, and an additional server framework target such as Fastify.
+The largest remaining roadmap areas are file/object storage, seeds and migration workflows, and an additional server framework target such as Fastify.
 
 ## License
 

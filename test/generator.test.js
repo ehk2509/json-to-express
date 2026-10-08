@@ -1496,3 +1496,100 @@ test('generates production observability across HTTP GraphQL workflows workers a
     assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });
+
+
+test('generates declarative Redis caching with controller and workflow invalidation', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-cache-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const spec = {
+    specVersion: '1.0',
+    app: {name: 'cached-api'},
+    database: {type: 'mongodb'},
+    cache: {
+      enabled: true,
+      provider: 'redis',
+      defaultTtlSeconds: 90,
+      prefix: 'demo:',
+      varyByAuth: true,
+      redis: {urlEnv: 'CACHE_URL', connectTimeoutMs: 2500}
+    },
+    entities: {
+      Category: {fields: {name: {type: 'string'}}},
+      Product: {
+        operations: {
+          list: {cache: true},
+          get: {cache: {enabled: true, ttlSeconds: 45, varyByAuth: false}}
+        },
+        fields: {
+          name: {type: 'string', required: true},
+          category: {type: 'reference', ref: 'Category'}
+        }
+      }
+    },
+    workflows: {
+      reprice: {
+        steps: [{name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {name: '$body.name'}}]
+      }
+    },
+    jobs: {reprice: {workflow: 'reprice', queue: 'products'}},
+    outbox: {worker: 'separate'},
+    deployment: {
+      docker: {enabled: true},
+      compose: {enabled: true, database: true},
+      kubernetes: {enabled: true, image: 'cached-api:latest', replicas: 2}
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(spec, output);
+  assert.ok(result.files.includes('src/config/cache.js'));
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.equal(pkg.dependencies.redis, '^4.7.0');
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /CACHE_URL=redis:\/\/127\.0\.0\.1:6379/);
+
+  const cache = fs.readFileSync(path.join(output, 'src/config/cache.js'), 'utf8');
+  assert.match(cache, /stableStringify/);
+  assert.match(cache, /version:/);
+  assert.match(cache, /setEx/);
+  assert.match(cache, /X-Cache/);
+  assert.match(cache, /varyByAuth/);
+  assert.match(cache, /affectedEntities/);
+
+  const controller = fs.readFileSync(path.join(output, 'src/controllers/ProductController.js'), 'utf8');
+  assert.match(controller, /cache\.cacheController\("Product", "list"/);
+  assert.match(controller, /cache\.cacheController\("Product", "get"/);
+  assert.match(controller, /cache\.invalidateController\("Product", create\)/);
+  assert.match(controller, /cache\.invalidateController\("Product", update\)/);
+  assert.match(controller, /cache\.invalidateController\("Product", remove\)/);
+  assert.match(controller, /"ttlSeconds":45/);
+  assert.match(controller, /"varyByAuth":false/);
+
+  const workflow = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
+  assert.match(workflow, /mutatedEntities: new Set/);
+  assert.match(workflow, /context\.mutatedEntities\.add\(step\.entity\)/);
+  assert.match(workflow, /cache\.invalidateMany/);
+
+  const worker = fs.readFileSync(path.join(output, 'src/workflows/worker.js'), 'utf8');
+  assert.match(worker, /const cache = require/);
+  assert.match(worker, /await cache\.disconnect\(\)/);
+
+  const server = fs.readFileSync(path.join(output, 'src/server.js'), 'utf8');
+  assert.match(server, /await cache\.disconnect\(\)/);
+
+  const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /image: redis:7-alpine/);
+  assert.match(compose, /CACHE_URL: "redis:\/\/cache:6379"/);
+  assert.match(compose, /cache:\n\s+condition: service_healthy/);
+
+  const secret = fs.readFileSync(path.join(output, 'deploy/k8s/secret.example.yaml'), 'utf8');
+  assert.match(secret, /CACHE_URL: "<set-me>"/);
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
+  }
+});

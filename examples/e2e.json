@@ -92,13 +92,21 @@
               "defaultLimit": 20,
               "maxLimit": 100
             }
+          },
+          "cache": {
+            "enabled": true,
+            "ttlSeconds": 120
           }
         },
         "get": {
           "populate": [
             "category",
             "tags"
-          ]
+          ],
+          "cache": {
+            "enabled": true,
+            "ttlSeconds": 120
+          }
         },
         "create": {
           "populate": [
@@ -522,6 +530,17 @@
         "database": true,
         "outbox": true
       }
+    }
+  },
+  "cache": {
+    "enabled": true,
+    "provider": "redis",
+    "defaultTtlSeconds": 120,
+    "prefix": "j2e:mongo:e2e:",
+    "varyByAuth": true,
+    "redis": {
+      "urlEnv": "REDIS_URL",
+      "connectTimeoutMs": 3000
     }
   }
 }

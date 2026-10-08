@@ -89,6 +89,7 @@ module.exports = function prismaControllerSource(entity, spec) {
     'const prisma = connectDatabase.client;'
   ];
   if (entity.hooks) imports.push('const hooks = require(' + js(relativeRequire(paths.controller, entity.hooks.module)) + ');');
+  if (spec.cache.enabled) imports.push('const cache = require(' + js(relativeRequire(paths.controller, filePaths(spec).cache)) + ');');
   const functions = [];
   const exports = [];
 
@@ -218,5 +219,14 @@ module.exports = function prismaControllerSource(entity, spec) {
     functions.push(lines.join('\n')); exports.push('remove');
   }
 
-  return ["'use strict';",'',...imports,'',helper,'',functions.join('\n\n'),'','module.exports = {' + exports.join(', ') + '};',''].join('\n');
+  const exported = exports.map(name => {
+    if (!spec.cache.enabled) return name;
+    const operationName = name === 'remove' ? 'delete' : name;
+    const operation = entity.operations[operationName];
+    if (operationName === 'list' || operationName === 'get') {
+      return name + ': cache.cacheController(' + js(entity.name) + ', ' + js(operationName) + ', ' + js(operation.cache) + ', ' + name + ')';
+    }
+    return name + ': cache.invalidateController(' + js(entity.name) + ', ' + name + ')';
+  });
+  return ["'use strict';",'',...imports,'',helper,'',functions.join('\n\n'),'','module.exports = {' + exported.join(', ') + '};',''].join('\n');
 };

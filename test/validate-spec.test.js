@@ -562,3 +562,88 @@ test('validates observability endpoint collisions', () => {
     }
   );
 });
+
+
+test('validates declarative cache policies and distributed topology constraints', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    app: {name: 'cached-api'},
+    database: {type: 'mongodb'},
+    cache: {enabled: true, provider: 'redis'},
+    entities: {
+      Product: {
+        operations: {list: {cache: true}, get: {cache: {ttlSeconds: 30}}},
+        fields: {name: {type: 'string'}}
+      }
+    },
+    workflows: {
+      updateProduct: {
+        steps: [{name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {name: '$body.name'}}]
+      }
+    },
+    jobs: {updateProduct: {workflow: 'updateProduct'}},
+    outbox: {worker: 'separate'},
+    deployment: {kubernetes: {enabled: true, image: 'cached:latest', replicas: 3}}
+  }));
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'missing-cache-root'},
+      database: {type: 'mongodb'},
+      entities: {
+        Product: {
+          operations: {get: {cache: true}},
+          fields: {name: {type: 'string'}}
+        }
+      }
+    }),
+    /operations\.get\.cache requires top-level cache\.enabled/
+  );
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'mutation-cache'},
+      database: {type: 'mongodb'},
+      cache: {enabled: true},
+      entities: {
+        Product: {
+          operations: {update: {cache: true}},
+          fields: {name: {type: 'string'}}
+        }
+      }
+    }),
+    /operations\.update\.cache can only be enabled for list\/get operations/
+  );
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'memory-worker'},
+      database: {type: 'mongodb'},
+      cache: {enabled: true, provider: 'memory'},
+      entities: {Product: {fields: {name: {type: 'string'}}}},
+      workflows: {
+        updateProduct: {
+          steps: [{name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {name: '$body.name'}}]
+        }
+      },
+      jobs: {updateProduct: {workflow: 'updateProduct'}},
+      outbox: {worker: 'separate'}
+    }),
+    /cache\.provider "memory" cannot be used with outbox\.worker "separate"/
+  );
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'memory-replicas'},
+      database: {type: 'mongodb'},
+      cache: {enabled: true, provider: 'memory'},
+      entities: {Product: {fields: {name: {type: 'string'}}}},
+      deployment: {kubernetes: {enabled: true, image: 'memory:latest', replicas: 2}}
+    }),
+    /cache\.provider "memory" cannot be used with multiple Kubernetes replicas/
+  );
+});

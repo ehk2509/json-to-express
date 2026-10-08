@@ -32,6 +32,7 @@ const sdkFiles = require('./sdk');
 const adminFiles = require('./admin');
 const graphqlSource = require('./graphql');
 const observabilitySource = require('./observability');
+const cacheSource = require('./cache');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -52,6 +53,9 @@ function envExample(spec) {
   if (spec.auth.local.passwordReset.webhookUrlEnv) values[spec.auth.local.passwordReset.webhookUrlEnv] = '';
   if (spec.observability.tracing.enabled && spec.observability.tracing.exporter === 'otlp-http') {
     values[spec.observability.tracing.endpointEnv] = 'http://127.0.0.1:4318/v1/traces';
+  }
+  if (spec.cache.enabled && spec.cache.provider === 'redis') {
+    values[spec.cache.redis.urlEnv] = 'redis://127.0.0.1:6379';
   }
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) {
@@ -83,6 +87,8 @@ function buildFiles(spec) {
   files.set(paths.environment, environmentSource(spec));
   const observability = observabilitySource(spec);
   if (observability) files.set(paths.observability, observability);
+  const cache = cacheSource(spec);
+  if (cache) files.set(paths.cache, cache);
   if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {

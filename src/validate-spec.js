@@ -123,6 +123,38 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (isObject(spec.entities)) {
+    for (const [entityName, entity] of Object.entries(spec.entities)) {
+      for (const [operationName, operation] of Object.entries(entity && entity.operations || {})) {
+        if (!isObject(operation) || operation.cache === undefined || operation.cache === false) continue;
+        const cacheEnabled = operation.cache === true || (isObject(operation.cache) && operation.cache.enabled !== false);
+        if (!cacheEnabled) continue;
+        if (!spec.cache || spec.cache.enabled !== true) {
+          errors.push('entities.' + entityName + '.operations.' + operationName + '.cache requires top-level cache.enabled');
+        }
+        if (!['list', 'get'].includes(operationName)) {
+          errors.push('entities.' + entityName + '.operations.' + operationName + '.cache can only be enabled for list/get operations');
+        }
+      }
+    }
+  }
+
+  if (spec.cache && spec.cache.enabled === true && (spec.cache.provider || 'memory') === 'memory') {
+    const hasAsyncWork =
+      (isObject(spec.events) && Object.keys(spec.events).length > 0) ||
+      (isObject(spec.jobs) && Object.keys(spec.jobs).length > 0);
+    const workerMode = spec.outbox && spec.outbox.worker || 'embedded';
+    if (hasAsyncWork && workerMode === 'separate') {
+      errors.push('cache.provider "memory" cannot be used with outbox.worker "separate"; use redis for cross-process invalidation');
+    }
+    if (spec.deployment && spec.deployment.kubernetes && spec.deployment.kubernetes.enabled === true) {
+      const replicas = spec.deployment.kubernetes.replicas === undefined ? 2 : spec.deployment.kubernetes.replicas;
+      if (replicas > 1) {
+        errors.push('cache.provider "memory" cannot be used with multiple Kubernetes replicas; use redis for distributed cache coherence');
+      }
+    }
+  }
+
   if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
