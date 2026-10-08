@@ -26,10 +26,13 @@ function scalarField(field) {
 }
 
 function referenceFields(entity, field) {
+  const relation = relationName(entity, field);
+  if (field.many) {
+    return ['  ' + field.name + ' ' + field.ref + '[] @relation("' + relation + '")'];
+  }
   const optional = field.required ? '' : '?';
   const unique = field.unique ? ' @unique' : '';
   const onDelete = {restrict: 'Restrict', nullify: 'SetNull', cascade: 'Cascade'}[field.onDelete];
-  const relation = relationName(entity, field);
   return [
     '  ' + field.name + 'Id String' + optional + unique,
     '  ' + field.name + ' ' + field.ref + optional + ' @relation("' + relation + '", fields: [' + field.name + 'Id], references: [id], onDelete: ' + onDelete + ')'
@@ -50,7 +53,7 @@ function inverseRelations(target, entities) {
 
 function indexField(entity, name, direction) {
   const field = entity.fields.find(item => item.name === name);
-  const actual = field && field.type === 'reference' ? name + 'Id' : name;
+  const actual = field && field.type === 'reference' && !field.many ? name + 'Id' : name;
   return direction < 0 ? actual + '(sort: Desc)' : actual;
 }
 

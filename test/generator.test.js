@@ -1122,3 +1122,75 @@ test('generates PostgreSQL Prisma workflows durable outbox and worker runtime', 
     assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });
+
+
+test('generates PostgreSQL many-to-many relations across API SDK OpenAPI and admin metadata', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-many-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const manySpec = {
+    specVersion: '1.0',
+    app: {name: 'many-api'},
+    database: {type: 'postgresql'},
+    docs: {openapi: {enabled: true}},
+    sdk: {enabled: true, languages: ['typescript']},
+    admin: {enabled: true},
+    entities: {
+      Tag: {
+        fields: {name: {type: 'string', required: true}}
+      },
+      Product: {
+        operations: {
+          list: {
+            populate: ['tags'],
+            query: {filters: ['tags'], operators: ['eq', 'in']}
+          },
+          get: {populate: ['tags']},
+          create: {populate: ['tags']},
+          update: {populate: ['tags']}
+        },
+        fields: {
+          name: {type: 'string', required: true},
+          tags: {type: 'reference', ref: 'Tag', many: true, required: true, onDelete: 'nullify'}
+        }
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  generateApplication(manySpec, output);
+
+  const schema = fs.readFileSync(path.join(output, 'prisma/schema.prisma'), 'utf8');
+  assert.match(schema, /tags Tag\[\] @relation\("Product_tags"\)/);
+  assert.match(schema, /Product_tags Product\[\] @relation\("Product_tags"\)/);
+  assert.doesNotMatch(schema, /tagsId/);
+
+  const controller = fs.readFileSync(path.join(output, 'src/controllers/ProductController.js'), 'utf8');
+  assert.match(controller, /connect: references\.map\(id => \(\{id\}\)\)/);
+  assert.match(controller, /set: references\.map\(id => \(\{id\}\)\)/);
+  assert.match(controller, /\{some: \{id: value\}\}/);
+
+  const tagController = fs.readFileSync(path.join(output, 'src/controllers/TagController.js'), 'utf8');
+  assert.match(tagController, /disconnect: \{id: targetId\}/);
+  assert.match(tagController, /withTransaction\(true/);
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
+  assert.equal(openapi.components.schemas.Product.properties.tags.type, 'array');
+  assert.equal(openapi.components.schemas.Product.properties.tags.minItems, 1);
+  assert.equal(openapi.components.schemas.Product.properties.tags.items.format, 'uuid');
+  const listOperation = openapi.paths['/api/products'].get;
+  const tagsFilter = listOperation.parameters.find(parameter => parameter.name === 'tags');
+  const tagsInFilter = listOperation.parameters.find(parameter => parameter.name === 'tags__in');
+  assert.equal(tagsFilter.schema.format, 'uuid');
+  assert.equal(tagsInFilter.schema.type, 'array');
+  assert.equal(tagsInFilter.schema.items.format, 'uuid');
+
+  const sdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
+  assert.match(sdk, /tags: Array<string \| Tag>;/);
+  assert.match(sdk, /tags: Array<string>;/);
+
+  const admin = fs.readFileSync(path.join(output, 'admin/src/config.js'), 'utf8');
+  assert.match(admin, /"name": "tags"/);
+  assert.match(admin, /"many": true/);
+  assert.match(admin, /"ref": "Tag"/);
+});

@@ -148,7 +148,7 @@ function postgresSource(spec) {
       delegate: lowerFirst(entity.name),
       references: Object.fromEntries(entity.fields.filter(field => field.type === 'reference').map(field => [
         field.name,
-        {required: Boolean(field.required)}
+        {required: Boolean(field.required), many: Boolean(field.many)}
       ]))
     }
   ]));
@@ -168,7 +168,13 @@ function postgresSource(spec) {
     '  for (const field of Object.keys(definition.references)) {',
     '    if (!Object.prototype.hasOwnProperty.call(data, field)) continue;',
     '    const reference = data[field];',
-    '    if (mode === "create") {',
+    '    const relation = definition.references[field];',
+    '    if (relation.many) {',
+    '      const references = Array.isArray(reference) ? reference : [];',
+    '      data[field] = mode === "create"',
+    '        ? {connect: references.map(id => ({id}))}',
+    '        : {set: references.map(id => ({id}))};',
+    '    } else if (mode === "create") {',
     '      if (reference === null || reference === undefined || reference === "") delete data[field];',
     '      else data[field] = {connect: {id: reference}};',
     '    } else {',

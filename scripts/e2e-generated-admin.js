@@ -38,21 +38,29 @@ async function main() {
   assert.equal(config.idField, idField);
 
   const categoryEntity = config.entities.find(entity => entity.name === 'Category');
+  const tagEntity = config.entities.find(entity => entity.name === 'Tag');
   const productEntity = config.entities.find(entity => entity.name === 'Product');
   assert.ok(categoryEntity);
+  assert.ok(tagEntity);
   assert.ok(productEntity);
   assert.ok(productEntity.listFields.includes('name'));
   assert.ok(productEntity.fields.find(field => field.name === 'category' && field.ref === 'Category'));
+  assert.ok(productEntity.fields.find(field => field.name === 'tags' && field.ref === 'Tag' && field.many === true));
 
   const suffix = Date.now().toString(36);
   const category = await api.entity(categoryEntity).create({name: 'Admin Category ' + suffix});
   const categoryId = category[idField];
   assert.ok(categoryId);
 
+  const tag = await api.entity(tagEntity).create({name: 'Admin Tag ' + suffix});
+  const tagId = tag[idField];
+  assert.ok(tagId);
+
   const product = await api.entity(productEntity).create({
     name: 'Admin Keyboard ' + suffix,
     price: 189,
-    category: categoryId
+    category: categoryId,
+    tags: [tagId]
   });
   const productId = product[idField];
   assert.ok(productId);
@@ -67,12 +75,16 @@ async function main() {
   const listed = await api.entity(productEntity).list(query);
   assert.equal(listed.length, 1);
   assert.equal(listed[0].name, 'Admin Keyboard ' + suffix);
+  assert.equal(listed[0].tags.length, 1);
+  assert.equal(listed[0].tags[0].name, 'Admin Tag ' + suffix);
 
   const fetched = await api.entity(productEntity).get(productId);
   assert.equal(fetched.price, 189);
+  assert.equal(fetched.tags[0].name, 'Admin Tag ' + suffix);
 
-  const updated = await api.entity(productEntity).update(productId, {price: 205});
+  const updated = await api.entity(productEntity).update(productId, {price: 205, tags: []});
   assert.equal(updated.price, 205);
+  assert.deepEqual(updated.tags, []);
 
   const queueAction = config.actions.find(action => action.name === 'queueReprice');
   if (queueAction) {
@@ -105,6 +117,7 @@ async function main() {
   );
 
   await api.entity(productEntity).remove(productId);
+  await api.entity(tagEntity).remove(tagId);
   if (idField === '_id') await api.entity(categoryEntity).remove(categoryId);
 
   console.log('Generated admin API runtime E2E passed for ' + idField + '.');

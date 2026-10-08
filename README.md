@@ -547,7 +547,26 @@ Reference fields are declarative:
 }
 ~~~
 
-Set "many": true for arrays of references. Supported delete policies are restrict, nullify, and cascade. Operations can declare populate fields so generated Mongoose queries resolve references automatically.
+Set "many": true for to-many relations:
+
+~~~json
+{
+  "tags": {
+    "type": "reference",
+    "ref": "Tag",
+    "many": true,
+    "onDelete": "nullify"
+  }
+}
+~~~
+
+MongoDB stores many references as ObjectId arrays. PostgreSQL/Prisma emits an implicit many-to-many join relation with generated inverse fields; create uses connect[], updates replace the relation through set[], and populated operations use Prisma include/select.
+
+Supported delete policies remain restrict, nullify, and cascade. For PostgreSQL to-many relations these policies are enforced by the generated application inside a transaction because Prisma implicit many-to-many join tables do not expose referential actions directly.
+
+List filters can target a many-reference field by related id. PostgreSQL translates those filters to relation some/none predicates; MongoDB uses normal array membership matching.
+
+Operations can declare the same field in populate for either target. OpenAPI exposes identifier arrays, the TypeScript SDK emits string[] inputs and Array<string | Entity> outputs, and the generated admin UI automatically renders a multi-select relation control.
 
 ### Compound indexes
 
@@ -605,9 +624,9 @@ The generated router wires authentication and authorization before controller ex
 
 ### Request validation
 
-Generated request middleware validates create/update payload types, required fields, reference ObjectIds, and resource identifiers before database access.
+Generated request middleware validates create/update payload types, required fields, single and array reference identifiers, and resource identifiers before database access. Required many-reference fields reject empty arrays.
 
-This gives the generated API an HTTP validation boundary in addition to Mongoose persistence validation.
+This gives the generated API an HTTP validation boundary in addition to persistence-layer validation.
 
 ### OpenAPI
 
@@ -1270,11 +1289,11 @@ node bin/json-to-express.js validate examples/e2e-postgres.json
 
 The Express/Mongoose target remains the complete v1 target, including workflows, durable outbox, and background jobs.
 
-PostgreSQL/Prisma is now a full application target for CRUD, declarative workflows, custom endpoints, durable events/outbox, background jobs, SDKs, admin UI, and deployment generation. Its main remaining persistence gap is many-reference/many-to-many relation support plus deeper ORM-specific tuning.
+PostgreSQL/Prisma is now a full application target for CRUD, declarative workflows, custom endpoints, durable events/outbox, background jobs, SDKs, admin UI, and deployment generation. Its main remaining persistence work is deeper ORM-specific tuning rather than a missing core relation capability.
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next expansion layer is additional API/server targets such as GraphQL and Fastify, deeper authentication strategies, and many-to-many relation support.
+The next expansion layer is additional API/server targets such as GraphQL and Fastify, plus deeper authentication strategies and production observability.
 
 ## License
 

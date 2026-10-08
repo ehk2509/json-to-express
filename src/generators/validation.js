@@ -52,7 +52,7 @@ module.exports = function validationSource(spec) {
     '    const errors = [];',
     '    for (const [name, definition] of Object.entries(fields)) {',
     '      const value = req.body && req.body[name];',
-    '      if (!partial && definition.required && (value === undefined || value === null)) errors.push(name + " is required");',
+    '      if (!partial && definition.required && (value === undefined || value === null || (definition.many && Array.isArray(value) && value.length === 0))) errors.push(name + " is required");',
     '      if (value !== undefined && !validValue(definition, value)) errors.push(name + " has an invalid value");',
     '    }',
     "    if (errors.length) return res.status(400).json({error: 'Invalid request', details: errors});",

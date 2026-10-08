@@ -59,9 +59,28 @@ async function main() {
   assert.equal(category.response.status, 201);
   assert.ok(category.body._id);
 
+  const tagA = await request('/api/tags', {
+    method: 'POST',
+    body: JSON.stringify({name: 'Featured'})
+  });
+  assert.equal(tagA.response.status, 201);
+  assert.ok(tagA.body._id);
+
+  const tagB = await request('/api/tags', {
+    method: 'POST',
+    body: JSON.stringify({name: 'Mechanical'})
+  });
+  assert.equal(tagB.response.status, 201);
+  assert.ok(tagB.body._id);
+
   const created = await request('/api/products', {
     method: 'POST',
-    body: JSON.stringify({name: 'Keyboard', price: 99, category: category.body._id})
+    body: JSON.stringify({
+      name: 'Keyboard',
+      price: 99,
+      category: category.body._id,
+      tags: [tagA.body._id, tagB.body._id]
+    })
   });
   assert.equal(created.response.status, 201);
   assert.ok(created.body._id);
@@ -70,21 +89,32 @@ async function main() {
   const restricted = await request('/api/categories/' + category.body._id, {method: 'DELETE'});
   assert.equal(restricted.response.status, 409);
 
-  const listed = await request('/api/products?name=Keyboard&price__gte=90&limit=1&page=1&sort=-price');
+  const listed = await request('/api/products?name=Keyboard&price__gte=90&tags=' + tagA.body._id + '&limit=1&page=1&sort=-price');
   assert.equal(listed.response.status, 200);
   assert.equal(listed.body.length, 1);
   assert.equal(listed.body[0].category.name, 'Accessories');
+  assert.deepEqual(listed.body[0].tags.map(tag => tag.name).sort(), ['Featured', 'Mechanical']);
 
   const fetched = await request('/api/products/' + id);
   assert.equal(fetched.response.status, 200);
   assert.equal(fetched.body.category.name, 'Accessories');
+  assert.equal(fetched.body.tags.length, 2);
 
   const updated = await request('/api/products/' + id, {
     method: 'PATCH',
-    body: JSON.stringify({price: 120})
+    body: JSON.stringify({price: 120, tags: [tagA.body._id]})
   });
   assert.equal(updated.response.status, 200);
   assert.equal(updated.body.price, 120);
+  assert.equal(updated.body.tags.length, 1);
+  assert.equal(updated.body.tags[0].name, 'Featured');
+
+  const tagDeleted = await request('/api/tags/' + tagA.body._id, {method: 'DELETE'});
+  assert.equal(tagDeleted.response.status, 204);
+
+  const unlinked = await request('/api/products/' + id);
+  assert.equal(unlinked.response.status, 200);
+  assert.deepEqual(unlinked.body.tags, []);
 
   const published = await request('/api/products/' + id + '/publish', {method: 'POST'});
   assert.equal(published.response.status, 200);
@@ -127,10 +157,15 @@ async function main() {
   const categoryDeleted = await request('/api/categories/' + category.body._id, {method: 'DELETE'});
   assert.equal(categoryDeleted.response.status, 204);
 
+  const remainingTagDeleted = await request('/api/tags/' + tagB.body._id, {method: 'DELETE'});
+  assert.equal(remainingTagDeleted.response.status, 204);
+
   const openapiPath = path.join(process.cwd(), '.tmp/e2e-app/openapi.json');
   const openapi = JSON.parse(fs.readFileSync(openapiPath, 'utf8'));
   assert.equal(openapi.openapi, '3.1.0');
   assert.ok(openapi.components.schemas.Product);
+  assert.equal(openapi.components.schemas.Product.properties.tags.type, 'array');
+  assert.equal(openapi.components.schemas.Product.properties.tags.items.type, 'string');
   assert.ok(openapi.paths['/api/products']);
 
     console.log('Generated application E2E v1 + workflows passed.');

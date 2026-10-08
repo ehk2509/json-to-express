@@ -36,10 +36,15 @@ async function main() {
   const categoryId = category[idField];
   assert.ok(categoryId);
 
+  const tag = await client.tags.create({name: 'SDK Tag ' + suffix});
+  const tagId = tag[idField];
+  assert.ok(tagId);
+
   const product = await client.products.create({
     name: 'SDK Keyboard ' + suffix,
     price: 149,
-    category: categoryId
+    category: categoryId,
+    tags: [tagId]
   });
   const productId = product[idField];
   assert.ok(productId);
@@ -53,12 +58,16 @@ async function main() {
   assert.equal(listed.length, 1);
   assert.equal(listed[0].name, 'SDK Keyboard ' + suffix);
   assert.equal(listed[0].category.name, 'SDK Category ' + suffix);
+  assert.equal(listed[0].tags.length, 1);
+  assert.equal(listed[0].tags[0].name, 'SDK Tag ' + suffix);
 
   const fetched = await client.products.get(productId);
   assert.equal(fetched.price, 149);
+  assert.equal(fetched.tags[0].name, 'SDK Tag ' + suffix);
 
-  const updated = await client.products.update(productId, {price: 175});
+  const updated = await client.products.update(productId, {price: 175, tags: []});
   assert.equal(updated.price, 175);
+  assert.deepEqual(updated.tags, []);
 
   if (client.actions && client.actions.queueReprice) {
     const queued = await client.actions.queueReprice({
@@ -91,6 +100,7 @@ async function main() {
   );
 
   await client.products.delete(productId);
+  await client.tags.delete(tagId);
   if (idField === '_id') await client.categories.delete(categoryId);
 
   console.log('Generated SDK E2E passed for ' + idField + '.');
