@@ -60,7 +60,7 @@ function runtimePrelude(baseUrl, apiKeyHeader) {
     '  const hasFile = fileFields.some(field => {',
     '    const value = data[field.name];',
     '    return isBlobLike(value) || (Array.isArray(value) && value.some(isBlobLike));',
-    '  });'
+    '  });',
     '  if (!hasFile) return data;',
     '  const form = new FormData();',
     '  for (const [name, value] of Object.entries(data)) {',
