@@ -12,6 +12,7 @@ const DEFAULT_PATHS = {
   config: 'config',
   middleware: 'middleware',
   workflows: 'workflows',
+  graphql: 'graphql',
   tests: 'test'
 };
 
@@ -128,6 +129,10 @@ function normalizeSpec(inputSpec) {
   const serverFile = path.posix.join(paths.source, 'server.js');
   const auth = spec.auth || {};
   const authEnabled = valueOr(auth.enabled, false);
+  const apiConfig = spec.api || {};
+  const rawGraphql = apiConfig.graphql;
+  const graphqlConfig = typeof rawGraphql === 'boolean' ? {enabled: rawGraphql} : (rawGraphql || {});
+  const graphqlEnabled = valueOr(graphqlConfig.enabled, false);
   const openapi = spec.docs && spec.docs.openapi || {};
   const outboxConfig = spec.outbox || {};
   const deployment = spec.deployment || {};
@@ -148,6 +153,11 @@ function normalizeSpec(inputSpec) {
     ...(isMongo ? {mongoose: '^8.8.0'} : {}),
     ...(isPostgres ? {'@prisma/client': '^6.16.2'} : {}),
     ...(authEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
+    ...(graphqlEnabled ? {
+      graphql: '^16.10.0',
+      '@graphql-tools/schema': '^10.0.21',
+      dataloader: '^2.2.3'
+    } : {}),
     ...(valueOr(cors.enabled, false) ? {cors: '^2.8.5'} : {}),
     ...(valueOr(rateLimit.enabled, false) ? {'express-rate-limit': '^7.4.1'} : {}),
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
@@ -162,6 +172,13 @@ function normalizeSpec(inputSpec) {
   const normalized = {
     specVersion: spec.specVersion,
     generation: {outputDir: generation.outputDir, paths},
+    api: {
+      rest: valueOr(apiConfig.rest, true),
+      graphql: {
+        enabled: graphqlEnabled,
+        path: normalizePrefix(valueOr(graphqlConfig.path, '/graphql'))
+      }
+    },
     admin: {
       enabled: valueOr(adminConfig.enabled, false),
       outputDir: valueOr(adminConfig.outputDir, 'admin'),
