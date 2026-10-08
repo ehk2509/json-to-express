@@ -273,7 +273,8 @@ function typescriptSource(spec) {
   if (spec.sdk.includeCustomEndpoints && spec.endpoints.length) {
     lines.push('export interface ActionsClient {');
     for (const endpoint of spec.endpoints) {
-      lines.push('  ' + identifier(endpoint.name) + '(input?: ' + customActionType(endpoint) + ', options?: RequestOptions): Promise<unknown>;');
+      const requiredInput = pathParams(endpoint.path).length > 0;
+      lines.push('  ' + identifier(endpoint.name) + '(input' + (requiredInput ? '' : '?') + ': ' + customActionType(endpoint) + ', options?: RequestOptions): Promise<unknown>;');
     }
     lines.push('}', '');
   }
