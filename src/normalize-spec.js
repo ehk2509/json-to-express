@@ -614,6 +614,13 @@ function normalizeSpec(inputSpec) {
       );
     }
 
+    const entityHasFiles = Object.values(entity.fields || {}).some(field => field && field.type === 'file');
+    if (entityHasFiles && storageEnabled && valueOr(storageSigned.enabled, true)) {
+      // Signed URLs are request-time credentials and must never be cached as response bodies.
+      if (operations.list && operations.list.cache) operations.list.cache.enabled = false;
+      if (operations.get && operations.get.cache) operations.get.cache.enabled = false;
+    }
+
     const softDelete = entity.softDelete || {};
     const audit = entity.audit || {};
 
