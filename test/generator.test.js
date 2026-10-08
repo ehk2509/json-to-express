@@ -1392,3 +1392,107 @@ test('generates multi-strategy auth stores flows OpenAPI SDK and admin metadata'
     assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });
+
+
+test('generates production observability across HTTP GraphQL workflows workers and health', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-observability-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const spec = {
+    specVersion: '1.0',
+    api: {rest: true, graphql: true},
+    app: {name: 'observable-api'},
+    database: {type: 'postgresql'},
+    observability: {
+      enabled: true,
+      logging: {enabled: true, level: 'debug', format: 'json', requestIds: true},
+      metrics: {enabled: true, path: '/internal/metrics', collectDefaultMetrics: true, prefix: 'demo_'},
+      tracing: {
+        enabled: true,
+        serviceName: 'observable-api',
+        exporter: 'otlp-http',
+        endpointEnv: 'TRACE_ENDPOINT',
+        sampleRate: 0.5
+      },
+      health: {
+        liveness: {enabled: true, path: '/livez'},
+        readiness: {enabled: true, path: '/readyz', database: true, outbox: true}
+      }
+    },
+    entities: {
+      Product: {fields: {name: {type: 'string', required: true}, price: {type: 'number'}}}
+    },
+    events: {'product.changed': {webhooks: []}},
+    workflows: {
+      reprice: {
+        steps: [
+          {name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {price: '$body.price'}},
+          {name: 'emit', action: 'emit', event: 'product.changed', payload: {id: '$steps.update.id'}}
+        ]
+      },
+      queueReprice: {
+        steps: [{name: 'enqueue', action: 'enqueue', job: 'reprice', payload: {id: '$body.id', price: '$body.price'}}]
+      }
+    },
+    jobs: {reprice: {workflow: 'reprice', queue: 'products'}}
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(spec, output);
+  assert.ok(result.files.includes('src/config/observability.js'));
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies['prom-client']);
+  assert.ok(pkg.dependencies['@opentelemetry/api']);
+  assert.ok(pkg.dependencies['@opentelemetry/sdk-trace-node']);
+  assert.ok(pkg.dependencies['@opentelemetry/exporter-trace-otlp-http']);
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /TRACE_ENDPOINT=http:\/\/127\.0\.0\.1:4318\/v1\/traces/);
+
+  const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
+  assert.match(app, /observability\.requestMiddleware/);
+  assert.match(app, /app\.get\("\/internal\/metrics", observability\.metricsHandler\)/);
+  assert.match(app, /app\.get\("\/livez", observability\.livenessHandler\)/);
+  assert.match(app, /app\.get\("\/readyz", observability\.readinessHandler\)/);
+
+  const telemetry = fs.readFileSync(path.join(output, 'src/config/observability.js'), 'utf8');
+  assert.match(telemetry, /http_requests_total/);
+  assert.match(telemetry, /http_request_duration_seconds/);
+  assert.match(telemetry, /workflow_executions_total/);
+  assert.match(telemetry, /worker_records_total/);
+  assert.match(telemetry, /outbox_pending/);
+  assert.match(telemetry, /AsyncLocalStorage/);
+  assert.match(telemetry, /NodeTracerProvider/);
+  assert.match(telemetry, /OTLPTraceExporter/);
+  assert.match(telemetry, /requestId/);
+  assert.doesNotMatch(telemetry, /req\.body/);
+  assert.doesNotMatch(telemetry, /authorization/);
+
+  const database = fs.readFileSync(path.join(output, 'src/config/database.js'), 'utf8');
+  assert.match(database, /connectDatabase\.ping/);
+  assert.match(database, /SELECT 1/);
+
+  const workflow = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
+  assert.match(workflow, /observability\.instrumentWorkflow\(name, run\)/);
+  assert.match(workflow, /observability\.instrumentWorkflowStep/);
+
+  const worker = fs.readFileSync(path.join(output, 'src/workflows/worker.js'), 'utf8');
+  assert.match(worker, /observability\.instrumentWorkerRecord/);
+  assert.match(worker, /observability\.startTracing/);
+  assert.match(worker, /observability\.shutdownTracing/);
+
+  const outbox = fs.readFileSync(path.join(output, 'src/workflows/outbox.js'), 'utf8');
+  assert.match(outbox, /async function stats/);
+  assert.match(outbox, /status: "pending"/);
+  assert.match(outbox, /status: "dead"/);
+
+  const graphql = fs.readFileSync(path.join(output, 'src/graphql/index.js'), 'utf8');
+  assert.match(graphql, /observability\.recordGraphql/);
+  assert.match(graphql, /observability\.withSpan/);
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
+  }
+});
