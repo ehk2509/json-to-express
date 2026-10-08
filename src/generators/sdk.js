@@ -49,6 +49,29 @@ function runtimePrelude(baseUrl, apiKeyHeader) {
     '    return encodeURIComponent(String(value));',
     '  });',
     '}', '',
+    'function prepareBody(data, fileFields = []) {',
+    '  if (!data || !fileFields.length || typeof FormData === "undefined" || typeof Blob === "undefined") return data;',
+    '  const fileNames = new Set(fileFields.map(field => field.name));',
+    '  const hasFile = fileFields.some(field => {',
+    '    const value = data[field.name];',
+    '    return value instanceof Blob || (Array.isArray(value) && value.some(item => item instanceof Blob));',
+    '  });',
+    '  if (!hasFile) return data;',
+    '  const form = new FormData();',
+    '  for (const [name, value] of Object.entries(data)) {',
+    '    if (value === undefined) continue;',
+    '    if (fileNames.has(name)) {',
+    '      if (value === null) form.append(name, "null");',
+    '      else if (Array.isArray(value)) for (const item of value) if (item instanceof Blob) form.append(name, item);',
+    '      else if (value instanceof Blob) form.append(name, value);',
+    '      continue;',
+    '    }',
+    '    if (value instanceof Date) form.append(name, value.toISOString());',
+    '    else if (Array.isArray(value) || (value && typeof value === "object")) form.append(name, JSON.stringify(value));',
+    '    else form.append(name, String(value));',
+    '  }',
+    '  return form;',
+    '}', '',
     'function appendQuery(url, query) {',
     '  if (!query) return url;',
     '  const search = new URLSearchParams();',
@@ -81,8 +104,9 @@ function runtimePrelude(baseUrl, apiKeyHeader) {
     '    if (apiKey && !headers[' + JSON.stringify(apiKeyHeader) + ']) headers[' + JSON.stringify(apiKeyHeader) + '] = apiKey;',
     '    let body;',
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
-    '      headers["content-type"] = headers["content-type"] || "application/json";',
-    '      body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body;',
+    '      const isForm = typeof FormData !== "undefined" && config.body instanceof FormData;',
+    '      if (isForm) { delete headers["content-type"]; body = config.body; }',
+    '      else { headers["content-type"] = headers["content-type"] || "application/json"; body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body; }',
     '    }',
     '    const response = await fetchImpl(appendQuery(baseUrl + buildPath(route, config.params), config.query), {',
     '      method, headers, body, signal: config.signal, credentials: options.credentials',
@@ -113,9 +137,9 @@ function jsEntityGroup(spec, entity) {
     } else if (name === 'get') {
       methods.push('      get: (id, query, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, query}),');
     } else if (name === 'create') {
-      methods.push('      create: (data, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, body: data}),');
+      methods.push('      create: (data, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, body: prepareBody(data, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
     } else if (name === 'update') {
-      methods.push('      update: (id, data, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: data}),');
+      methods.push('      update: (id, data, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: prepareBody(data, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
     } else if (name === 'delete') {
       methods.push('      delete: (id, options = {}) => request(' + JSON.stringify(operation.method.toUpperCase()) + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}}),');
     }
@@ -143,6 +167,10 @@ function javascriptSource(spec) {
 }
 
 function tsScalar(field, output) {
+  if (field.type === 'file') {
+    const base = output ? 'FileMetadata' : 'Blob';
+    return field.many ? 'Array<' + base + '>' : base;
+  }
   if (field.type === 'reference') {
     const base = output ? 'string | ' + field.ref : 'string';
     return field.many ? 'Array<' + base + '>' : base;
@@ -155,6 +183,17 @@ function tsScalar(field, output) {
 
 function typeLines(spec) {
   const lines = [
+    'export interface FileMetadata {',
+    '  key: string;',
+    '  originalName: string;',
+    '  mimeType: string;',
+    '  size: number;',
+    '  checksumSha256: string;',
+    "  provider: 'local' | 's3';",
+    '  uploadedAt: string;',
+    '  url?: string | null;',
+    '}',
+    '',
     'export type QueryPrimitive = string | number | boolean | Date;',
     'export type QueryValue = QueryPrimitive | QueryPrimitive[] | undefined | null;',
     'export interface RequestOptions { headers?: Record<string, string>; signal?: AbortSignal; }',
@@ -266,6 +305,26 @@ function typescriptSource(spec) {
     '    return encodeURIComponent(String(value));',
     '  });',
     '}', '',
+    'function prepareBody(data: Record<string, unknown>, fileFields: Array<{name: string; many: boolean}> = []): unknown {',
+    '  if (!data || !fileFields.length || typeof FormData === "undefined" || typeof Blob === "undefined") return data;',
+    '  const fileNames = new Set(fileFields.map(field => field.name));',
+    '  const hasFile = fileFields.some(field => { const value = data[field.name]; return value instanceof Blob || (Array.isArray(value) && value.some(item => item instanceof Blob)); });',
+    '  if (!hasFile) return data;',
+    '  const form = new FormData();',
+    '  for (const [name, value] of Object.entries(data)) {',
+    '    if (value === undefined) continue;',
+    '    if (fileNames.has(name)) {',
+    '      if (value === null) form.append(name, "null");',
+    '      else if (Array.isArray(value)) for (const item of value) if (item instanceof Blob) form.append(name, item);',
+    '      else if (value instanceof Blob) form.append(name, value);',
+    '      continue;',
+    '    }',
+    '    if (value instanceof Date) form.append(name, value.toISOString());',
+    '    else if (Array.isArray(value) || (value && typeof value === "object")) form.append(name, JSON.stringify(value));',
+    '    else form.append(name, String(value));',
+    '  }',
+    '  return form;',
+    '}', '',
     'function appendQuery(url: string, query?: Record<string, QueryValue>): string {',
     '  if (!query) return url;',
     '  const search = new URLSearchParams();',
@@ -317,8 +376,9 @@ function typescriptSource(spec) {
     '    if (apiKey && !headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + ']) headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + '] = apiKey;',
     '    let body: BodyInit | undefined;',
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
-    '      headers["content-type"] = headers["content-type"] || "application/json";',
-    '      body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body as BodyInit;',
+    '      const isForm = typeof FormData !== "undefined" && config.body instanceof FormData;',
+    '      if (isForm) { delete headers["content-type"]; body = config.body; }',
+    '      else { headers["content-type"] = headers["content-type"] || "application/json"; body = headers["content-type"].includes("application/json") ? JSON.stringify(config.body) : config.body as BodyInit; }',
     '    }',
     '    const response = await fetchImpl(appendQuery(baseUrl + buildPath(route, config.params), config.query), {method, headers, body, signal: config.signal, credentials: options.credentials});',
     '    if (response.status === 204) {',
@@ -347,8 +407,8 @@ function typescriptSource(spec) {
       const method = JSON.stringify(operation.method.toUpperCase());
       if (name === 'list') methods.push('      list: (query, options = {}) => request<' + entity.name + '[]>(' + method + ', ' + JSON.stringify(route) + ', {...options, query: query as Record<string, QueryValue>}),');
       if (name === 'get') methods.push('      get: (id, query, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, query}),');
-      if (name === 'create') methods.push('      create: (data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, body: data}),');
-      if (name === 'update') methods.push('      update: (id, data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: data}),');
+      if (name === 'create') methods.push('      create: (data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, body: prepareBody(data as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
+      if (name === 'update') methods.push('      update: (id, data, options = {}) => request<' + entity.name + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}, body: prepareBody(data as Record<string, unknown>, ' + JSON.stringify(entity.fields.filter(field => field.type === 'file').map(field => ({name: field.name, many: field.many}))) + ')}),');
       if (name === 'delete') methods.push('      delete: (id, options = {}) => request<' + (operation.status === 204 ? 'void' : entity.name) + '>(' + method + ', ' + JSON.stringify(route) + ', {...options, params: {' + JSON.stringify(entity.idParam) + ': id}}),');
     }
     lines.push('    ' + groupName(entity) + ': {', ...methods, '    },');
