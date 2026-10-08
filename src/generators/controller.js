@@ -52,6 +52,7 @@ function relationDeleteLines(entity, spec) {
 
 function controllerSource(entity, spec) {
   const id = 'req.params[' + js(entity.idParam) + ']';
+  const hasFiles = entity.fields.some(field => field.type === 'file');
   const functions = [];
   const exports = [];
   const paths = filePaths(spec, entity.name);
@@ -61,6 +62,7 @@ function controllerSource(entity, spec) {
   ];
   if (entity.hooks) imports.push('const hooks = require(' + js(relativeRequire(paths.controller, entity.hooks.module)) + ');');
   if (spec.cache.enabled) imports.push('const cache = require(' + js(relativeRequire(paths.controller, filePaths(spec).cache)) + ');');
+  if (hasFiles) imports.push('const storage = require(' + js(relativeRequire(paths.controller, filePaths(spec).storage)) + ');');
   for (const relation of inboundRelations(entity, spec)) {
     if (!imports.some(line => line.startsWith('const ' + relation.source.name + ' ='))) {
       const sourcePath = filePaths(spec, relation.source.name).model;
@@ -112,7 +114,8 @@ function controllerSource(entity, spec) {
     if(list.lean) lines.push('    query = query.lean();');
     lines.push('    const items = await query;');
     lines.push(...hookLines(entity,'after','list','items'));
-    lines.push('    res.status('+list.status+').json(items);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    const responseItems = await storage.enrich(' + js(entity.name) + ', items, req);');
+    lines.push('    res.status('+list.status+').json(' + (hasFiles ? 'responseItems' : 'items') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('list');
   }
 
@@ -126,7 +129,9 @@ function controllerSource(entity, spec) {
     lines.push(...populateLines(get));
     if(get.lean) lines.push('    query = query.lean();');
     lines.push('    const item = await query;','    if (!item) return res.status('+get.notFoundStatus+').json('+payload(entity.notFoundResponse)+');',
-      ...hookLines(entity,'after','get','item'),'    res.status('+get.status+').json(item);','  } catch (error) { next(error); }','}');
+      ...hookLines(entity,'after','get','item'),
+      ...(hasFiles ? ['    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);'] : []),
+      '    res.status('+get.status+').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('get');
   }
 
@@ -140,13 +145,19 @@ function controllerSource(entity, spec) {
     lines.push('    let item = await withTransaction('+create.transaction+', async session => {',
       '      const created = await '+entity.name+'.create([input], session ? {session} : {});','      return created[0];','    });');
     if(create.populate.length) lines.push('    item = await item.populate('+js(create.populate)+');');
-    lines.push(...hookLines(entity,'after','create','item'),'    res.status('+create.status+').json(item);','  } catch (error) { next(error); }','}');
+    if (hasFiles) lines.push('    storage.commitUploads(req);');
+    lines.push(...hookLines(entity,'after','create','item'));
+    if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+    lines.push('    res.status('+create.status+').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('create');
   }
 
   const update=entity.operations.update;
   if(update.enabled){
     const lines=['async function update(req, res, next) {','  try {',...hookLines(entity,'before','update'),'    const input = {...req.body};'];
+    if (hasFiles) {
+      lines.push('    const existingUploadRecord = await ' + entity.name + '.findOne({_id: ' + id + '}).lean();');
+    }
     if(entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) input['+js(entity.audit.updatedBy)+'] = req.auth.userId;');
     lines.push('    let item = await withTransaction('+update.transaction+', async session => {',
       '      const filter = {_id: '+id+'};');
@@ -155,7 +166,13 @@ function controllerSource(entity, spec) {
       '      if (session) query = query.session(session);','      return query;','    });',
       '    if (!item) return res.status('+update.notFoundStatus+').json('+payload(entity.notFoundResponse)+');');
     if(update.populate.length) lines.push('    item = await item.populate('+js(update.populate)+');');
-    lines.push(...hookLines(entity,'after','update','item'),'    res.status('+update.status+').json(item);','  } catch (error) { next(error); }','}');
+    if (hasFiles) {
+      lines.push('    await storage.cleanupReplaced(' + js(entity.name) + ', existingUploadRecord, input);');
+      lines.push('    storage.commitUploads(req);');
+    }
+    lines.push(...hookLines(entity,'after','update','item'));
+    if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+    lines.push('    res.status('+update.status+').json(' + (hasFiles ? 'responseItem' : 'item') + ');','  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('update');
   }
 
@@ -171,9 +188,13 @@ function controllerSource(entity, spec) {
       lines.push('      let query = '+entity.name+'.findOneAndDelete(filter);');
     }
     lines.push('      if (session) query = query.session(session);','      return query;','    });',
-      '    if (!item) return res.status('+remove.notFoundStatus+').json('+payload(entity.notFoundResponse)+');',
-      ...hookLines(entity,'after','delete','item'));
-    if(remove.status===204) lines.push('    res.status(204).end();'); else lines.push('    res.status('+remove.status+').json(item);');
+      '    if (!item) return res.status('+remove.notFoundStatus+').json('+payload(entity.notFoundResponse)+');');
+    if (hasFiles) lines.push('    await storage.cleanupEntity(' + js(entity.name) + ', item);');
+    lines.push(...hookLines(entity,'after','delete','item'));
+    if(remove.status===204) lines.push('    res.status(204).end();'); else {
+      if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
+      lines.push('    res.status('+remove.status+').json(' + (hasFiles ? 'responseItem' : 'item') + ');');
+    }
     lines.push('  } catch (error) { next(error); }','}');
     functions.push(lines.join('\n')); exports.push('remove');
   }
