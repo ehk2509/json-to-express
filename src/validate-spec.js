@@ -317,6 +317,11 @@ function validateSpec(inputSpec) {
           for (const fieldName of Object.keys(definition.fields)) {
             if (!entity.fields || !Object.prototype.hasOwnProperty.call(entity.fields, fieldName)) {
               errors.push('entities.' + entityName + '.indexes[' + index + '].fields.' + fieldName + ' references an unknown field');
+            } else if (
+              spec.database && spec.database.type === 'postgresql' &&
+              entity.fields[fieldName].type === 'reference' && entity.fields[fieldName].many === true
+            ) {
+              errors.push('entities.' + entityName + '.indexes[' + index + '].fields.' + fieldName + ' cannot index an implicit many-to-many relation on postgresql');
             }
           }
         }
@@ -341,12 +346,16 @@ function validateSpec(inputSpec) {
           if (spec.database && spec.database.type === 'postgresql' && field.options && Object.keys(field.options).length) {
             errors.push('entities.' + entityName + '.fields.' + fieldName + '.options is only supported by the mongodb target');
           }
-          if (spec.database && spec.database.type === 'postgresql' && field.type === 'reference' && field.many === true) {
-            errors.push('entities.' + entityName + '.fields.' + fieldName + '.many is not yet supported by the postgresql target');
+          if (
+            spec.database && spec.database.type === 'postgresql' &&
+            field.type === 'reference' && field.many === true && field.unique === true
+          ) {
+            errors.push('entities.' + entityName + '.fields.' + fieldName + '.unique is not supported for many references on postgresql');
           }
           if (
             spec.database && spec.database.type === 'postgresql' &&
-            field.type === 'reference' && field.onDelete === 'nullify' && field.required === true
+            field.type === 'reference' && field.many !== true &&
+            field.onDelete === 'nullify' && field.required === true
           ) {
             errors.push('entities.' + entityName + '.fields.' + fieldName + ' cannot use onDelete "nullify" when required for postgresql');
           }
