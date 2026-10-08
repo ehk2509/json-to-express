@@ -1705,7 +1705,10 @@ test('generates secure local multipart storage across runtime OpenAPI SDK and ad
   });
   assert.equal(multipartResult.image.mimeType, 'image/png');
   assert.ok(capturedRequest.init.body instanceof FormData);
-  assert.ok(capturedRequest.init.body.get('image') instanceof Blob);
+  const capturedImage = capturedRequest.init.body.get('image');
+  assert.ok(capturedImage);
+  assert.equal(typeof capturedImage.arrayBuffer, 'function');
+  assert.equal(capturedImage.type, 'image/png');
   assert.equal(capturedRequest.init.headers['content-type'], undefined);
 
   const tsSdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
