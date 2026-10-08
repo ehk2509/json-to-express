@@ -714,6 +714,10 @@ test('generates Prisma-aware Docker deployment and separate worker manifests', t
   const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
   assert.match(compose, /image: postgres:16-alpine/);
   assert.match(compose, /postgresql:\/\/postgres:postgres@database:5432\/postgres_deploy/);
+  assert.match(compose, /  migrate:/);
+  assert.match(compose, /target: build/);
+  assert.match(compose, /command: \["npm", "run", "db:push"\]/);
+  assert.match(compose, /condition: service_completed_successfully/);
 
   const secret = fs.readFileSync(path.join(output, 'deploy/k8s/secret.example.yaml'), 'utf8');
   assert.match(secret, /DATABASE_URL: "<set-me>"/);
