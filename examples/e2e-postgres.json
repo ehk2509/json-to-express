@@ -393,5 +393,78 @@
       "enabled": true,
       "path": "/graphql"
     }
+  },
+  "auth": {
+    "enabled": true,
+    "strategies": [
+      "jwt",
+      "apiKey",
+      "session",
+      "oidc"
+    ],
+    "jwt": {
+      "secretEnv": "JWT_SECRET",
+      "algorithms": [
+        "HS256"
+      ],
+      "accessTtlSeconds": 300,
+      "refresh": {
+        "enabled": true,
+        "path": "/auth/refresh",
+        "ttlSeconds": 3600,
+        "cookieName": "j2e_refresh",
+        "returnToken": true
+      }
+    },
+    "apiKey": {
+      "header": "x-api-key",
+      "keys": [
+        {
+          "env": "E2E_API_KEY",
+          "userId": "ci-service",
+          "roles": [
+            "admin"
+          ]
+        }
+      ]
+    },
+    "session": {
+      "cookieName": "j2e_session",
+      "ttlSeconds": 3600,
+      "secure": false,
+      "sameSite": "lax",
+      "path": "/"
+    },
+    "local": {
+      "enabled": true,
+      "allowRegistration": true,
+      "defaultRoles": [
+        "admin"
+      ],
+      "passwordMinLength": 8,
+      "registerPath": "/auth/register",
+      "loginPath": "/auth/login",
+      "logoutPath": "/auth/logout",
+      "forgotPasswordPath": "/auth/forgot-password",
+      "resetPasswordPath": "/auth/reset-password",
+      "passwordReset": {
+        "ttlSeconds": 600,
+        "exposeToken": true
+      }
+    },
+    "oidc": {
+      "enabled": true,
+      "issuer": "http://127.0.0.1:4568",
+      "audience": "j2e-e2e-client",
+      "clientIdEnv": "OIDC_CLIENT_ID",
+      "rolesClaim": "roles",
+      "scopes": [
+        "openid",
+        "profile",
+        "email"
+      ],
+      "loginPath": "/auth/oidc/login",
+      "callbackPath": "/auth/oidc/callback"
+    }
   }
 }
