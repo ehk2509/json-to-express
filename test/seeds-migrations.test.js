@@ -54,3 +54,21 @@ test('does not emit a seed file when no data is declared', () => {
   delete spec.seeds;
   assert.equal(buildFiles(normalizeSpec(spec)).has('prisma/seed.js'), false);
 });
+
+test('generates deterministic scalar fixtures from factories', () => {
+  const spec = makeSpec();
+  delete spec.seeds;
+  spec.factories = {Category: {count: 2, template: {name: 'Category {{index}}'}}};
+  const files = buildFiles(normalizeSpec(spec));
+  const source = files.get('prisma/seed.js');
+  assert.ok(source.includes('Category 1'));
+  assert.ok(source.includes('Category 2'));
+  assert.equal(JSON.parse(files.get('package.json')).scripts['db:seed'], 'node prisma/seed.js');
+  new vm.Script(source);
+});
+
+test('rejects factory fields that are not declared', () => {
+  const spec = makeSpec();
+  spec.factories = {Category: {count: 1, template: {unknown: 'x'}}};
+  assert.throws(() => validateSpec(spec), /must be a scalar entity field/);
+});
