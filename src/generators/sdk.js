@@ -30,7 +30,7 @@ function pathParams(route) {
   return [...String(route).matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)].map(match => match[1]);
 }
 
-function runtimePrelude(baseUrl) {
+function runtimePrelude(baseUrl, apiKeyHeader) {
   return [
     "'use strict';", '',
     'class ApiError extends Error {',
@@ -78,7 +78,7 @@ function runtimePrelude(baseUrl) {
     '    const token = await resolveToken();',
     '    if (token) headers.authorization = "Bearer " + token;',
     '    const apiKey = await resolveApiKey();',
-    '    if (apiKey && !headers[' + JSON.stringify('x-api-key') + ']) headers[' + JSON.stringify(' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + ') + '] = apiKey;'
+    '    if (apiKey && !headers[' + JSON.stringify(apiKeyHeader) + ']) headers[' + JSON.stringify(apiKeyHeader) + '] = apiKey;',
     '    let body;',
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
     '      headers["content-type"] = headers["content-type"] || "application/json";',
@@ -124,7 +124,7 @@ function jsEntityGroup(spec, entity) {
 }
 
 function javascriptSource(spec) {
-  const lines = runtimePrelude(spec.sdk.baseUrl);
+  const lines = runtimePrelude(spec.sdk.baseUrl, spec.auth.apiKey.enabled ? spec.auth.apiKey.header : 'x-api-key');
   lines.push('  return {', '    request,');
   for (const entity of spec.entities) lines.push(...jsEntityGroup(spec, entity));
   if (spec.sdk.includeCustomEndpoints && spec.endpoints.length) {
@@ -314,7 +314,7 @@ function typescriptSource(spec) {
     '    const token = await resolveToken();',
     '    if (token) headers.authorization = "Bearer " + token;',
     '    const apiKey = await resolveApiKey();',
-    '    if (apiKey && !headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + ']) headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + '] = apiKey;'
+    '    if (apiKey && !headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + ']) headers[' + JSON.stringify(spec.auth.apiKey.enabled ? spec.auth.apiKey.header : "x-api-key") + '] = apiKey;',
     '    let body: BodyInit | undefined;',
     '    if (config.body !== undefined && method !== "GET" && method !== "HEAD") {',
     '      headers["content-type"] = headers["content-type"] || "application/json";',
