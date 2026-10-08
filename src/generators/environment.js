@@ -17,6 +17,10 @@ module.exports = function environmentSource(spec) {
     const name = spec.auth.local.passwordReset.webhookUrlEnv;
     declared[name] = declared[name] || {required: true};
   }
+  if (spec.cache.enabled && spec.cache.provider === 'redis') {
+    const name = spec.cache.redis.urlEnv;
+    declared[name] = declared[name] || {required: true};
+  }
   if (spec.observability.tracing.enabled && spec.observability.tracing.exporter === 'otlp-http') {
     const name = spec.observability.tracing.endpointEnv;
     declared[name] = declared[name] || {required: true};
