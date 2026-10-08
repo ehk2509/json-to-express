@@ -67,13 +67,15 @@
       "operations": {
         "list": {
           "populate": [
-            "category"
+            "category",
+            "tags"
           ],
           "query": {
             "filters": [
               "name",
               "price",
-              "category"
+              "category",
+              "tags"
             ],
             "operators": [
               "eq",
@@ -91,7 +93,8 @@
         },
         "get": {
           "populate": [
-            "category"
+            "category",
+            "tags"
           ]
         },
         "update": {
@@ -118,6 +121,21 @@
         "published": {
           "type": "boolean",
           "default": false
+        },
+        "tags": {
+          "type": "reference",
+          "ref": "Tag",
+          "many": true,
+          "onDelete": "nullify"
+        }
+      }
+    },
+    "Tag": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "unique": true
         }
       }
     }
@@ -188,12 +206,14 @@
           "name",
           "price",
           "category",
-          "published"
+          "published",
+          "tags"
         ],
         "filterFields": [
           "name",
           "price",
-          "category"
+          "category",
+          "tags"
         ],
         "pageSize": 10,
         "fields": {
@@ -211,12 +231,24 @@
           "published": {
             "label": "Published",
             "widget": "checkbox"
+          },
+          "tags": {
+            "label": "Tags",
+            "widget": "reference"
           }
         }
       },
       "Category": {
         "label": "Category",
         "pluralLabel": "Categories",
+        "titleField": "name",
+        "listFields": [
+          "name"
+        ]
+      },
+      "Tag": {
+        "label": "Tag",
+        "pluralLabel": "Tags",
         "titleField": "name",
         "listFields": [
           "name"
