@@ -364,6 +364,7 @@
       },
       "additionalProperties": false
     },
+    "factories": {"type": "object", "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"}, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["count", "template"], "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 1000}, "template": {"type": "object"}}}},
     "seeds": {
       "type": "object",
       "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"},
