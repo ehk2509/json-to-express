@@ -863,6 +863,7 @@ test('generates standalone JavaScript and strongly typed TypeScript SDK clients'
   assert.match(tsClient, /"price__gte"\?: number;/);
   assert.match(tsClient, /"price__in"\?: number\[\];/);
   assert.match(tsClient, /catalogItems: ProductClient/);
+  assert.match(tsClient, /publishProduct\(input: \{params: \{"productId": string \| number\}/);
   assert.match(tsClient, /export class ApiError extends Error/);
 
   const checked = spawnSync(process.execPath, ['--check', path.join(output, 'client/javascript/index.js')], {encoding: 'utf8'});
