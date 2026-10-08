@@ -29,7 +29,17 @@ function environmentContract(spec) {
     [spec.database.uriEnv]: '<set-me>'
   };
 
-  if (spec.auth.enabled) secrets[spec.auth.secretEnv] = '<set-me>';
+  if (spec.auth.jwt.enabled) secrets[spec.auth.jwt.secretEnv] = '<set-me>';
+  if (spec.auth.apiKey.enabled) {
+    for (const key of spec.auth.apiKey.keys) secrets[key.env] = '<set-me>';
+  }
+  if (spec.auth.oidc.enabled) {
+    secrets[spec.auth.oidc.clientIdEnv] = '<set-me>';
+    if (spec.auth.oidc.clientSecretEnv) secrets[spec.auth.oidc.clientSecretEnv] = '<set-me>';
+  }
+  if (spec.auth.local.passwordReset.webhookUrlEnv) {
+    secrets[spec.auth.local.passwordReset.webhookUrlEnv] = '<set-me>';
+  }
 
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) secrets[webhook.urlEnv] = '<set-me>';
