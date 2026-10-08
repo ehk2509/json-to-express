@@ -55,13 +55,20 @@ async function main() {
   const tagId = tag[idField];
   assert.ok(tagId);
 
-  const product = await client.products.create({
+  const productInput = {
     name: 'SDK Keyboard ' + suffix,
     price: 149,
     category: categoryId,
     tags: [tagId],
     image: new Blob(['sdk-image'], {type: 'text/plain'})
-  });
+  };
+  console.log('SDK product input diagnostic', JSON.stringify({
+    keys: Object.keys(productInput),
+    imageType: productInput.image && productInput.image.constructor && productInput.image.constructor.name,
+    blobLike: Boolean(productInput.image && typeof productInput.image.arrayBuffer === 'function' && typeof productInput.image.stream === 'function')
+  }));
+  console.log('SDK product create diagnostic', String(client.products.create));
+  const product = await client.products.create(productInput);
   const productId = product[idField];
   assert.ok(productId);
   assert.equal(product.image.mimeType, 'text/plain');
