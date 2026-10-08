@@ -29,7 +29,7 @@ function appSource(spec) {
     middleware.push("app.use((req, res, next) => { res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Referrer-Policy', 'no-referrer'); next(); });");
   }
   if (spec.app.production.requestId) {
-    middleware.push("app.use((req, res, next) => { req.id = req.headers['x-request-id'] || crypto.randomUUID(); res.setHeader('X-Request-Id', req.id); next(); });");
+    middleware.push("app.use((req, res, next) => { req.id = req.id || req.headers['x-request-id'] || crypto.randomUUID(); res.setHeader('X-Request-Id', req.id); next(); });");
   }
   if (spec.app.production.cors.enabled) middleware.push('app.use(cors({origin: ' + js(spec.app.production.cors.origin) + '}));');
   if (spec.app.production.rateLimit.enabled) {
