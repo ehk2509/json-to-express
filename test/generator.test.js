@@ -498,7 +498,7 @@ test('generates durable Mongo outbox, worker, retries and queued workflow jobs',
   assert.match(worker, /recoverStale/);
   assert.match(worker, /workflows\.execute/);
   assert.match(worker, /--retry-dead/);
-  assert.match(worker, /mongoose\.disconnect/);
+  assert.match(worker, /connectDatabase\.disconnect/);
 
   const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
   assert.match(engine, /pendingJobs/);
