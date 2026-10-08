@@ -144,7 +144,7 @@ function buildFiles(spec) {
 
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
-    if (Object.keys(spec.seeds).length) files.set('prisma/seed.js', seedSource(spec));
+    if (Object.keys(spec.seeds).length || Object.keys(spec.factories).length) files.set('prisma/seed.js', seedSource(spec));
   }
 
   for (const entity of spec.entities) {
