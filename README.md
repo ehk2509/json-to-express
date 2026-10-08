@@ -18,6 +18,7 @@ Two persistence targets now share the same normalized application model:
 - configurable query semantics
 - configurable error handling and health endpoint
 - optional structured logs, Prometheus metrics, liveness/readiness, and OpenTelemetry traces
+- multipart file fields with local or S3-compatible object storage
 - generated package.json and .env.example
 - generated health smoke test
 - .j2e-manifest.json for safe regeneration
@@ -766,6 +767,92 @@ Database URLs plus enabled authentication secrets—JWT secrets, API-key values,
 The production block can enable request IDs, security headers, CORS, rate limiting, and compression. Optional package dependencies are added only when required.
 
 Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and database disconnect.
+
+## File upload and object storage
+
+File fields are declared in the same entity model:
+
+~~~json
+{
+  "storage": {
+    "enabled": true,
+    "provider": "local",
+    "signedUrls": {
+      "enabled": true,
+      "expiresSeconds": 900,
+      "path": "/files/:token",
+      "signingSecretEnv": "FILE_SIGNING_SECRET"
+    },
+    "local": {
+      "directory": "uploads"
+    }
+  },
+  "entities": {
+    "Product": {
+      "fields": {
+        "image": {
+          "type": "file",
+          "upload": {
+            "maxBytes": 5242880,
+            "mimeTypes": ["image/*"],
+            "directory": "products/images",
+            "preserveExtension": true
+          }
+        },
+        "attachments": {
+          "type": "file",
+          "many": true,
+          "upload": {
+            "maxBytes": 10485760,
+            "mimeTypes": ["application/pdf", "text/plain"]
+          }
+        }
+      }
+    }
+  }
+}
+~~~
+
+Declaring any `type: "file"` field automatically enables the storage runtime. CRUD create/update routes accept `multipart/form-data`; authentication runs before multipart parsing, and MIME/size policies are enforced independently for each file field.
+
+Persisted file metadata contains:
+
+~~~json
+{
+  "key": "products/images/5be8...png",
+  "originalName": "photo.png",
+  "mimeType": "image/png",
+  "size": 48123,
+  "checksumSha256": "...",
+  "provider": "local",
+  "uploadedAt": "2026-10-08T12:00:00.000Z"
+}
+~~~
+
+Signed URLs are added to responses at request time and are not persisted. This keeps credentials short-lived and allows the same metadata model to work with either provider.
+
+Supported providers:
+
+- **local** — safe paths under a configured storage root, HMAC-signed download URLs, Docker Compose named-volume persistence, traversal protection, and streamed downloads.
+- **s3** — AWS S3 or S3-compatible endpoints using the AWS SDK, configurable bucket/region/endpoint/credentials, object deletion, and native pre-signed GET URLs.
+
+Object lifecycle is automatic for generated CRUD operations:
+
+- failed multipart requests clean up newly written objects
+- replacing a file removes the previous object after the database mutation succeeds
+- setting a single file field to `null` clears it and removes the old object
+- setting a many-file field to `[]` clears all objects
+- deleting/soft-deleting an entity removes its stored files
+- metadata cannot be forged through ordinary JSON requests
+- path traversal is rejected for generated local keys/directories
+
+Entities with signed file URLs automatically disable list/get response caching so a cached response cannot contain an expired signed URL.
+
+OpenAPI emits `multipart/form-data` schemas with binary file fields. Generated JavaScript/TypeScript SDKs transparently convert `Blob` inputs into `FormData`, and the generated admin UI renders file inputs with `multiple`, `accept`, MIME/size validation, and links to existing files.
+
+GraphQL exposes file metadata in reads. File writes stay on the multipart REST surface; required file fields therefore suppress the corresponding GraphQL create mutation rather than accepting forgeable metadata.
+
+For production multi-replica deployments, S3-compatible storage is the recommended provider. Local storage is appropriate for development and single-host/container deployments where the generated Compose volume is shared with the API container.
 
 ## Declarative caching
 
