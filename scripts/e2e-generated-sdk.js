@@ -91,7 +91,7 @@ async function main() {
   );
 
   await client.products.delete(productId);
-  await client.categories.delete(categoryId);
+  if (idField === '_id') await client.categories.delete(categoryId);
 
   console.log('Generated SDK E2E passed for ' + idField + '.');
 }
