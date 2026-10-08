@@ -214,6 +214,7 @@ function normalizeSpec(inputSpec) {
   const dependencies = {
     dotenv: '^16.4.5',
     express: '^4.21.1',
+    ...(spec.app.framework === 'fastify' ? {fastify: '^5.6.0', '@fastify/express': '^4.0.0'} : {}),
     ...(isMongo ? {mongoose: '^8.8.0'} : {}),
     ...(isPostgres ? {'@prisma/client': '^6.16.2'} : {}),
     ...(jwtEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
@@ -471,6 +472,7 @@ function normalizeSpec(inputSpec) {
     },
     app: {
       name: spec.app.name.trim(),
+      framework: valueOr(spec.app.framework, 'express'),
       packageName: generatedName,
       port: valueOr(spec.app.port, 3000),
       portEnv: valueOr(spec.app.portEnv, 'PORT'),
