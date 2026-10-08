@@ -84,7 +84,7 @@ function normalizeAuthRule(value, defaultStrategies = []) {
   };
 }
 
-function normalizeOperation(name, value, idParam, authEnabled, authStrategies) {
+function normalizeOperation(name, value, idParam, authEnabled, authStrategies, cacheDefaults) {
   const defaults = JSON.parse(JSON.stringify(DEFAULT_OPERATIONS[name]));
   if (defaults.path.includes(':id') && idParam !== 'id') defaults.path = defaults.path.replace(':id', ':' + idParam);
 
@@ -110,6 +110,13 @@ function normalizeOperation(name, value, idParam, authEnabled, authStrategies) {
   operation.populate = configured.populate || [];
   operation.validate = valueOr(configured.validate, true);
   operation.transaction = valueOr(configured.transaction, false);
+  const rawCache = configured.cache;
+  const cacheConfig = rawCache && typeof rawCache === 'object' ? rawCache : {};
+  operation.cache = {
+    enabled: Boolean(cacheDefaults.enabled && (rawCache === true || (rawCache && rawCache.enabled !== false))),
+    ttlSeconds: valueOr(cacheConfig.ttlSeconds, cacheDefaults.defaultTtlSeconds),
+    varyByAuth: valueOr(cacheConfig.varyByAuth, cacheDefaults.varyByAuth)
+  };
   return operation;
 }
 
@@ -140,6 +147,15 @@ function normalizeSpec(inputSpec) {
   const loggingEnabled = observabilityEnabled && valueOr(loggingConfig.enabled, true);
   const metricsEnabled = observabilityEnabled && valueOr(metricsConfig.enabled, true);
   const tracingEnabled = observabilityEnabled && valueOr(tracingConfig.enabled, false);
+  const cacheConfig = spec.cache || {};
+  const cacheRedisConfig = cacheConfig.redis || {};
+  const cacheEnabled = valueOr(cacheConfig.enabled, false);
+  const cacheProvider = valueOr(cacheConfig.provider, 'memory');
+  const cacheDefaults = {
+    enabled: cacheEnabled,
+    defaultTtlSeconds: valueOr(cacheConfig.defaultTtlSeconds, 300),
+    varyByAuth: valueOr(cacheConfig.varyByAuth, true)
+  };
   const generatedName = packageConfig.name || packageName(spec.app.name);
   const serverFile = path.posix.join(paths.source, 'server.js');
   const auth = spec.auth || {};
@@ -201,6 +217,7 @@ function normalizeSpec(inputSpec) {
     ...(valueOr(rateLimit.enabled, false) ? {'express-rate-limit': '^7.4.1'} : {}),
     ...(valueOr(production.compression, false) ? {compression: '^1.7.5'} : {}),
     ...(metricsEnabled ? {'prom-client': '^15.1.3'} : {}),
+    ...(cacheEnabled && cacheProvider === 'redis' ? {redis: '^4.7.0'} : {}),
     ...(tracingEnabled ? {
       '@opentelemetry/api': '^1.9.0',
       '@opentelemetry/sdk-trace-node': '^1.30.1',
@@ -351,6 +368,17 @@ function normalizeSpec(inputSpec) {
       }
     },
     environment: spec.environment || {},
+    cache: {
+      enabled: cacheEnabled,
+      provider: cacheProvider,
+      defaultTtlSeconds: cacheDefaults.defaultTtlSeconds,
+      prefix: valueOr(cacheConfig.prefix, 'j2e:'),
+      varyByAuth: cacheDefaults.varyByAuth,
+      redis: {
+        urlEnv: valueOr(cacheRedisConfig.urlEnv, 'REDIS_URL'),
+        connectTimeoutMs: valueOr(cacheRedisConfig.connectTimeoutMs, 5000)
+      }
+    },
     observability: {
       enabled: observabilityEnabled,
       logging: {
@@ -542,7 +570,8 @@ function normalizeSpec(inputSpec) {
         entity.operations && entity.operations[operationName],
         idParam,
         authEnabled,
-        authStrategies
+        authStrategies,
+        cacheDefaults
       );
     }
 
