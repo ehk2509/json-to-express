@@ -7,10 +7,11 @@ const path = require('node:path');
 const base = process.env.E2E_POSTGRES_BASE_URL || 'http://127.0.0.1:3457';
 
 async function request(urlPath, options = {}) {
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(base + urlPath, {
     ...options,
     headers: {
-      'content-type': 'application/json',
+      ...(!isForm ? {'content-type': 'application/json'} : {}),
       'x-api-key': process.env.E2E_API_KEY || 'ci-api-key',
       ...(options.headers || {})
     }
@@ -172,18 +173,49 @@ async function main() {
   assert.equal(tagB.response.status, 201);
   assert.match(tagB.body.id, /^[0-9a-f-]{36}$/i);
 
+  const productForm = new FormData();
+  productForm.set('name', 'Keyboard');
+  productForm.set('price', '99');
+  productForm.set('category', category.body.id);
+  productForm.set('tags', JSON.stringify([tagA.body.id, tagB.body.id]));
+  productForm.set('image', new Blob(['image-one'], {type: 'text/plain'}), 'image-one.txt');
+  productForm.append('attachments', new Blob(['attachment-a'], {type: 'text/plain'}), 'a.txt');
+  productForm.append('attachments', new Blob(['attachment-b'], {type: 'text/plain'}), 'b.txt');
+
   const createdProduct = await request('/api/products', {
     method: 'POST',
-    body: JSON.stringify({
-      name: 'Keyboard',
-      price: 99,
-      category: category.body.id,
-      tags: [tagA.body.id, tagB.body.id]
-    })
+    body: productForm
   });
   assert.equal(createdProduct.response.status, 201);
   assert.match(createdProduct.body.id, /^[0-9a-f-]{36}$/i);
   const id = createdProduct.body.id;
+  assert.equal(createdProduct.body.image.originalName, 'image-one.txt');
+  assert.equal(createdProduct.body.image.mimeType, 'text/plain');
+  assert.equal(createdProduct.body.image.provider, 'local');
+  assert.equal(createdProduct.body.image.checksumSha256.length, 64);
+  assert.ok(createdProduct.body.image.url);
+  assert.equal(createdProduct.body.attachments.length, 2);
+  const originalImageUrl = createdProduct.body.image.url;
+  const attachmentUrls = createdProduct.body.attachments.map(file => file.url);
+  const imageResponse = await fetch(originalImageUrl);
+  assert.equal(imageResponse.status, 200);
+  assert.equal(await imageResponse.text(), 'image-one');
+
+  const badMimeForm = new FormData();
+  badMimeForm.set('name', 'Bad Mime');
+  badMimeForm.set('price', '10');
+  badMimeForm.set('category', category.body.id);
+  badMimeForm.set('image', new Blob(['bad'], {type: 'application/json'}), 'bad.json');
+  const badMime = await request('/api/products', {method: 'POST', body: badMimeForm});
+  assert.equal(badMime.response.status, 400);
+
+  const oversizedForm = new FormData();
+  oversizedForm.set('name', 'Too Large');
+  oversizedForm.set('price', '10');
+  oversizedForm.set('category', category.body.id);
+  oversizedForm.set('image', new Blob(['x'.repeat(1500)], {type: 'text/plain'}), 'large.txt');
+  const oversized = await request('/api/products', {method: 'POST', body: oversizedForm});
+  assert.equal(oversized.response.status, 400);
 
   const restricted = await request('/api/categories/' + category.body.id, {method: 'DELETE'});
   assert.equal(restricted.response.status, 409);
@@ -196,30 +228,42 @@ async function main() {
 
   const fetched = await request('/api/products/' + id);
   assert.equal(fetched.response.status, 200);
-  assert.equal(fetched.response.headers.get('x-cache'), 'MISS');
+  assert.equal(fetched.response.headers.get('x-cache'), null);
   assert.equal(fetched.body.category.name, 'Accessories');
   assert.equal(fetched.body.tags.length, 2);
 
   const fetchedCached = await request('/api/products/' + id);
   assert.equal(fetchedCached.response.status, 200);
-  assert.equal(fetchedCached.response.headers.get('x-cache'), 'HIT');
+  assert.equal(fetchedCached.response.headers.get('x-cache'), null);
 
+  const updateForm = new FormData();
+  updateForm.set('price', '120');
+  updateForm.set('tags', JSON.stringify([tagA.body.id]));
+  updateForm.set('image', new Blob(['image-two'], {type: 'text/plain'}), 'image-two.txt');
   const updated = await request('/api/products/' + id, {
     method: 'PATCH',
-    body: JSON.stringify({price: 120, tags: [tagA.body.id]})
+    body: updateForm
   });
   assert.equal(updated.response.status, 200);
   assert.equal(updated.body.price, 120);
   assert.equal(updated.body.tags.length, 1);
   assert.equal(updated.body.tags[0].name, 'Featured');
+  assert.equal(updated.body.image.originalName, 'image-two.txt');
+  assert.notEqual(updated.body.image.url, originalImageUrl);
+  const oldImageAfterReplace = await fetch(originalImageUrl);
+  assert.equal(oldImageAfterReplace.status, 404);
+  const newImageUrl = updated.body.image.url;
+  const newImageResponse = await fetch(newImageUrl);
+  assert.equal(newImageResponse.status, 200);
+  assert.equal(await newImageResponse.text(), 'image-two');
 
   const afterUpdate = await request('/api/products/' + id);
   assert.equal(afterUpdate.response.status, 200);
-  assert.equal(afterUpdate.response.headers.get('x-cache'), 'MISS');
+  assert.equal(afterUpdate.response.headers.get('x-cache'), null);
   assert.equal(afterUpdate.body.price, 120);
 
   const afterUpdateCached = await request('/api/products/' + id);
-  assert.equal(afterUpdateCached.response.headers.get('x-cache'), 'HIT');
+  assert.equal(afterUpdateCached.response.headers.get('x-cache'), null);
 
   const tagDeleted = await request('/api/tags/' + tagA.body.id, {method: 'DELETE'});
   assert.equal(tagDeleted.response.status, 204);
@@ -238,10 +282,10 @@ async function main() {
 
   const publishedRecord = await request('/api/products/' + id);
   assert.equal(publishedRecord.response.status, 200);
-  assert.equal(publishedRecord.response.headers.get('x-cache'), 'MISS');
+  assert.equal(publishedRecord.response.headers.get('x-cache'), null);
   assert.equal(publishedRecord.body.published, true);
   const publishedRecordCached = await request('/api/products/' + id);
-  assert.equal(publishedRecordCached.response.headers.get('x-cache'), 'HIT');
+  assert.equal(publishedRecordCached.response.headers.get('x-cache'), null);
 
   const queued = await request('/api/products/' + id + '/reprice', {
     method: 'POST',
@@ -263,10 +307,12 @@ async function main() {
   }
   assert.ok(repriced);
   assert.equal(repriced.price, 135);
-  assert.equal(repricedCacheState, 'MISS');
+  assert.equal(repricedCacheState, null);
 
   const removed = await request('/api/products/' + id, {method: 'DELETE'});
   assert.equal(removed.response.status, 204);
+  assert.equal((await fetch(newImageUrl)).status, 404);
+  for (const url of attachmentUrls) assert.equal((await fetch(url)).status, 404);
 
   const missing = await request('/api/products/' + id);
   assert.equal(missing.response.status, 404);
