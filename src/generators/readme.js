@@ -42,7 +42,7 @@ module.exports = function readmeSource(spec) {
   const setup = [
     '    npm install',
     '    cp .env.example .env',
-    ...(spec.database.type === 'postgresql' ? ['    npm run db:migrate:deploy'] : []),
+    ...(spec.database.type === 'postgresql' ? ['    npm run db:push'] : []),
     '    npm start'
   ];
 
