@@ -149,6 +149,7 @@ function normalizeSpec(inputSpec) {
   const tracingEnabled = observabilityEnabled && valueOr(tracingConfig.enabled, false);
   const cacheConfig = spec.cache || {};
   const cacheRedisConfig = cacheConfig.redis || {};
+  const cacheMemoryConfig = cacheConfig.memory || {};
   const cacheEnabled = valueOr(cacheConfig.enabled, false);
   const cacheProvider = valueOr(cacheConfig.provider, 'memory');
   const cacheDefaults = {
@@ -374,6 +375,9 @@ function normalizeSpec(inputSpec) {
       defaultTtlSeconds: cacheDefaults.defaultTtlSeconds,
       prefix: valueOr(cacheConfig.prefix, 'j2e:'),
       varyByAuth: cacheDefaults.varyByAuth,
+      memory: {
+        maxEntries: valueOr(cacheMemoryConfig.maxEntries, 1000)
+      },
       redis: {
         urlEnv: valueOr(cacheRedisConfig.urlEnv, 'REDIS_URL'),
         connectTimeoutMs: valueOr(cacheRedisConfig.connectTimeoutMs, 5000)
