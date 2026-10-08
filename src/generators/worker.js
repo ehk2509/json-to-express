@@ -12,7 +12,7 @@ module.exports = function workerSource(spec) {
     'const outbox = require(' + js(relativeRequire(paths.worker, paths.outbox)) + ');',
     'const events = require(' + js(relativeRequire(paths.worker, paths.eventBus)) + ');',
     'const workflows = require(' + js(relativeRequire(paths.worker, paths.workflowEngine)) + ');',
-    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.worker, paths.observability)) + ');'] : []), ''
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.worker, paths.observability)) + ');'] : []), '',
     'const jobs = ' + js(spec.jobs) + ';',
     'const selectedQueues = (process.env.J2E_WORKER_QUEUES || "").split(",").map(value => value.trim()).filter(Boolean);',
     'let stopped = false;', '',
@@ -58,7 +58,7 @@ module.exports = function workerSource(spec) {
     'async function main() {',
     '  validateEnvironment();',
     ...(spec.observability.enabled ? ['  await observability.startTracing();'] : []),
-    '  await connectDatabase();'
+    '  await connectDatabase();',
     '  for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, stopWorker);',
     '  try {',
     '    if (process.argv.includes("--retry-dead")) { console.log("Retried dead outbox records:", await outbox.retryDead()); return; }',
