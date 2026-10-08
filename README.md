@@ -253,6 +253,20 @@ npm run db:push
 npm start
 ~~~
 
+For versioned production migrations, create SQL using `npm run db:migrate:dev -- --name init` against a development database and commit the generated `prisma/migrations` directory. Deploy only reviewed migrations with `npm run db:migrate:deploy`; inspect status using `npm run db:migrate:status`. Never use `db:push` as a production migration replacement.
+
+Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by entity name. For example:
+
+~~~json
+{
+  "seeds": {
+    "Category": [{"name": "Hardware"}, {"name": "Books"}]
+  }
+}
+~~~
+
+The generated `npm run db:seed` uses Prisma `createMany` with `skipDuplicates`. Only scalar fields are supported for now; repeated seed runs avoid duplication only when suitable database unique constraints exist. These seeds are intentionally separate from schema migrations.
+
 PostgreSQL uses UUID primary keys while MongoDB continues to use ObjectId identifiers. Generated route validation and OpenAPI adapt automatically.
 
 The same entity JSON generates Prisma models, relation foreign keys, inverse relations, indexes, table mappings, timestamps, soft-delete fields, audit fields, and CRUD controllers.
@@ -1630,7 +1644,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The largest remaining roadmap areas are file/object storage, seeds and migration workflows, and an additional server framework target such as Fastify.
+File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Relationship factories and full fixtures remain future work. The largest remaining framework expansion is a Fastify target.
 
 ## License
 

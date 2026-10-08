@@ -34,6 +34,7 @@ const graphqlSource = require('./graphql');
 const observabilitySource = require('./observability');
 const cacheSource = require('./cache');
 const storageSource = require('./storage');
+const seedSource = require('./seed');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -143,6 +144,7 @@ function buildFiles(spec) {
 
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
+    if (Object.keys(spec.seeds).length) files.set('prisma/seed.js', seedSource(spec));
   }
 
   for (const entity of spec.entities) {
