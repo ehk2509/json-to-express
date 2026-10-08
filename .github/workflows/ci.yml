@@ -35,6 +35,12 @@ jobs:
           node-version: 22
       - name: Generate application
         run: node bin/json-to-express.js generate examples/e2e.json
+      - name: Validate generated Compose stack
+        working-directory: .tmp/e2e-app
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Build generated Docker image
+        working-directory: .tmp/e2e-app
+        run: docker build -t j2e-mongo-e2e:ci .
       - name: Install generated application
         working-directory: .tmp/e2e-app
         run: npm install --no-audit --no-fund
@@ -81,6 +87,12 @@ jobs:
           node-version: 22
       - name: Generate PostgreSQL application
         run: node bin/json-to-express.js generate examples/e2e-postgres.json
+      - name: Validate generated PostgreSQL Compose stack
+        working-directory: .tmp/e2e-postgres
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Build generated PostgreSQL Docker image
+        working-directory: .tmp/e2e-postgres
+        run: docker build -t j2e-postgres-e2e:ci .
       - name: Install generated application
         working-directory: .tmp/e2e-postgres
         run: npm install --no-audit --no-fund
