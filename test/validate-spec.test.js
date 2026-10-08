@@ -202,7 +202,7 @@ test('validates queued jobs and enqueue targets', () => {
 });
 
 
-test('enforces PostgreSQL Prisma capability boundaries', () => {
+test('enforces remaining PostgreSQL Prisma capability boundaries', () => {
   assert.throws(
     () => validateSpec({
       specVersion: '1.0',
@@ -225,13 +225,12 @@ test('enforces PostgreSQL Prisma capability boundaries', () => {
         }
       },
       workflows: {
-        unsupported: {steps: [{name: 'done', action: 'respond', body: {ok: true}}]}
+        supported: {steps: [{name: 'done', action: 'respond', body: {ok: true}}]}
       }
     }),
     error => {
       assert.match(error.message, /idStrategy must be "uuid"/);
       assert.match(error.message, /database\.options is only supported by the mongodb target/);
-      assert.match(error.message, /workflows are not yet supported by the postgresql target/);
       assert.match(error.message, /schemaOptions is only supported by the mongodb target/);
       assert.match(error.message, /many is not yet supported by the postgresql target/);
       assert.match(error.message, /cannot use onDelete "nullify"/);
@@ -321,4 +320,45 @@ test('validates admin UI paths entities fields and operation capabilities', () =
       return true;
     }
   );
+});
+
+
+test('accepts PostgreSQL workflows events jobs and custom endpoints', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    app: {name: 'postgres-workflow-api'},
+    database: {type: 'postgresql'},
+    entities: {
+      Product: {
+        fields: {
+          name: {type: 'string', required: true},
+          price: {type: 'number', required: true}
+        }
+      }
+    },
+    events: {
+      'product.changed': {webhooks: []}
+    },
+    workflows: {
+      updatePrice: {
+        transaction: true,
+        steps: [
+          {name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {price: '$body.price'}},
+          {name: 'event', action: 'emit', event: 'product.changed', payload: {id: '$steps.update.id'}},
+          {name: 'done', action: 'respond', body: {id: '$steps.update.id'}}
+        ]
+      },
+      queueUpdate: {
+        steps: [
+          {name: 'job', action: 'enqueue', job: 'updatePrice', payload: {id: '$params.id', price: '$body.price'}}
+        ]
+      }
+    },
+    jobs: {
+      updatePrice: {workflow: 'updatePrice', queue: 'products'}
+    },
+    endpoints: {
+      queueUpdate: {method: 'post', path: '/products/:id/update-price', workflow: 'queueUpdate'}
+    }
+  }));
 });
