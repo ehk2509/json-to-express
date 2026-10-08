@@ -60,6 +60,26 @@ async function main() {
   const updated = await client.products.update(productId, {price: 175});
   assert.equal(updated.price, 175);
 
+  if (client.actions && client.actions.queueReprice) {
+    const queued = await client.actions.queueReprice({
+      params: {id: productId},
+      body: {price: 199}
+    });
+    assert.equal(queued.queued, true);
+
+    let repriced;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const current = await client.products.get(productId);
+      if (current.price === 199) {
+        repriced = current;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(repriced);
+    assert.equal(repriced.price, 199);
+  }
+
   await assert.rejects(
     () => client.products.get('not-a-valid-id'),
     error => {
