@@ -1397,6 +1397,53 @@
           }
         }
       }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "provider": {
+          "enum": [
+            "memory",
+            "redis"
+          ],
+          "default": "memory"
+        },
+        "defaultTtlSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 300
+        },
+        "prefix": {
+          "type": "string",
+          "minLength": 1,
+          "default": "j2e:"
+        },
+        "varyByAuth": {
+          "type": "boolean",
+          "default": true
+        },
+        "redis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "urlEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "REDIS_URL"
+            },
+            "connectTimeoutMs": {
+              "type": "integer",
+              "minimum": 100,
+              "default": 5000
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -1539,6 +1586,30 @@
             "transaction": {
               "type": "boolean",
               "default": false
+            },
+            "cache": {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "ttlSeconds": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "varyByAuth": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              ]
             }
           },
           "additionalProperties": false
