@@ -234,3 +234,60 @@ jobs:
       - name: Print PostgreSQL generated server log on failure
         if: failure()
         run: cat .tmp/e2e-postgres/server.log || true
+
+  generated-app-s3-e2e:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: j2e-e2e
+      AWS_REGION: us-east-1
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start S3-compatible MinIO
+        run: |
+          docker run -d --name j2e-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin123 \
+            minio/minio:latest server /data
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:9000/minio/health/live
+          docker run --rm --network host --entrypoint /bin/sh minio/mc:latest -c \
+            'mc alias set local http://127.0.0.1:9000 minioadmin minioadmin123 && mc mb --ignore-existing local/j2e-e2e'
+      - name: Generate S3 application
+        run: node bin/json-to-express.js generate examples/e2e-s3.json
+      - name: Install generated S3 application
+        working-directory: .tmp/e2e-s3
+        run: npm install --no-audit --no-fund
+      - name: Test generated S3 contracts
+        working-directory: .tmp/e2e-s3
+        run: npm test
+      - name: Start generated S3 application
+        working-directory: .tmp/e2e-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_s3
+          PORT: 3458
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Exercise generated S3 storage
+        run: node scripts/e2e-generated-s3.js
+      - name: Print generated S3 logs on failure
+        if: failure()
+        run: |
+          cat .tmp/e2e-s3/server.log || true
+          docker logs j2e-minio || true
