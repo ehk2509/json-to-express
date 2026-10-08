@@ -31,16 +31,52 @@ function inputTransformLines(entity, mode) {
   for (const field of refs) {
     lines.push('    if (Object.prototype.hasOwnProperty.call(data, ' + js(field.name) + ')) {');
     lines.push('      const reference = data[' + js(field.name) + '];');
-    lines.push(mode === 'create'
-      ? '      if (reference === null) delete data[' + js(field.name) + ']; else data[' + js(field.name) + '] = {connect: {id: reference}};'
-      : '      data[' + js(field.name) + '] = reference === null ? {disconnect: true} : {connect: {id: reference}};');
+    if (field.many) {
+      const operation = mode === 'create' ? 'connect' : 'set';
+      lines.push('      const references = Array.isArray(reference) ? reference : [];');
+      lines.push('      data[' + js(field.name) + '] = {' + operation + ': references.map(id => ({id}))};');
+    } else {
+      lines.push(mode === 'create'
+        ? '      if (reference === null) delete data[' + js(field.name) + ']; else data[' + js(field.name) + '] = {connect: {id: reference}};'
+        : '      data[' + js(field.name) + '] = reference === null ? {disconnect: true} : {connect: {id: reference}};');
+    }
     lines.push('    }');
   }
   return lines;
 }
 
-function fieldTypes(entity) {
-  return Object.fromEntries(entity.fields.map(field => [field.name, field.type]));
+function fieldMeta(entity) {
+  return Object.fromEntries(entity.fields.map(field => [field.name, {type: field.type, many: Boolean(field.many)}]));
+}
+
+function inboundManyRelations(entity, spec) {
+  const relations = [];
+  for (const source of spec.entities) {
+    for (const field of source.fields) {
+      if (field.type === 'reference' && field.many && field.ref === entity.name) {
+        relations.push({source, field});
+      }
+    }
+  }
+  return relations;
+}
+
+function relationDeleteLines(entity, spec) {
+  const lines = [];
+  for (const {source, field} of inboundManyRelations(entity, spec)) {
+    const sourceDelegate = lowerFirst(source.name);
+    const where = '{' + js(field.name) + ': {some: {id: targetId}}}';
+    if (field.onDelete === 'restrict') {
+      lines.push('      const dependent' + source.name + field.name + ' = await db.' + sourceDelegate + '.count({where: ' + where + '});');
+      lines.push('      if (dependent' + source.name + field.name + ' > 0) { const error = new Error("Delete restricted by ' + source.name + '.' + field.name + '"); error.statusCode = 409; throw error; }');
+    } else if (field.onDelete === 'nullify') {
+      lines.push('      const related' + source.name + field.name + ' = await db.' + sourceDelegate + '.findMany({where: ' + where + ', select: {id: true}});');
+      lines.push('      for (const related of related' + source.name + field.name + ') await db.' + sourceDelegate + '.update({where: {id: related.id}, data: {' + js(field.name) + ': {disconnect: {id: targetId}}}});');
+    } else if (field.onDelete === 'cascade') {
+      lines.push('      await db.' + sourceDelegate + '.deleteMany({where: ' + where + '});');
+    }
+  }
+  return lines;
 }
 
 module.exports = function prismaControllerSource(entity, spec) {
@@ -57,9 +93,9 @@ module.exports = function prismaControllerSource(entity, spec) {
   const exports = [];
 
   const helper = [
-    'const fieldTypes = ' + js(fieldTypes(entity)) + ';',
+    'const fieldMeta = ' + js(fieldMeta(entity)) + ';',
     'function coerce(field, value) {',
-    '  const type = fieldTypes[field];',
+    '  const type = fieldMeta[field] && fieldMeta[field].type;',
     '  if (type === "number") return Number(value);',
     '  if (type === "boolean") return value === true || value === "true";',
     '  if (type === "date") return new Date(value);',
@@ -79,15 +115,24 @@ module.exports = function prismaControllerSource(entity, spec) {
     if (q.filters.length) {
       lines.push('    const operators = {eq: "equals", ne: "not", gt: "gt", gte: "gte", lt: "lt", lte: "lte", in: "in"};');
       lines.push('    for (const field of ' + js(q.filters) + ') {');
-      lines.push('      const targetField = fieldTypes[field] === "reference" ? field + "Id" : field;');
-      lines.push('      if (req.query[field] !== undefined) where[targetField] = coerce(field, req.query[field]);');
+      lines.push('      const meta = fieldMeta[field] || {};');
+      lines.push('      const targetField = meta.type === "reference" && !meta.many ? field + "Id" : field;');
+      lines.push('      if (req.query[field] !== undefined) {');
+      lines.push('        const value = coerce(field, req.query[field]);');
+      lines.push('        where[targetField] = meta.type === "reference" && meta.many ? {some: {id: value}} : value;');
+      lines.push('      }');
       lines.push('      for (const operator of ' + js(q.operators) + ') {');
       lines.push('        if (operator === "eq") continue;');
       lines.push('        const key = field + "__" + operator;');
       lines.push('        if (req.query[key] === undefined) continue;');
       lines.push('        const raw = operator === "in" ? String(req.query[key]).split(",").map(item => coerce(field, item)) : coerce(field, req.query[key]);');
-      lines.push('        where[targetField] = typeof where[targetField] === "object" && where[targetField] !== null ? where[targetField] : {};');
-      lines.push('        where[targetField][operators[operator]] = raw;');
+      lines.push('        if (meta.type === "reference" && meta.many) {');
+      lines.push('          const relationFilter = {[operators[operator]]: raw};');
+      lines.push('          where[field] = operator === "ne" ? {none: {id: {equals: raw}}} : {some: {id: relationFilter}};');
+      lines.push('        } else {');
+      lines.push('          where[targetField] = typeof where[targetField] === "object" && where[targetField] !== null ? where[targetField] : {};');
+      lines.push('          where[targetField][operators[operator]] = raw;');
+      lines.push('        }');
       lines.push('      }');
       lines.push('    }');
     }
@@ -152,15 +197,21 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const remove = entity.operations.delete;
   if (remove.enabled) {
-    const lines = ['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete',null,delegate),'    const lookup = {id: ' + id + '};'];
-    if (entity.softDelete.enabled) lines.push('    lookup[' + js(entity.softDelete.field) + '] = null;');
-    lines.push('    const existing = await ' + delegate + '.findFirst({where: lookup});');
-    lines.push('    if (!existing) return res.status(' + remove.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
+    const requiresRelationTransaction = inboundManyRelations(entity, spec).length > 0;
+    const lines = ['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete',null,delegate),'    const targetId = ' + id + ';'];
+    lines.push('    const item = await withTransaction(' + (remove.transaction || requiresRelationTransaction) + ', async db => {');
+    lines.push('      const lookup = {id: targetId};');
+    if (entity.softDelete.enabled) lines.push('      lookup[' + js(entity.softDelete.field) + '] = null;');
+    lines.push('      const existing = await db.' + delegateName + '.findFirst({where: lookup});');
+    lines.push('      if (!existing) return null;');
+    lines.push(...relationDeleteLines(entity, spec));
     if (entity.softDelete.enabled) {
-      lines.push('    const item = await withTransaction(' + remove.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data: {' + js(entity.softDelete.field) + ': new Date()}}));');
+      lines.push('      return db.' + delegateName + '.update({where: {id: targetId}, data: {' + js(entity.softDelete.field) + ': new Date()}});');
     } else {
-      lines.push('    const item = await withTransaction(' + remove.transaction + ', db => db.' + delegateName + '.delete({where: {id: ' + id + '}}));');
+      lines.push('      return db.' + delegateName + '.delete({where: {id: targetId}});');
     }
+    lines.push('    });');
+    lines.push('    if (!item) return res.status(' + remove.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     lines.push(...hookLines(entity,'after','delete','item',delegate));
     if (remove.status === 204) lines.push('    res.status(204).end();'); else lines.push('    res.status(' + remove.status + ').json(item);');
     lines.push('  } catch (error) { next(error); }','}');
