@@ -123,6 +123,22 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (isObject(spec.entities)) {
+    for (const [entityName, entity] of Object.entries(spec.entities)) {
+      for (const [operationName, operation] of Object.entries(entity && entity.operations || {})) {
+        if (!isObject(operation) || operation.cache === undefined || operation.cache === false) continue;
+        const cacheEnabled = operation.cache === true || (isObject(operation.cache) && operation.cache.enabled !== false);
+        if (!cacheEnabled) continue;
+        if (!spec.cache || spec.cache.enabled !== true) {
+          errors.push('entities.' + entityName + '.operations.' + operationName + '.cache requires top-level cache.enabled');
+        }
+        if (!['list', 'get'].includes(operationName)) {
+          errors.push('entities.' + entityName + '.operations.' + operationName + '.cache can only be enabled for list/get operations');
+        }
+      }
+    }
+  }
+
   if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
