@@ -29,6 +29,16 @@ module.exports = function readmeSource(spec) {
   ];
 
   const deployment = [];
+  if (spec.outbox.enabled) {
+    deployment.push(
+      '## Background work', '',
+      'Durable events and jobs are backed by the ' + databaseLabel + ' outbox.', '',
+      'Worker mode: ' + spec.outbox.worker + '.', '',
+      '    npm run worker',
+      '    npm run worker:once',
+      '    npm run outbox:retry', ''
+    );
+  }
   if (spec.admin.enabled) {
     deployment.push(
       '## Generated admin UI', '',

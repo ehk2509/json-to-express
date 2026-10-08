@@ -498,7 +498,7 @@ test('generates durable Mongo outbox, worker, retries and queued workflow jobs',
   assert.match(worker, /recoverStale/);
   assert.match(worker, /workflows\.execute/);
   assert.match(worker, /--retry-dead/);
-  assert.match(worker, /mongoose\.disconnect/);
+  assert.match(worker, /connectDatabase\.disconnect/);
 
   const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
   assert.match(engine, /pendingJobs/);
@@ -1000,5 +1000,125 @@ test('generates a complete configurable React admin UI from entity metadata', t 
       encoding: 'utf8'
     });
     assert.equal(checked.status, 0, file + ' failed syntax check:\n' + checked.stderr);
+  }
+});
+
+
+test('generates PostgreSQL Prisma workflows durable outbox and worker runtime', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-pg-workflow-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const workflowSpec = {
+    specVersion: '1.0',
+    app: {name: 'pg-workflow-api'},
+    database: {type: 'postgresql'},
+    entities: {
+      Category: {
+        fields: {name: {type: 'string', required: true}}
+      },
+      Product: {
+        fields: {
+          name: {type: 'string', required: true},
+          price: {type: 'number', required: true},
+          category: {type: 'reference', ref: 'Category', required: true},
+          published: {type: 'boolean', default: false}
+        }
+      }
+    },
+    events: {
+      'product.published': {webhooks: []}
+    },
+    workflows: {
+      publishProduct: {
+        transaction: true,
+        steps: [
+          {name: 'update', action: 'updateById', entity: 'Product', id: '$params.id', data: {published: true}},
+          {name: 'event', action: 'emit', event: 'product.published', payload: {id: '$steps.update.id'}},
+          {name: 'done', action: 'respond', status: 200, body: {id: '$steps.update.id'}}
+        ]
+      },
+      createProduct: {
+        steps: [
+          {
+            name: 'create',
+            action: 'create',
+            entity: 'Product',
+            data: {name: '$body.name', price: '$body.price', category: '$body.category'}
+          }
+        ]
+      },
+      queueReprice: {
+        steps: [
+          {name: 'job', action: 'enqueue', job: 'repriceProduct', payload: {id: '$params.id', price: '$body.price'}}
+        ]
+      },
+      repriceProduct: {
+        transaction: true,
+        steps: [
+          {name: 'update', action: 'updateById', entity: 'Product', id: '$body.id', data: {price: '$body.price'}}
+        ]
+      }
+    },
+    endpoints: {
+      publishProduct: {method: 'post', path: '/products/:id/publish', workflow: 'publishProduct'}
+    },
+    jobs: {
+      repriceProduct: {workflow: 'repriceProduct', queue: 'products', maxAttempts: 4, backoffMs: 25}
+    },
+    outbox: {
+      worker: 'separate',
+      pollIntervalMs: 50,
+      batchSize: 5,
+      lockTimeoutMs: 5000,
+      maxAttempts: 4,
+      backoffMs: 25
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(workflowSpec, output);
+
+  for (const file of [
+    'src/workflows/engine.js',
+    'src/workflows/events.js',
+    'src/workflows/outbox.js',
+    'src/workflows/worker.js',
+    'src/routes/CustomRoutes.js',
+    'prisma/schema.prisma'
+  ]) assert.ok(result.files.includes(file), file + ' should be generated');
+
+  const schema = fs.readFileSync(path.join(output, 'prisma/schema.prisma'), 'utf8');
+  assert.match(schema, /model J2EOutbox/);
+  assert.match(schema, /payload Json\?/);
+  assert.match(schema, /@@index\(\[status, availableAt, queue\]\)/);
+  assert.match(schema, /@@map\("_j2e_outbox"\)/);
+
+  const engine = fs.readFileSync(path.join(output, 'src/workflows/engine.js'), 'utf8');
+  assert.match(engine, /prisma\.\$transaction/);
+  assert.match(engine, /db\[definition\.delegate\]/);
+  assert.match(engine, /\{connect: \{id: reference\}\}/);
+  assert.match(engine, /eventBus\.publish\(event\.name, event\.payload, \{db\}\)/);
+  assert.doesNotMatch(engine, /mongoose/);
+
+  const outbox = fs.readFileSync(path.join(output, 'src/workflows/outbox.js'), 'utf8');
+  assert.match(outbox, /prisma\.j2EOutbox/);
+  assert.match(outbox, /updateMany/);
+  assert.match(outbox, /status: "dead"/);
+  assert.match(outbox, /Math\.pow\(2, attempts - 1\)/);
+  assert.doesNotMatch(outbox, /mongoose/);
+
+  const worker = fs.readFileSync(path.join(output, 'src/workflows/worker.js'), 'utf8');
+  assert.match(worker, /connectDatabase\.disconnect/);
+  assert.match(worker, /record\.id \|\| record\._id/);
+  assert.doesNotMatch(worker, /mongoose/);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(pkg.scripts.worker);
+  assert.ok(pkg.scripts['worker:once']);
+  assert.ok(pkg.scripts['outbox:retry']);
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });

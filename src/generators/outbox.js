@@ -1,8 +1,8 @@
 'use strict';
 
-const {js} = require('./utils');
+const {filePaths, js, relativeRequire} = require('./utils');
 
-module.exports = function outboxSource(spec) {
+function mongoSource(spec) {
   return [
     "'use strict';", '',
     "const mongoose = require('mongoose');", '',
@@ -79,4 +79,95 @@ module.exports = function outboxSource(spec) {
     '}', '',
     'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead};', ''
   ].join('\n');
+}
+
+function postgresSource(spec) {
+  const paths = filePaths(spec);
+  return [
+    "'use strict';", '',
+    'const connectDatabase = require(' + js(relativeRequire(paths.outbox, paths.database)) + ');',
+    'const prisma = connectDatabase.client;', '',
+    'function delegate(db) { return (db || prisma).j2EOutbox; }', '',
+    'async function createRecord(record, db) {',
+    '  return delegate(db).create({data: {',
+    '    ...record,',
+    '    payload: record.payload === undefined ? null : record.payload,',
+    '    status: "pending",',
+    '    availableAt: record.availableAt || new Date()',
+    '  }});',
+    '}', '',
+    'async function enqueueEvent(name, payload, options = {}) {',
+    '  return createRecord({',
+    '    kind: "event", name, payload, queue: "events",',
+    '    maxAttempts: options.maxAttempts || ' + spec.outbox.maxAttempts + ',',
+    '    backoffMs: options.backoffMs === undefined ? ' + spec.outbox.backoffMs + ' : options.backoffMs',
+    '  }, options.db);',
+    '}', '',
+    'async function enqueueJob(name, payload, options = {}) {',
+    '  const config = options.config || {};',
+    '  return createRecord({',
+    '    kind: "job", name, payload, queue: config.queue || "default",',
+    '    maxAttempts: config.maxAttempts || ' + spec.outbox.maxAttempts + ',',
+    '    backoffMs: config.backoffMs === undefined ? ' + spec.outbox.backoffMs + ' : config.backoffMs,',
+    '    availableAt: new Date(Date.now() + (options.delayMs || 0))',
+    '  }, options.db);',
+    '}', '',
+    'async function recoverStale() {',
+    '  const cutoff = new Date(Date.now() - ' + spec.outbox.lockTimeoutMs + ');',
+    '  await prisma.j2EOutbox.updateMany({',
+    '    where: {status: "processing", lockedAt: {lte: cutoff}},',
+    '    data: {status: "pending", lockedAt: null, availableAt: new Date()}',
+    '  });',
+    '}', '',
+    'async function claimNext(queues = []) {',
+    '  for (let attempt = 0; attempt < 8; attempt += 1) {',
+    '    const where = {status: "pending", availableAt: {lte: new Date()}};',
+    '    if (queues.length) where.queue = {in: queues};',
+    '    const candidate = await prisma.j2EOutbox.findFirst({',
+    '      where,',
+    '      orderBy: [{availableAt: "asc"}, {createdAt: "asc"}]',
+    '    });',
+    '    if (!candidate) return null;',
+    '    const claimed = await prisma.j2EOutbox.updateMany({',
+    '      where: {id: candidate.id, status: "pending"},',
+    '      data: {status: "processing", lockedAt: new Date()}',
+    '    });',
+    '    if (claimed.count === 1) return prisma.j2EOutbox.findUnique({where: {id: candidate.id}});',
+    '  }',
+    '  return null;',
+    '}', '',
+    'async function markDone(record) {',
+    '  await prisma.j2EOutbox.update({',
+    '    where: {id: record.id},',
+    '    data: {status: "done", lockedAt: null, lastError: null}',
+    '  });',
+    '}', '',
+    'async function retryDead() {',
+    '  const result = await prisma.j2EOutbox.updateMany({',
+    '    where: {status: "dead"},',
+    '    data: {status: "pending", attempts: 0, lockedAt: null, lastError: null, availableAt: new Date()}',
+    '  });',
+    '  return result.count || 0;',
+    '}', '',
+    'async function markFailed(record, error) {',
+    '  const attempts = record.attempts + 1;',
+    '  const dead = attempts >= record.maxAttempts;',
+    '  const delay = record.backoffMs * Math.max(1, Math.pow(2, attempts - 1));',
+    '  await prisma.j2EOutbox.update({',
+    '    where: {id: record.id},',
+    '    data: {',
+    '      attempts,',
+    '      status: dead ? "dead" : "pending",',
+    '      lockedAt: null,',
+    '      lastError: String(error && error.message || error),',
+    '      availableAt: dead ? record.availableAt : new Date(Date.now() + delay)',
+    '    }',
+    '  });',
+    '}', '',
+    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead};', ''
+  ].join('\n');
+}
+
+module.exports = function outboxSource(spec) {
+  return spec.database.type === 'postgresql' ? postgresSource(spec) : mongoSource(spec);
 };

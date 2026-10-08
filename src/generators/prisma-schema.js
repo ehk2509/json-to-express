@@ -65,6 +65,34 @@ module.exports = function prismaSchemaSource(spec) {
     '}', ''
   ];
 
+  if (spec.outbox.enabled) {
+    lines.push(
+      'model J2EOutbox {',
+      '  id String @id @default(uuid())',
+      '  kind String',
+      '  name String',
+      '  queue String @default("default")',
+      '  payload Json?',
+      '  status String @default("pending")',
+      '  attempts Int @default(0)',
+      '  maxAttempts Int',
+      '  backoffMs Int',
+      '  availableAt DateTime @default(now())',
+      '  lockedAt DateTime?',
+      '  lastError String?',
+      '  createdAt DateTime @default(now())',
+      '  updatedAt DateTime @updatedAt',
+      '  @@index([kind])',
+      '  @@index([name])',
+      '  @@index([queue])',
+      '  @@index([status])',
+      '  @@index([availableAt])',
+      '  @@index([status, availableAt, queue])',
+      '  @@map("_j2e_outbox")',
+      '}', ''
+    );
+  }
+
   for (const entity of spec.entities) {
     lines.push('model ' + entity.name + ' {');
     lines.push('  id String @id @default(uuid())');

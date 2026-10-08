@@ -65,6 +65,37 @@ async function main() {
   assert.equal(updated.response.status, 200);
   assert.equal(updated.body.price, 120);
 
+  const published = await request('/api/products/' + id + '/publish', {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+  assert.equal(published.response.status, 200);
+  assert.equal(published.body.id, id);
+  assert.equal(published.body.published, true);
+
+  const publishedRecord = await request('/api/products/' + id);
+  assert.equal(publishedRecord.response.status, 200);
+  assert.equal(publishedRecord.body.published, true);
+
+  const queued = await request('/api/products/' + id + '/reprice', {
+    method: 'POST',
+    body: JSON.stringify({price: 135})
+  });
+  assert.equal(queued.response.status, 202);
+  assert.equal(queued.body.queued, true);
+
+  let repriced;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const current = await request('/api/products/' + id);
+    if (current.response.status === 200 && current.body.price === 135) {
+      repriced = current.body;
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.ok(repriced);
+  assert.equal(repriced.price, 135);
+
   const removed = await request('/api/products/' + id, {method: 'DELETE'});
   assert.equal(removed.response.status, 204);
 

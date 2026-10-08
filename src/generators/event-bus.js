@@ -10,7 +10,7 @@ module.exports = function eventBusSource(spec) {
     'const events = ' + js(spec.events) + ';', '',
     'async function publish(name, payload, options = {}) {',
     '  if (!events[name]) throw new Error("Unknown event: " + name);',
-    '  return outbox.enqueueEvent(name, payload, {session: options.session});',
+    '  return outbox.enqueueEvent(name, payload, options);',
     '}', '',
     'async function deliver(name, payload) {',
     '  const definition = events[name];',

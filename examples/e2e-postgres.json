@@ -223,5 +223,128 @@
         ]
       }
     }
+  },
+  "events": {
+    "product.published": {
+      "webhooks": []
+    },
+    "product.repriced": {
+      "webhooks": []
+    }
+  },
+  "workflows": {
+    "publishProduct": {
+      "transaction": true,
+      "steps": [
+        {
+          "name": "load",
+          "action": "findById",
+          "entity": "Product",
+          "id": "$params.id"
+        },
+        {
+          "name": "update",
+          "action": "updateById",
+          "entity": "Product",
+          "id": "$params.id",
+          "data": {
+            "published": true
+          }
+        },
+        {
+          "name": "event",
+          "action": "emit",
+          "event": "product.published",
+          "payload": {
+            "id": "$steps.update.id",
+            "published": "$steps.update.published"
+          }
+        },
+        {
+          "name": "response",
+          "action": "respond",
+          "status": 200,
+          "body": {
+            "id": "$steps.update.id",
+            "published": "$steps.update.published"
+          }
+        }
+      ]
+    },
+    "repriceProduct": {
+      "transaction": true,
+      "steps": [
+        {
+          "name": "update",
+          "action": "updateById",
+          "entity": "Product",
+          "id": "$body.id",
+          "data": {
+            "price": "$body.price"
+          }
+        },
+        {
+          "name": "event",
+          "action": "emit",
+          "event": "product.repriced",
+          "payload": {
+            "id": "$steps.update.id",
+            "price": "$steps.update.price"
+          }
+        }
+      ]
+    },
+    "queueReprice": {
+      "steps": [
+        {
+          "name": "job",
+          "action": "enqueue",
+          "job": "repriceProduct",
+          "payload": {
+            "id": "$params.id",
+            "price": "$body.price"
+          },
+          "delayMs": 50
+        },
+        {
+          "name": "response",
+          "action": "respond",
+          "status": 202,
+          "body": {
+            "queued": true
+          }
+        }
+      ]
+    }
+  },
+  "endpoints": {
+    "publishProduct": {
+      "method": "post",
+      "path": "/products/:id/publish",
+      "workflow": "publishProduct",
+      "status": 200
+    },
+    "queueReprice": {
+      "method": "post",
+      "path": "/products/:id/reprice",
+      "workflow": "queueReprice",
+      "status": 202
+    }
+  },
+  "outbox": {
+    "worker": "embedded",
+    "pollIntervalMs": 50,
+    "batchSize": 10,
+    "lockTimeoutMs": 5000,
+    "maxAttempts": 3,
+    "backoffMs": 50
+  },
+  "jobs": {
+    "repriceProduct": {
+      "workflow": "repriceProduct",
+      "queue": "products",
+      "maxAttempts": 3,
+      "backoffMs": 50
+    }
   }
 }
