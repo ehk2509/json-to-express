@@ -192,18 +192,6 @@ function validateSpec(inputSpec) {
     if (spec.database.options && Object.keys(spec.database.options).length) {
       errors.push('database.options is only supported by the mongodb target');
     }
-    if (isObject(spec.workflows) && Object.keys(spec.workflows).length) {
-      errors.push('workflows are not yet supported by the postgresql target');
-    }
-    if (isObject(spec.endpoints) && Object.keys(spec.endpoints).length) {
-      errors.push('custom workflow endpoints are not yet supported by the postgresql target');
-    }
-    if (isObject(spec.events) && Object.keys(spec.events).length) {
-      errors.push('events/outbox are not yet supported by the postgresql target');
-    }
-    if (isObject(spec.jobs) && Object.keys(spec.jobs).length) {
-      errors.push('background jobs/outbox are not yet supported by the postgresql target');
-    }
   }
 
   const entityNames = new Set(isObject(spec.entities) ? Object.keys(spec.entities) : []);
