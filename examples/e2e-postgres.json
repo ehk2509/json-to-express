@@ -163,5 +163,65 @@
     "private": true,
     "baseUrl": "http://127.0.0.1:3457",
     "includeCustomEndpoints": true
+  },
+  "admin": {
+    "enabled": true,
+    "outputDir": "admin",
+    "title": "PostgreSQL E2E Admin",
+    "baseUrl": "http://127.0.0.1:3457",
+    "devPort": 4173,
+    "includeCustomActions": true,
+    "auth": {
+      "tokenStorage": "sessionStorage",
+      "tokenKey": "j2e-e2e-admin-token"
+    },
+    "theme": {
+      "brandColor": "#0f766e",
+      "mode": "system"
+    },
+    "entities": {
+      "Product": {
+        "label": "Product",
+        "pluralLabel": "Products",
+        "titleField": "name",
+        "listFields": [
+          "name",
+          "price",
+          "category",
+          "published"
+        ],
+        "filterFields": [
+          "name",
+          "price",
+          "category"
+        ],
+        "pageSize": 10,
+        "fields": {
+          "name": {
+            "label": "Product name",
+            "placeholder": "Keyboard"
+          },
+          "price": {
+            "label": "Price"
+          },
+          "category": {
+            "label": "Category",
+            "widget": "reference"
+          },
+          "published": {
+            "label": "Published",
+            "widget": "checkbox"
+          }
+        }
+      },
+      "Category": {
+        "label": "Category",
+        "pluralLabel": "Categories",
+        "titleField": "name",
+        "listFields": [
+          "name"
+        ]
+      }
+    }
   }
 }
