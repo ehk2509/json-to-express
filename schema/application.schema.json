@@ -1257,6 +1257,146 @@
           ]
         }
       }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "logging": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "level": {
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ],
+              "default": "info"
+            },
+            "format": {
+              "enum": [
+                "json",
+                "pretty"
+              ],
+              "default": "json"
+            },
+            "requestIds": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/metrics"
+            },
+            "collectDefaultMetrics": {
+              "type": "boolean",
+              "default": true
+            },
+            "prefix": {
+              "type": "string",
+              "pattern": "^[A-Za-z_:][A-Za-z0-9_:]*$",
+              "default": "j2e_"
+            }
+          }
+        },
+        "tracing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "serviceName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "exporter": {
+              "enum": [
+                "console",
+                "otlp-http"
+              ],
+              "default": "otlp-http"
+            },
+            "endpointEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "OTEL_EXPORTER_OTLP_ENDPOINT"
+            },
+            "sampleRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 1
+            }
+          }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "liveness": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/",
+                  "default": "/health/live"
+                }
+              }
+            },
+            "readiness": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/",
+                  "default": "/health/ready"
+                },
+                "database": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "outbox": {
+                  "type": "boolean",
+                  "default": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
