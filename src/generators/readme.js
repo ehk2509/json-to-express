@@ -5,6 +5,9 @@ const {joinUrl} = require('./utils');
 function endpointLines(spec) {
   const lines = [];
   if (spec.app.health.enabled) lines.push('- GET ' + spec.app.health.path);
+  if (spec.observability.health.liveness.enabled) lines.push('- GET ' + spec.observability.health.liveness.path + ' (liveness)');
+  if (spec.observability.health.readiness.enabled) lines.push('- GET ' + spec.observability.health.readiness.path + ' (readiness)');
+  if (spec.observability.metrics.enabled) lines.push('- GET ' + spec.observability.metrics.path + ' (Prometheus metrics)');
   if (spec.api.graphql.enabled) lines.push('- GET/POST ' + spec.api.graphql.path + ' (GraphQL)');
   if (spec.auth.local.enabled && spec.auth.local.allowRegistration) lines.push('- POST ' + spec.auth.local.registerPath + ' (register)');
   if (spec.auth.local.enabled) {
@@ -115,6 +118,27 @@ module.exports = function readmeSource(spec) {
         'OIDC supports discovery, remote JWKS verification, Authorization Code + PKCE login, and bearer verification.', ''
       ] : []),
       'REST and GraphQL apply the same per-operation strategy allowlists and RBAC rules.', ''
+    ] : []),
+    ...(spec.observability.enabled ? [
+      '## Observability', '',
+      ...(spec.observability.logging.enabled ? [
+        'Structured logging: ' + spec.observability.logging.format + ' at ' + spec.observability.logging.level + ' level.', ''
+      ] : []),
+      ...(spec.observability.metrics.enabled ? [
+        'Prometheus metrics: ' + spec.observability.metrics.path + ' with prefix ' + spec.observability.metrics.prefix + '.', ''
+      ] : []),
+      ...(spec.observability.health.liveness.enabled ? [
+        'Liveness: ' + spec.observability.health.liveness.path + '.', ''
+      ] : []),
+      ...(spec.observability.health.readiness.enabled ? [
+        'Readiness: ' + spec.observability.health.readiness.path + ' (database' +
+          (spec.observability.health.readiness.outbox && spec.outbox.enabled ? ' + outbox' : '') + ').', ''
+      ] : []),
+      ...(spec.observability.tracing.enabled ? [
+        'OpenTelemetry tracing: ' + spec.observability.tracing.exporter + ', service ' + spec.observability.tracing.serviceName +
+          ', sample rate ' + spec.observability.tracing.sampleRate + '.', ''
+      ] : []),
+      'Request bodies and authentication headers are not included in generated request logs.', ''
     ] : []),
     ...(spec.api.graphql.enabled ? [
       '## GraphQL', '',
