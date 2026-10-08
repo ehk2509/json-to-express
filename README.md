@@ -255,7 +255,7 @@ npm start
 
 For versioned production migrations, create SQL using `npm run db:migrate:dev -- --name init` against a development database and commit the generated `prisma/migrations` directory. Deploy only reviewed migrations with `npm run db:migrate:deploy`; inspect status using `npm run db:migrate:status`. Never use `db:push` as a production migration replacement.
 
-Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by entity name. For example:
+Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by entity name. A `factories` map can additionally generate bounded deterministic fixtures, e.g. `"factories": {"Category": {"count": 3, "template": {"name": "Category {{index}}"}}}`. The placeholder is replaced by 1-based row numbers. For example:
 
 ~~~json
 {
@@ -1644,7 +1644,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Relationship factories and full fixtures remain future work. A Fastify compatibility host is under development. Native Fastify route, plugin, hook, error, and request/response generation remains future work.
+File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Deterministic scalar factories are supported; relational factories and production-grade migration snapshots remain future work. A Fastify compatibility host is under development. Native Fastify route, plugin, hook, error, and request/response generation remains future work.
 
 ## License
 
