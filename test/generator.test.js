@@ -1178,6 +1178,12 @@ test('generates PostgreSQL many-to-many relations across API SDK OpenAPI and adm
   assert.equal(openapi.components.schemas.Product.properties.tags.type, 'array');
   assert.equal(openapi.components.schemas.Product.properties.tags.minItems, 1);
   assert.equal(openapi.components.schemas.Product.properties.tags.items.format, 'uuid');
+  const listOperation = openapi.paths['/api/products'].get;
+  const tagsFilter = listOperation.parameters.find(parameter => parameter.name === 'tags');
+  const tagsInFilter = listOperation.parameters.find(parameter => parameter.name === 'tags__in');
+  assert.equal(tagsFilter.schema.format, 'uuid');
+  assert.equal(tagsInFilter.schema.type, 'array');
+  assert.equal(tagsInFilter.schema.items.format, 'uuid');
 
   const sdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
   assert.match(sdk, /tags: Array<string \| Tag>;/);
