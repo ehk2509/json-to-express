@@ -24,11 +24,13 @@ module.exports = function dockerfileSource(spec) {
   );
 
   if (docker.healthcheck && spec.app.health.enabled) {
-    const healthPath = JSON.stringify(spec.app.health.path);
+    const healthScript =
+      "const p=process.env." + spec.app.portEnv + "||'" + spec.app.port +
+      "';fetch('http://127.0.0.1:'+p+'" + spec.app.health.path +
+      "').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))";
     lines.push(
-      'HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "const p=process.env.' +
-      spec.app.portEnv + '||\'' + spec.app.port + '\';fetch(\'http://127.0.0.1:\'+p+' + healthPath +
-      ').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"'
+      'HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ' +
+      JSON.stringify(['node', '-e', healthScript])
     );
   }
 
