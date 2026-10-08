@@ -28,6 +28,21 @@ module.exports = function readmeSource(spec) {
     '    npm start'
   ];
 
+  const deployment = [];
+  if (spec.deployment.docker.enabled) {
+    deployment.push('## Docker', '', '    docker build -t ' + spec.app.package.name + ' -f ' + spec.deployment.docker.file + ' .', '');
+  }
+  if (spec.deployment.compose.enabled) {
+    deployment.push('## Docker Compose', '', '    docker compose -f ' + spec.deployment.compose.file + ' up --build', '');
+  }
+  if (spec.deployment.kubernetes.enabled) {
+    deployment.push(
+      '## Kubernetes', '',
+      '1. Copy and fill ' + spec.deployment.kubernetes.directory + '/secret.example.yaml.', '',
+      '2. Apply the secret, config, deployment, and service manifests with kubectl.', ''
+    );
+  }
+
   return [
     '# ' + spec.app.name, '',
     spec.app.package.description, '',
@@ -36,6 +51,7 @@ module.exports = function readmeSource(spec) {
     '## Run', '',
     ...setup, '',
     'Default bind: ' + spec.app.host + ':' + spec.app.port + '.', '',
+    ...deployment,
     '## Endpoints', '',
     ...endpointLines(spec), ''
   ].join('\n');
