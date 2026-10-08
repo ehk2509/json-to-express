@@ -92,13 +92,16 @@ function packageJson(spec) {
 }
 
 function viteConfig(spec) {
+  const proxy = spec.app.apiPrefix
+    ? ', proxy: {' + JSON.stringify(spec.app.apiPrefix) + ': {target: ' + JSON.stringify(spec.admin.baseUrl) + ', changeOrigin: true}}'
+    : '';
   return [
     "import {defineConfig} from 'vite';",
     "import react from '@vitejs/plugin-react';",
     '',
     'export default defineConfig({',
     '  plugins: [react()],',
-    '  server: {host: "127.0.0.1", port: ' + spec.admin.devPort + '},',
+    '  server: {host: "127.0.0.1", port: ' + spec.admin.devPort + proxy + '},',
     '  preview: {host: "127.0.0.1", port: ' + spec.admin.devPort + '},',
     '});',
     ''
