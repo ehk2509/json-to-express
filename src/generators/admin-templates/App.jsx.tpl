@@ -11,6 +11,10 @@ function humanValue(value, field, entities) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
   }
+  if (field && field.type === 'file') {
+    const items = Array.isArray(value) ? value : [value];
+    return items.filter(Boolean).map(item => item && item.originalName ? item.originalName : 'File').join(', ') || '—';
+  }
   if (field && field.type === 'reference') {
     const target = entities.find(entity => entity.name === field.ref);
     const titleField = target && target.titleField;
@@ -31,6 +35,7 @@ function widgetFor(field) {
   if (field.widget && field.widget !== 'auto') return field.widget;
   if (field.enum && field.enum.length) return 'select';
   if (field.type === 'reference') return 'reference';
+  if (field.type === 'file') return 'file';
   if (field.type === 'number') return 'number';
   if (field.type === 'boolean') return 'checkbox';
   if (field.type === 'date') return 'datetime';
@@ -57,6 +62,26 @@ function validateValues(entity, values, editing) {
       else {
         if (field.min !== undefined && number < field.min) errors[field.name] = field.label + ' must be at least ' + field.min;
         if (field.max !== undefined && number > field.max) errors[field.name] = field.label + ' must be at most ' + field.max;
+      }
+    }
+
+    if (field.type === 'file') {
+      const files = Array.isArray(value) ? value : [value];
+      const selected = files.filter(item => typeof Blob !== 'undefined' && item instanceof Blob);
+      for (const file of selected) {
+        if (field.upload && field.upload.maxBytes && file.size > field.upload.maxBytes) {
+          errors[field.name] = field.label + ' exceeds the maximum size';
+          break;
+        }
+        const allowed = field.upload && field.upload.mimeTypes || ['*/*'];
+        const accepted = allowed.some(pattern =>
+          pattern === '*/*' || pattern === file.type ||
+          (pattern.endsWith('/*') && file.type.startsWith(pattern.slice(0, -1)))
+        );
+        if (!accepted) {
+          errors[field.name] = field.label + ' has an unsupported file type';
+          break;
+        }
       }
     }
 
@@ -202,7 +227,7 @@ function TokenGate({children}) {
   });
 }
 
-function FieldControl({field, value, onChange, error, relationOptions}) {
+function FieldControl({field, value, onChange, error, relationOptions, currentValue}) {
   const widget = widgetFor(field);
   const common = {
     id: 'field-' + field.name,
@@ -212,7 +237,33 @@ function FieldControl({field, value, onChange, error, relationOptions}) {
   };
 
   let control;
-  if (widget === 'checkbox') {
+  if (widget === 'file') {
+    const accept = field.upload && field.upload.mimeTypes &&
+      !field.upload.mimeTypes.includes('*/*') ? field.upload.mimeTypes.join(',') : undefined;
+    const existing = currentValue
+      ? (Array.isArray(currentValue) ? currentValue : [currentValue]).filter(Boolean)
+      : [];
+    control = <>
+      <input {...common} type="file" multiple={field.many} accept={accept}
+        onChange={event => {
+          const files = Array.from(event.target.files || []);
+          onChange(field.many ? files : (files[0] || null));
+        }} />
+      {existing.length > 0 && <small>
+        Existing: {existing.map((file, index) =>
+          <React.Fragment key={file.key || index}>
+            {index > 0 ? ', ' : ''}
+            {file.url
+              ? <a href={file.url} target="_blank" rel="noreferrer">{file.originalName || 'file'}</a>
+              : (file.originalName || 'file')}
+          </React.Fragment>
+        )}
+      </small>}
+      {field.upload && <small>
+        Max {Math.ceil(field.upload.maxBytes / 1024)} KB · {(field.upload.mimeTypes || ['*/*']).join(', ')}
+      </small>}
+    </>;
+  } else if (widget === 'checkbox') {
     control = <input {...common} type="checkbox" checked={Boolean(value)}
       onChange={event => onChange(event.target.checked)} />;
   } else if (widget === 'textarea') {
@@ -261,6 +312,7 @@ function RecordForm({entity, record, api, onSaved, onCancel, notify}) {
     const initial = {};
     for (const field of entity.fields) {
       let value = record ? record[field.name] : field.default;
+      if (field.type === 'file') value = field.many ? [] : null;
       if (field.type === 'reference' && value && typeof value === 'object') {
         if (Array.isArray(value)) value = value.map(item => item[idField] || item.id || item._id);
         else value = value[idField] || value.id || value._id;
@@ -344,6 +396,7 @@ function RecordForm({entity, record, api, onSaved, onCancel, notify}) {
           {entity.fields.filter(field => !field.hidden).map(field =>
             <FieldControl key={field.name} field={field} value={values[field.name]}
               error={errors[field.name]} relationOptions={relations[field.name]}
+              currentValue={record ? record[field.name] : undefined}
               onChange={value => setValues(current => ({...current, [field.name]: value}))} />
           )}
         </div>
