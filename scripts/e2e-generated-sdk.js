@@ -3,6 +3,20 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+async function waitForHealth(baseUrl) {
+  let lastError;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await fetch(baseUrl + '/health');
+      if (response.ok) return;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw lastError || new Error('Generated application did not become healthy');
+}
+
 async function main() {
   const generatedRoot = process.argv[2];
   const baseUrl = process.argv[3];
@@ -11,6 +25,8 @@ async function main() {
   if (!generatedRoot || !baseUrl || !idField) {
     throw new Error('Usage: node scripts/e2e-generated-sdk.js <generated-root> <base-url> <id-field>');
   }
+
+  await waitForHealth(baseUrl);
 
   const sdk = require(path.resolve(generatedRoot, 'sdk/javascript'));
   const client = sdk.createClient({baseUrl});
