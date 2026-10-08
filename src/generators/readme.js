@@ -119,6 +119,19 @@ module.exports = function readmeSource(spec) {
       ] : []),
       'REST and GraphQL apply the same per-operation strategy allowlists and RBAC rules.', ''
     ] : []),
+    ...(spec.cache.enabled ? [
+      '## Caching', '',
+      'Cache provider: ' + spec.cache.provider + '.', '',
+      'Default TTL: ' + spec.cache.defaultTtlSeconds + ' seconds.', '',
+      ...(spec.cache.provider === 'redis' ? [
+        'Redis connection environment: ' + spec.cache.redis.urlEnv + '.', ''
+      ] : [
+        'The generated in-memory cache is single-process only and is bounded to ' + spec.cache.memory.maxEntries + ' entries.', ''
+      ]),
+      'Only read operations explicitly enabling cache are cached. Successful create/update/delete operations and workflow mutations automatically invalidate affected entity generations.', '',
+      'Cached reads vary by authenticated identity by default and return X-Cache: MISS or X-Cache: HIT.', '',
+      'Relation-aware invalidation also bumps entities that reference a mutated entity.', ''
+    ] : []),
     ...(spec.observability.enabled ? [
       '## Observability', '',
       ...(spec.observability.logging.enabled ? [
