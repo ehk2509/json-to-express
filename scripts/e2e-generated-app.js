@@ -67,6 +67,18 @@ async function main() {
   try {
     await waitForHealth();
 
+    const live = await request('/health/live', {headers: {'x-request-id': 'e2e-correlation-id'}});
+    assert.equal(live.response.status, 200);
+    assert.equal(live.body.status, 'alive');
+    assert.equal(live.response.headers.get('x-request-id'), 'e2e-correlation-id');
+
+    const ready = await request('/health/ready');
+    assert.equal(ready.response.status, 200);
+    assert.equal(ready.body.status, 'ready');
+    assert.equal(ready.body.checks.database, 'ok');
+    assert.ok(ready.body.checks.outbox);
+
+
   const viewerDenied = await request('/api/products/not-an-id/publish', {
     method: 'POST',
     headers: {'x-api-key': process.env.E2E_VIEWER_API_KEY || 'ci-viewer-key'},
@@ -275,6 +287,20 @@ async function main() {
   assert.equal(openapi.components.schemas.Product.properties.tags.type, 'array');
   assert.equal(openapi.components.schemas.Product.properties.tags.items.type, 'string');
   assert.ok(openapi.paths['/api/products']);
+
+
+    const metricsResponse = await fetch(base + '/metrics');
+    assert.equal(metricsResponse.status, 200);
+    assert.match(metricsResponse.headers.get('content-type') || '', /text\/plain/);
+    const metricsText = await metricsResponse.text();
+    assert.match(metricsText, /j2e_http_requests_total/);
+    assert.match(metricsText, /j2e_http_request_duration_seconds/);
+    assert.match(metricsText, /j2e_graphql_operations_total/);
+    assert.match(metricsText, /j2e_workflow_executions_total/);
+    assert.match(metricsText, /j2e_workflow_steps_total/);
+    assert.match(metricsText, /j2e_worker_records_total/);
+    assert.match(metricsText, /j2e_outbox_pending/);
+    assert.match(metricsText, /j2e_outbox_dead/);
 
     console.log('Generated application E2E v1 + workflows passed.');
   } finally {
