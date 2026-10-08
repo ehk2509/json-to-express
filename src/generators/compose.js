@@ -107,7 +107,7 @@ function serviceBlock(name, spec, command, exposePort) {
 
   lines.push('    environment:', ...environmentLines(spec));
   if (name === 'api' && spec.storage.enabled && spec.storage.provider === 'local') {
-    lines.push('    volumes:', '      - file-data:/app/' + spec.storage.local.directory);
+    lines.push('    volumes:', '      - ' + yamlScalar('file-data:/app/' + spec.storage.local.directory));
   }
 
   const dependencies = [];
