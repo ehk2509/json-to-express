@@ -259,13 +259,13 @@ jobs:
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin123 \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
           for attempt in {1..60}; do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/live > /dev/null; then break; fi
             sleep 1
           done
           curl --fail http://127.0.0.1:9000/minio/health/live
-          docker run --rm --network host --entrypoint /bin/sh minio/mc:latest -c \
+          docker run --rm --network host --entrypoint /bin/sh quay.io/minio/mc:latest -c \
             'mc alias set local http://127.0.0.1:9000 minioadmin minioadmin123 && mc mb --ignore-existing local/j2e-e2e'
       - name: Generate S3 application
         run: node bin/json-to-express.js generate examples/e2e-s3.json
