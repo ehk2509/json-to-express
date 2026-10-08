@@ -72,6 +72,7 @@
           "type": "string",
           "minLength": 1
         },
+        "framework": {"enum": ["express", "fastify"], "default": "express"},
         "port": {
           "type": "integer",
           "minimum": 1,
