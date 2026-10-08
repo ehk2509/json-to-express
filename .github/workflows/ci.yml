@@ -41,6 +41,18 @@ jobs:
       - name: Build generated Docker image
         working-directory: .tmp/e2e-app
         run: docker build -t j2e-mongo-e2e:ci .
+      - name: Smoke generated Mongo Compose stack
+        working-directory: .tmp/e2e-app
+        env:
+          TEST_WEBHOOK_URL: http://example.invalid/hook
+        run: |
+          docker compose up -d --build
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3456/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail http://127.0.0.1:3456/health
+          docker compose down -v
       - name: Install generated application
         working-directory: .tmp/e2e-app
         run: npm install --no-audit --no-fund
@@ -93,6 +105,16 @@ jobs:
       - name: Build generated PostgreSQL Docker image
         working-directory: .tmp/e2e-postgres
         run: docker build -t j2e-postgres-e2e:ci .
+      - name: Smoke generated PostgreSQL Compose stack
+        working-directory: .tmp/e2e-postgres
+        run: |
+          docker compose up -d --build
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3457/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail http://127.0.0.1:3457/health
+          docker compose down -v
       - name: Install generated application
         working-directory: .tmp/e2e-postgres
         run: npm install --no-audit --no-fund
