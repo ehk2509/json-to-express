@@ -262,10 +262,18 @@ module.exports = function storageSource(spec) {
     ...(spec.storage.provider === 'local' ? [
       '    const metadata = verifyLocalToken(req.params.token);',
       '    const target = localPath(metadata.key);',
-      '    await fsp.access(target);',
+      '    try { await fsp.access(target); } catch (error) {',
+      '      if (error && error.code === "ENOENT") return res.status(404).json({error: "File not found"});',
+      '      throw error;',
+      '    }',
       '    res.setHeader("Content-Type", metadata.mimeType || "application/octet-stream");',
       '    res.setHeader("Content-Disposition", "inline; filename*=UTF-8\'\'" + encodeURIComponent(metadata.originalName || path.basename(metadata.key)));',
-      '    fs.createReadStream(target).on("error", next).pipe(res);'
+      '    const stream = fs.createReadStream(target);',
+      '    stream.on("error", error => {',
+      '      if (!res.headersSent && error && error.code === "ENOENT") return res.status(404).json({error: "File not found"});',
+      '      next(error);',
+      '    });',
+      '    stream.pipe(res);'
     ] : [
       '    return res.status(404).json({error: "Signed S3 URLs are returned directly"});'
     ]),
