@@ -77,6 +77,52 @@ function validateSpec(inputSpec) {
     errors.push('api.graphql.path cannot be the same as app.health.path');
   }
 
+  if (spec.observability && spec.observability.enabled === true) {
+    const observability = spec.observability;
+    const metrics = observability.metrics || {};
+    const health = observability.health || {};
+    const liveness = health.liveness || {};
+    const readiness = health.readiness || {};
+    const observabilityPaths = [];
+    if (metrics.enabled !== false) observabilityPaths.push(['observability.metrics.path', metrics.path || '/metrics']);
+    if (liveness.enabled !== false) observabilityPaths.push(['observability.health.liveness.path', liveness.path || '/health/live']);
+    if (readiness.enabled !== false) observabilityPaths.push(['observability.health.readiness.path', readiness.path || '/health/ready']);
+
+    const occupied = new Map();
+    if (spec.app && spec.app.health && spec.app.health.enabled !== false) {
+      occupied.set(spec.app.health.path || '/health', 'app.health.path');
+    }
+    if (graphqlEnabled) occupied.set(graphqlPath, 'api.graphql.path');
+
+    const auth = spec.auth || {};
+    if (auth.enabled === true) {
+      const local = auth.local || {};
+      const jwt = auth.jwt || {};
+      const refresh = jwt.refresh || {};
+      const oidc = auth.oidc || {};
+      if (local.enabled === true) {
+        if (local.allowRegistration !== false) occupied.set(local.registerPath || '/auth/register', 'auth.local.registerPath');
+        occupied.set(local.loginPath || '/auth/login', 'auth.local.loginPath');
+        occupied.set(local.logoutPath || '/auth/logout', 'auth.local.logoutPath');
+        occupied.set(local.forgotPasswordPath || '/auth/forgot-password', 'auth.local.forgotPasswordPath');
+        occupied.set(local.resetPasswordPath || '/auth/reset-password', 'auth.local.resetPasswordPath');
+      }
+      if (refresh.enabled === true) occupied.set(refresh.path || '/auth/refresh', 'auth.jwt.refresh.path');
+      if (oidc.enabled === true) {
+        occupied.set(oidc.loginPath || '/auth/oidc/login', 'auth.oidc.loginPath');
+        occupied.set(oidc.callbackPath || '/auth/oidc/callback', 'auth.oidc.callbackPath');
+      }
+    }
+
+    const seen = new Map();
+    for (const [label, routePath] of observabilityPaths) {
+      if (seen.has(routePath)) errors.push(label + ' duplicates observability route ' + routePath);
+      else seen.set(routePath, label);
+      if (occupied.has(routePath)) errors.push(label + ' cannot be the same as ' + occupied.get(routePath));
+      if (spec.app && routePath === spec.app.apiPrefix) errors.push(label + ' cannot be the same as app.apiPrefix');
+    }
+  }
+
   if (spec.database && spec.database.prisma && spec.database.prisma.schemaPath) {
     validateRelativePath(errors, spec.database.prisma.schemaPath, 'database.prisma.schemaPath');
   }
