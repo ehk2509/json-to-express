@@ -281,5 +281,17 @@
         }
       }
     }
+  },
+  "sdk": {
+    "enabled": true,
+    "outputDir": "sdk",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "packageName": "j2e-mongo-e2e-client",
+    "private": true,
+    "baseUrl": "http://127.0.0.1:3456",
+    "includeCustomEndpoints": true
   }
 }
