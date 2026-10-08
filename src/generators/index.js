@@ -23,6 +23,9 @@ const eventBusSource = require('./event-bus');
 const customRoutesSource = require('./custom-routes');
 const outboxSource = require('./outbox');
 const workerSource = require('./worker');
+const dockerfileSource = require('./dockerfile');
+const composeSource = require('./compose');
+const kubernetesFiles = require('./kubernetes');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -77,6 +80,15 @@ function buildFiles(spec) {
   files.set(path.posix.join(spec.generation.paths.tests, 'contract.test.js'), contractTestSource(spec));
 
   if (spec.docs.openapi.enabled) files.set(spec.docs.openapi.file, openapiSource(spec));
+
+  if (spec.deployment.docker.enabled) {
+    files.set(spec.deployment.docker.file, dockerfileSource(spec));
+    files.set(spec.deployment.docker.ignoreFile, dockerfileSource.ignoreSource(spec));
+  }
+  if (spec.deployment.compose.enabled) files.set(spec.deployment.compose.file, composeSource(spec));
+  if (spec.deployment.kubernetes.enabled) {
+    for (const [relativePath, content] of kubernetesFiles(spec)) files.set(relativePath, content);
+  }
 
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
