@@ -675,7 +675,7 @@ Write operations can opt into Mongoose sessions:
 }
 ~~~
 
-The controller generator wraps the operation in a transaction while keeping transactions disabled by default for deployments that do not use a Mongo replica set.
+The controller generator wraps the operation in the target transaction primitive when requested: Mongoose sessions for MongoDB and Prisma transactions for PostgreSQL.
 
 ### Environment contract
 
@@ -778,7 +778,7 @@ For example, $steps.create._id reads the generated id from an earlier create ste
 
 References to unavailable future steps, unknown entities, unknown events, and missing workflows are rejected during specification validation.
 
-Set transaction to true to execute database steps inside a MongoDB transaction. Event delivery is deferred until the workflow has completed successfully and, when applicable, the transaction has committed.
+Set transaction to true to execute database steps inside the persistence target's transaction primitive. Event/job outbox records are written inside that same transaction, while actual delivery/execution happens asynchronously after commit.
 
 ### Events and webhooks
 
@@ -811,7 +811,7 @@ Custom endpoint auth uses the same JWT/RBAC rules as CRUD operations. Custom end
 
 ## Durable outbox and background jobs
 
-Events and jobs use a generated MongoDB outbox so asynchronous work is persisted before a worker attempts delivery.
+Events and jobs use a generated durable outbox so asynchronous work is persisted before a worker attempts delivery. MongoDB uses a Mongoose outbox model; PostgreSQL uses a Prisma-backed J2EOutbox table.
 
 ~~~json
 {
@@ -844,7 +844,7 @@ worker can be embedded, where the API process starts the outbox loop, or separat
 
 ### Reliable events
 
-emit no longer delivers webhooks inline. It writes an event record to the outbox. In a transactional workflow, that outbox record is inserted inside the same MongoDB transaction as the business mutations.
+emit no longer delivers webhooks inline. It writes an event record to the outbox. In a transactional workflow, that outbox record is inserted inside the same database transaction as the business mutations—Mongoose sessions for MongoDB and prisma.$transaction for PostgreSQL.
 
 The HTTP workflow can therefore succeed once the event is durably recorded even when the webhook destination is temporarily unavailable.
 
@@ -1270,11 +1270,11 @@ node bin/json-to-express.js validate examples/e2e-postgres.json
 
 The Express/Mongoose target remains the complete v1 target, including workflows, durable outbox, and background jobs.
 
-PostgreSQL/Prisma is now a real second target for CRUD-oriented services and proves that the normalized application model is not tied to Mongoose. Its remaining parity work is the SQL implementation of workflows/outbox/jobs and many-to-many references.
+PostgreSQL/Prisma is now a full application target for CRUD, declarative workflows, custom endpoints, durable events/outbox, background jobs, SDKs, admin UI, and deployment generation. Its main remaining persistence gap is many-reference/many-to-many relation support plus deeper ORM-specific tuning.
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next expansion layer is additional API/server targets such as GraphQL and Fastify, plus deeper authentication strategies and PostgreSQL workflow/outbox parity.
+The next expansion layer is additional API/server targets such as GraphQL and Fastify, deeper authentication strategies, and many-to-many relation support.
 
 ## License
 
