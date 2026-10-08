@@ -230,7 +230,7 @@ function customActionType(endpoint) {
   const paramsType = params.length
     ? '{' + params.map(name => JSON.stringify(name) + ': string | number').join('; ') + '}'
     : 'Record<string, string | number>';
-  return '{params?: ' + paramsType + '; query?: Record<string, QueryValue>; body?: unknown}';
+  return '{params' + (params.length ? '' : '?') + ': ' + paramsType + '; query?: Record<string, QueryValue>; body?: unknown}';
 }
 
 function typescriptSource(spec) {
