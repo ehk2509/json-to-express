@@ -123,6 +123,10 @@ function normalizeSpec(inputSpec) {
   const authEnabled = valueOr(auth.enabled, false);
   const openapi = spec.docs && spec.docs.openapi || {};
   const outboxConfig = spec.outbox || {};
+  const deployment = spec.deployment || {};
+  const dockerConfig = deployment.docker || {};
+  const composeConfig = deployment.compose || {};
+  const kubernetesConfig = deployment.kubernetes || {};
   const prismaSchemaPath = valueOr(spec.database.prisma && spec.database.prisma.schemaPath, 'prisma/schema.prisma');
   const databaseType = spec.database.type;
   const isMongo = databaseType === 'mongodb';
@@ -149,6 +153,30 @@ function normalizeSpec(inputSpec) {
   const normalized = {
     specVersion: spec.specVersion,
     generation: {outputDir: generation.outputDir, paths},
+    deployment: {
+      docker: {
+        enabled: valueOr(dockerConfig.enabled, false),
+        nodeImage: valueOr(dockerConfig.nodeImage, 'node:22-alpine'),
+        file: valueOr(dockerConfig.file, 'Dockerfile'),
+        ignoreFile: valueOr(dockerConfig.ignoreFile, '.dockerignore'),
+        healthcheck: valueOr(dockerConfig.healthcheck, true)
+      },
+      compose: {
+        enabled: valueOr(composeConfig.enabled, false),
+        file: valueOr(composeConfig.file, 'docker-compose.yml'),
+        database: valueOr(composeConfig.database, true),
+        apiPort: valueOr(composeConfig.apiPort, valueOr(spec.app.port, 3000))
+      },
+      kubernetes: {
+        enabled: valueOr(kubernetesConfig.enabled, false),
+        directory: valueOr(kubernetesConfig.directory, 'deploy/k8s'),
+        image: valueOr(kubernetesConfig.image, generatedName + ':latest'),
+        replicas: valueOr(kubernetesConfig.replicas, 2),
+        serviceType: valueOr(kubernetesConfig.serviceType, 'ClusterIP'),
+        servicePort: valueOr(kubernetesConfig.servicePort, 80),
+        resources: kubernetesConfig.resources || {}
+      }
+    },
     auth: {
       enabled: authEnabled,
       strategy: 'jwt',

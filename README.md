@@ -886,6 +886,91 @@ The request can return immediately while the worker later executes the job workf
 
 Processing is at-least-once. If a worker crashes after business side effects but before marking the job done, the lock eventually expires and the job may run again. Workflows used as job handlers should therefore be idempotent when duplicate execution would matter.
 
+## Docker, Compose, and Kubernetes generation
+
+Deployment artifacts are opt-in and derive from the same application specification.
+
+~~~json
+{
+  "deployment": {
+    "docker": {
+      "enabled": true,
+      "nodeImage": "node:22-alpine",
+      "file": "Dockerfile",
+      "ignoreFile": ".dockerignore",
+      "healthcheck": true
+    },
+    "compose": {
+      "enabled": true,
+      "database": true,
+      "apiPort": 8080
+    },
+    "kubernetes": {
+      "enabled": true,
+      "directory": "deploy/k8s",
+      "image": "example/catalog-api:1.0.0",
+      "replicas": 2,
+      "serviceType": "ClusterIP",
+      "servicePort": 80,
+      "resources": {
+        "requests": {
+          "cpu": "100m",
+          "memory": "128Mi"
+        },
+        "limits": {
+          "cpu": "500m",
+          "memory": "512Mi"
+        }
+      }
+    }
+  }
+}
+~~~
+
+### Docker
+
+The generated Dockerfile uses a multi-stage build, prunes development dependencies, runs as the non-root node user, exposes the configured application port, and emits a container HEALTHCHECK when the application health route is enabled.
+
+For PostgreSQL/Prisma targets, the build stage also runs prisma generate before pruning the Prisma CLI.
+
+The generated .dockerignore excludes local environment files, node_modules, Git metadata, logs, coverage, and generator temporary output while preserving .env.example.
+
+### Docker Compose
+
+Compose can include a local database service automatically:
+
+- MongoDB target -> mongo:7
+- PostgreSQL target -> postgres:16-alpine
+
+The API receives an internal container-network database URL, waits for the database healthcheck, exposes the configured host port, and gets its runtime defaults from the normalized environment contract.
+
+If Mongo outbox mode is separate, Compose also generates a worker service using the same image and npm run worker command.
+
+~~~bash
+docker compose up --build
+~~~
+
+Set compose.database to false when the generated application should connect to an externally managed database through its normal database environment variable.
+
+### Kubernetes
+
+Kubernetes generation emits:
+
+~~~text
+deploy/k8s/
+  configmap.yaml
+  secret.example.yaml
+  deployment.yaml
+  service.yaml
+  worker-deployment.yaml   # only when a separate worker exists
+~~~
+
+ConfigMap contains non-secret defaults. Database URLs, JWT secrets, webhook URLs, and required environment variables are represented only in secret.example.yaml with <set-me> placeholders.
+
+The generated Deployment includes readiness/liveness probes when the health endpoint is enabled, non-root security settings, resource requests/limits, configurable replicas, and the configured container image.
+
+The generator intentionally does not create a production MongoDB or PostgreSQL StatefulSet. Kubernetes deployments reference an external database URL through the Secret template so managed databases can be used without modifying generated application code.
+
 ## Verification
 
 Unit/integration tests cover:
@@ -903,6 +988,7 @@ Unit/integration tests cover:
 - soft delete, auditing, and transaction generation
 - custom endpoints, declarative workflows, events, and webhooks
 - durable outbox, retries, dead-letter recovery, and background jobs
+- Docker, Docker Compose, Kubernetes manifests, probes, secrets/config separation
 - production middleware and environment guards
 - custom middleware and hooks
 - Mongoose field/schema options
@@ -977,7 +1063,9 @@ The Express/Mongoose target remains the complete v1 target, including workflows,
 
 PostgreSQL/Prisma is now a real second target for CRUD-oriented services and proves that the normalized application model is not tied to Mongoose. Its remaining parity work is the SQL implementation of workflows/outbox/jobs and many-to-many references.
 
-Fastify, NestJS, and additional database/ORM combinations remain future independent targets.
+Both persistence targets can now emit container and Kubernetes deployment artifacts from the same JSON contract.
+
+The next product-expansion layers are generated SDK clients and an optional admin UI, followed by additional API/server targets such as GraphQL, Fastify, and NestJS.
 
 ## License
 

@@ -608,3 +608,157 @@ test('generates PostgreSQL Prisma schema, UUID routes and CRUD controllers from 
     assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });
+
+
+test('generates Docker Compose and Kubernetes deployment artifacts for MongoDB', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-deploy-mongo-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const deploymentSpec = {
+    specVersion: '1.0',
+    app: {name: 'deploy-api', port: 4100, health: {enabled: true, path: '/ready'}},
+    database: {type: 'mongodb'},
+    deployment: {
+      docker: {enabled: true, nodeImage: 'node:22-alpine'},
+      compose: {enabled: true, database: true, apiPort: 8100},
+      kubernetes: {
+        enabled: true,
+        directory: 'deploy/k8s',
+        image: 'example/deploy-api:1.0.0',
+        replicas: 3,
+        serviceType: 'ClusterIP',
+        servicePort: 8080,
+        resources: {
+          requests: {cpu: '100m', memory: '128Mi'},
+          limits: {cpu: '500m', memory: '512Mi'}
+        }
+      }
+    },
+    environment: {
+      PUBLIC_ORIGIN: {default: 'https://example.com'},
+      PRIVATE_TOKEN: {required: true}
+    },
+    entities: {
+      Product: {fields: {name: {type: 'string', required: true}}}
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(deploymentSpec, output);
+
+  for (const file of [
+    'Dockerfile',
+    '.dockerignore',
+    'docker-compose.yml',
+    'deploy/k8s/configmap.yaml',
+    'deploy/k8s/secret.example.yaml',
+    'deploy/k8s/deployment.yaml',
+    'deploy/k8s/service.yaml'
+  ]) assert.ok(result.files.includes(file), file + ' should be generated');
+
+  const dockerfile = fs.readFileSync(path.join(output, 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /FROM node:22-alpine AS build/);
+  assert.match(dockerfile, /npm prune --omit=dev/);
+  assert.match(dockerfile, /USER node/);
+  assert.match(dockerfile, /HEALTHCHECK/);
+  assert.match(dockerfile, /EXPOSE 4100/);
+
+  const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /image: mongo:7/);
+  assert.match(compose, /mongodb:\/\/database:27017\/deploy_api/);
+  assert.match(compose, /"8100:4100"/);
+  assert.match(compose, /condition: service_healthy/);
+
+  const deployment = fs.readFileSync(path.join(output, 'deploy/k8s/deployment.yaml'), 'utf8');
+  assert.match(deployment, /replicas: 3/);
+  assert.match(deployment, /image: "example\/deploy-api:1\.0\.0"/);
+  assert.match(deployment, /readinessProbe:/);
+  assert.match(deployment, /livenessProbe:/);
+  assert.match(deployment, /cpu: "100m"/);
+  assert.match(deployment, /memory: "512Mi"/);
+
+  const configMap = fs.readFileSync(path.join(output, 'deploy/k8s/configmap.yaml'), 'utf8');
+  assert.match(configMap, /PUBLIC_ORIGIN: "https:\/\/example\.com"/);
+  assert.doesNotMatch(configMap, /MONGODB_URI/);
+  assert.doesNotMatch(configMap, /PRIVATE_TOKEN/);
+
+  const secret = fs.readFileSync(path.join(output, 'deploy/k8s/secret.example.yaml'), 'utf8');
+  assert.match(secret, /MONGODB_URI: "<set-me>"/);
+  assert.match(secret, /PRIVATE_TOKEN: "<set-me>"/);
+});
+
+test('generates Prisma-aware Docker deployment and separate worker manifests', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-deploy-pg-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const deploymentSpec = {
+    specVersion: '1.0',
+    app: {name: 'postgres-deploy', port: 4200},
+    database: {type: 'postgresql'},
+    deployment: {
+      docker: {enabled: true},
+      compose: {enabled: true, database: true},
+      kubernetes: {enabled: true, image: 'example/postgres-deploy:latest'}
+    },
+    entities: {
+      Product: {fields: {name: {type: 'string', required: true}}}
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  generateApplication(deploymentSpec, output);
+
+  const dockerfile = fs.readFileSync(path.join(output, 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /RUN npm run prisma:generate/);
+
+  const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /image: postgres:16-alpine/);
+  assert.match(compose, /postgresql:\/\/postgres:postgres@database:5432\/postgres_deploy/);
+  assert.match(compose, /  migrate:/);
+  assert.match(compose, /target: build/);
+  assert.match(compose, /command: \["npm", "run", "db:push"\]/);
+  assert.match(compose, /condition: service_completed_successfully/);
+
+  const secret = fs.readFileSync(path.join(output, 'deploy/k8s/secret.example.yaml'), 'utf8');
+  assert.match(secret, /DATABASE_URL: "<set-me>"/);
+});
+
+test('generates worker deployment when Mongo outbox uses separate worker mode', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-deploy-worker-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const deploymentSpec = {
+    specVersion: '1.0',
+    app: {name: 'worker-api'},
+    database: {type: 'mongodb'},
+    deployment: {
+      docker: {enabled: true},
+      compose: {enabled: true},
+      kubernetes: {enabled: true, image: 'example/worker-api:latest'}
+    },
+    outbox: {worker: 'separate'},
+    entities: {
+      Order: {fields: {status: {type: 'string'}}}
+    },
+    events: {'order.done': {webhooks: []}},
+    workflows: {
+      emitDone: {
+        steps: [
+          {name: 'emit', action: 'emit', event: 'order.done', payload: {ok: true}}
+        ]
+      }
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(deploymentSpec, output);
+  assert.ok(result.files.includes('deploy/k8s/worker-deployment.yaml'));
+
+  const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /  worker:/);
+  assert.match(compose, /command: \["npm", "run", "worker"\]/);
+
+  const worker = fs.readFileSync(path.join(output, 'deploy/k8s/worker-deployment.yaml'), 'utf8');
+  assert.match(worker, /name: worker-api-worker/);
+  assert.match(worker, /command: \["npm", "run", "worker"\]/);
+});

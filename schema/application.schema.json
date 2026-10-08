@@ -647,6 +647,138 @@
           }
         }
       }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "docker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "nodeImage": {
+              "type": "string",
+              "minLength": 1,
+              "default": "node:22-alpine"
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "default": "Dockerfile"
+            },
+            "ignoreFile": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".dockerignore"
+            },
+            "healthcheck": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "compose": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "default": "docker-compose.yml"
+            },
+            "database": {
+              "type": "boolean",
+              "default": true
+            },
+            "apiPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1,
+              "default": "deploy/k8s"
+            },
+            "image": {
+              "type": "string",
+              "minLength": 1
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 2
+            },
+            "serviceType": {
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ],
+              "default": "ClusterIP"
+            },
+            "servicePort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 80
+            },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "memory": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "memory": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
