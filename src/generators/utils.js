@@ -37,6 +37,7 @@ function filePaths(spec, entityName) {
     authRoutes: path.posix.join(source, p.routes, 'AuthRoutes.js'),
     validation: path.posix.join(source, p.middleware, 'validation.js'),
     environment: path.posix.join(source, p.config, 'environment.js'),
+    observability: path.posix.join(source, p.config, 'observability.js'),
     workflowEngine: path.posix.join(source, p.workflows, 'engine.js'),
     eventBus: path.posix.join(source, p.workflows, 'events.js'),
     outbox: path.posix.join(source, p.workflows, 'outbox.js'),

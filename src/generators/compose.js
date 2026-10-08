@@ -18,10 +18,13 @@ function environmentLines(spec) {
 }
 
 function appHealthcheck(spec, indent) {
-  if (!spec.app.health.enabled) return [];
+  const healthPath = spec.observability.health.readiness.enabled
+    ? spec.observability.health.readiness.path
+    : (spec.app.health.enabled ? spec.app.health.path : null);
+  if (!healthPath) return [];
   const prefix = ' '.repeat(indent);
   const expression = "const p=process.env." + spec.app.portEnv + "||'" + spec.app.port +
-    "';fetch('http://127.0.0.1:'+p+" + JSON.stringify(spec.app.health.path) +
+    "';fetch('http://127.0.0.1:'+p+" + JSON.stringify(healthPath) +
     ").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))";
   return [
     prefix + 'healthcheck:',

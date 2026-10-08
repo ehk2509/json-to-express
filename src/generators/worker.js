@@ -11,7 +11,8 @@ module.exports = function workerSource(spec) {
     'const connectDatabase = require(' + js(relativeRequire(paths.worker, paths.database)) + ');',
     'const outbox = require(' + js(relativeRequire(paths.worker, paths.outbox)) + ');',
     'const events = require(' + js(relativeRequire(paths.worker, paths.eventBus)) + ');',
-    'const workflows = require(' + js(relativeRequire(paths.worker, paths.workflowEngine)) + ');', '',
+    'const workflows = require(' + js(relativeRequire(paths.worker, paths.workflowEngine)) + ');',
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.worker, paths.observability)) + ');'] : []), '',
     'const jobs = ' + js(spec.jobs) + ';',
     'const selectedQueues = (process.env.J2E_WORKER_QUEUES || "").split(",").map(value => value.trim()).filter(Boolean);',
     'let stopped = false;', '',
@@ -35,7 +36,9 @@ module.exports = function workerSource(spec) {
     '    const record = await outbox.claimNext(selectedQueues);',
     '    if (!record) break;',
     '    try {',
-    '      await processRecord(record);',
+    ...(spec.observability.enabled
+      ? ['      await observability.instrumentWorkerRecord(record, () => processRecord(record));']
+      : ['      await processRecord(record);']),
     '      await outbox.markDone(record);',
     '    } catch (error) {',
     '      await outbox.markFailed(record, error);',
@@ -54,16 +57,22 @@ module.exports = function workerSource(spec) {
     'function stopWorker() { stopped = true; }', '',
     'async function main() {',
     '  validateEnvironment();',
+    ...(spec.observability.enabled ? ['  await observability.startTracing();'] : []),
     '  await connectDatabase();',
     '  for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, stopWorker);',
     '  try {',
     '    if (process.argv.includes("--retry-dead")) { console.log("Retried dead outbox records:", await outbox.retryDead()); return; }',
     '    if (process.argv.includes("--once")) { await processBatch(); return; }',
     '    await startWorker();',
-    '  } finally { if (connectDatabase.disconnect) await connectDatabase.disconnect(); }',
+    '  } finally {',
+    '    if (connectDatabase.disconnect) await connectDatabase.disconnect();',
+    ...(spec.observability.enabled ? ['    await observability.shutdownTracing();'] : []),
+    '  }',
     '}', '',
     'if (require.main === module) {',
-    '  main().catch(error => { console.error("Worker failed:", error); process.exitCode = 1; });',
+    ...(spec.observability.enabled
+      ? ['  main().catch(error => { observability.logger.error("worker.failed", {error: error.message}); process.exitCode = 1; });']
+      : ['  main().catch(error => { console.error("Worker failed:", error); process.exitCode = 1; });']),
     '}', '',
     'module.exports = {processBatch, processRecord, startWorker, stopWorker};', ''
   ].join('\n');

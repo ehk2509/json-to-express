@@ -17,6 +17,7 @@ Two persistence targets now share the same normalized application model:
 - CRUD controllers and routers
 - configurable query semantics
 - configurable error handling and health endpoint
+- optional structured logs, Prometheus metrics, liveness/readiness, and OpenTelemetry traces
 - generated package.json and .env.example
 - generated health smoke test
 - .j2e-manifest.json for safe regeneration
@@ -764,7 +765,105 @@ Database URLs plus enabled authentication secrets—JWT secrets, API-key values,
 
 The production block can enable request IDs, security headers, CORS, rate limiting, and compression. Optional package dependencies are added only when required.
 
-Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and MongoDB disconnect.
+Generated servers also handle SIGTERM and SIGINT with graceful HTTP shutdown and database disconnect.
+
+## Production observability and telemetry
+
+Observability is opt-in and generated from the same JSON specification:
+
+~~~json
+{
+  "observability": {
+    "enabled": true,
+    "logging": {
+      "enabled": true,
+      "level": "info",
+      "format": "json",
+      "requestIds": true
+    },
+    "metrics": {
+      "enabled": true,
+      "path": "/metrics",
+      "collectDefaultMetrics": true,
+      "prefix": "j2e_"
+    },
+    "tracing": {
+      "enabled": true,
+      "serviceName": "catalog-api",
+      "exporter": "otlp-http",
+      "endpointEnv": "OTEL_EXPORTER_OTLP_ENDPOINT",
+      "sampleRate": 0.25
+    },
+    "health": {
+      "liveness": {
+        "enabled": true,
+        "path": "/health/live"
+      },
+      "readiness": {
+        "enabled": true,
+        "path": "/health/ready",
+        "database": true,
+        "outbox": true
+      }
+    }
+  }
+}
+~~~
+
+### Structured logging and correlation IDs
+
+The generated request middleware propagates an incoming `X-Request-Id` or creates a UUID, returns it in the response, and keeps it in an AsyncLocalStorage context for downstream logs.
+
+Request-completion logs include bounded operational fields such as method, route, status, duration, request ID, authenticated user ID, and auth strategy. Generated observability intentionally does **not** log request bodies, Authorization headers, cookies, refresh tokens, API keys, or passwords.
+
+JSON is the default production format; a human-readable pretty format is also available.
+
+### Prometheus metrics
+
+When metrics are enabled, the generated application exposes the configured metrics endpoint and emits low-cardinality metrics including:
+
+~~~text
+j2e_http_requests_total
+j2e_http_request_duration_seconds
+j2e_http_active_requests
+j2e_graphql_operations_total
+j2e_workflow_executions_total
+j2e_workflow_duration_seconds
+j2e_workflow_steps_total
+j2e_worker_records_total
+j2e_outbox_pending
+j2e_outbox_dead
+~~~
+
+Default Node/process metrics can also be collected through prom-client. The metric prefix is configurable.
+
+### Liveness and readiness
+
+The legacy `app.health` endpoint remains supported for compatibility, while observability can generate separate operational probes:
+
+- liveness answers whether the process is alive
+- readiness verifies the database before returning ready
+- MongoDB readiness uses an admin ping
+- PostgreSQL readiness executes `SELECT 1`
+- outbox status can expose pending/processing/dead counts without putting those values into high-cardinality metric labels
+
+Docker and Compose healthchecks prefer the generated readiness endpoint. Kubernetes manifests emit distinct readiness and liveness probes when observability health is enabled.
+
+### OpenTelemetry tracing
+
+Tracing can use either a console exporter for development/testing or an OTLP/HTTP exporter for a collector such as OpenTelemetry Collector, Grafana Alloy, Datadog Agent, or another OTLP-compatible backend.
+
+Generated spans cover:
+
+- incoming HTTP requests
+- GraphQL operations
+- declarative workflow executions
+- individual workflow steps
+- outbox event/job worker execution
+
+The service name and sampling rate are declarative. OTLP deployments receive the configured endpoint environment variable, and both API and standalone worker processes flush tracing on shutdown.
+
+Observability dependencies are only added when the corresponding feature is enabled, so applications that do not opt in keep the existing lightweight runtime.
 
 ## Declarative custom endpoints and workflows
 
@@ -1307,6 +1406,7 @@ Unit/integration tests cover:
 - generated JavaScript and TypeScript SDK packages
 - generated React admin UI, forms, relations, filters and custom actions
 - production middleware and environment guards
+- structured logging, correlation IDs, Prometheus metrics, liveness/readiness, and OpenTelemetry generation
 - custom middleware and hooks
 - Mongoose field/schema options
 - safe regeneration
@@ -1382,7 +1482,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next expansion layer is additional server targets such as Fastify plus deeper production observability and operational telemetry.
+The largest remaining roadmap areas are declarative caching, file/object storage, seeds and migration workflows, and an additional server framework target such as Fastify.
 
 ## License
 

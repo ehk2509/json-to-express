@@ -65,6 +65,14 @@ function mongoSource(spec) {
     '  const result = await Outbox.updateMany({status: "dead"}, {$set: {status: "pending", attempts: 0, lockedAt: null, lastError: null, availableAt: new Date()}});',
     '  return result.modifiedCount || 0;',
     '}', '',
+    'async function stats() {',
+    '  const [pending, processing, dead] = await Promise.all([',
+    '    Outbox.countDocuments({status: "pending"}),',
+    '    Outbox.countDocuments({status: "processing"}),',
+    '    Outbox.countDocuments({status: "dead"})',
+    '  ]);',
+    '  return {pending, processing, dead};',
+    '}', '',
     'async function markFailed(record, error) {',
     '  const attempts = record.attempts + 1;',
     '  const dead = attempts >= record.maxAttempts;',
@@ -77,7 +85,7 @@ function mongoSource(spec) {
     '    availableAt: dead ? record.availableAt : new Date(Date.now() + delay)',
     '  }});',
     '}', '',
-    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead};', ''
+    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, stats};', ''
   ].join('\n');
 }
 
@@ -149,6 +157,14 @@ function postgresSource(spec) {
     '  });',
     '  return result.count || 0;',
     '}', '',
+    'async function stats() {',
+    '  const [pending, processing, dead] = await Promise.all([',
+    '    prisma.j2EOutbox.count({where: {status: "pending"}}),',
+    '    prisma.j2EOutbox.count({where: {status: "processing"}}),',
+    '    prisma.j2EOutbox.count({where: {status: "dead"}})',
+    '  ]);',
+    '  return {pending, processing, dead};',
+    '}', '',
     'async function markFailed(record, error) {',
     '  const attempts = record.attempts + 1;',
     '  const dead = attempts >= record.maxAttempts;',
@@ -164,7 +180,7 @@ function postgresSource(spec) {
     '    }',
     '  });',
     '}', '',
-    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead};', ''
+    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, stats};', ''
   ].join('\n');
 }
 

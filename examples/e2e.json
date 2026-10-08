@@ -490,5 +490,38 @@
       "loginPath": "/auth/oidc/login",
       "callbackPath": "/auth/oidc/callback"
     }
+  },
+  "observability": {
+    "enabled": true,
+    "logging": {
+      "enabled": true,
+      "level": "info",
+      "format": "json",
+      "requestIds": true
+    },
+    "metrics": {
+      "enabled": true,
+      "path": "/metrics",
+      "collectDefaultMetrics": true,
+      "prefix": "j2e_"
+    },
+    "tracing": {
+      "enabled": true,
+      "serviceName": "j2e-mongo-e2e",
+      "exporter": "console",
+      "sampleRate": 1
+    },
+    "health": {
+      "liveness": {
+        "enabled": true,
+        "path": "/health/live"
+      },
+      "readiness": {
+        "enabled": true,
+        "path": "/health/ready",
+        "database": true,
+        "outbox": true
+      }
+    }
   }
 }

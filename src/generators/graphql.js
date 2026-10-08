@@ -276,7 +276,7 @@ module.exports = function graphqlSource(spec) {
 
   const lines = [
     "'use strict';", '',
-    "const {graphql, GraphQLError, GraphQLScalarType, Kind} = require('graphql');",
+    "const {graphql, parse, getOperationAST, GraphQLError, GraphQLScalarType, Kind} = require('graphql');",
     "const {makeExecutableSchema} = require('@graphql-tools/schema');",
     "const DataLoader = require('dataloader');",
     'const validation = require(' + js(relativeRequire(graphqlPath, paths.validation)) + ');',
@@ -287,6 +287,7 @@ module.exports = function graphqlSource(spec) {
       : ['const connectDatabase = require(' + js(relativeRequire(graphqlPath, paths.database)) + ');']),
     ...(spec.auth.enabled ? ['const auth = require(' + js(relativeRequire(graphqlPath, paths.auth)) + ');'] : []),
     ...(spec.endpoints.length ? ['const workflows = require(' + js(relativeRequire(graphqlPath, paths.workflowEngine)) + ');'] : []),
+    ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(graphqlPath, paths.observability)) + ');'] : []),
     '',
     'const typeDefs = ' + js(typeDefs(spec)) + ';',
     'const entities = ' + js(entities) + ';',
@@ -486,14 +487,26 @@ module.exports = function graphqlSource(spec) {
     '  if (!source) return res.status(400).json({errors: [{message: "GraphQL query is required"}]});',
     '  try {',
     '    const loaders = createLoaders();',
-    '    const result = await graphql({',
+    '    let operationType = "unknown";',
+    '    try {',
+    '      const operation = getOperationAST(parse(source), input.operationName);',
+    '      if (operation && operation.operation) operationType = operation.operation;',
+    '    } catch {}',
+    '    const executeGraphql = () => graphql({',
     '      schema, source,',
     '      variableValues: input.variables,',
     '      operationName: input.operationName,',
     '      contextValue: {req, ...loaders}',
     '    });',
+    ...(spec.observability.enabled ? [
+      '    const result = await observability.withSpan("graphql " + operationType, {"graphql.operation.type": operationType}, executeGraphql);',
+      '    observability.recordGraphql(operationType, result.errors && result.errors.length ? "error" : "ok");'
+    ] : [
+      '    const result = await executeGraphql();'
+    ]),
     '    return res.status(200).json(result);',
     '  } catch (error) {',
+    ...(spec.observability.enabled ? ['    observability.recordGraphql("unknown", "error");'] : []),
     '    return res.status(500).json({errors: [{message: error.message || "GraphQL execution failed"}]});',
     '  }',
     '}',

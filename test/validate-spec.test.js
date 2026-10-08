@@ -520,3 +520,45 @@ test('validates multi-strategy authentication semantics', () => {
     /auth\.local\.loginPath cannot be the same as api\.graphql\.path/
   );
 });
+
+
+test('validates observability endpoint collisions', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    app: {name: 'observable'},
+    database: {type: 'mongodb'},
+    observability: {
+      enabled: true,
+      metrics: {path: '/metrics'},
+      health: {
+        liveness: {path: '/health/live'},
+        readiness: {path: '/health/ready'}
+      }
+    },
+    entities: {Product: {fields: {name: {type: 'string'}}}}
+  }));
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      api: {graphql: {enabled: true, path: '/metrics'}},
+      app: {name: 'bad-observable', health: {enabled: true, path: '/health/live'}},
+      database: {type: 'mongodb'},
+      observability: {
+        enabled: true,
+        metrics: {path: '/metrics'},
+        health: {
+          liveness: {path: '/health/live'},
+          readiness: {path: '/metrics'}
+        }
+      },
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    error => {
+      assert.match(error.message, /observability\.metrics\.path cannot be the same as api\.graphql\.path/);
+      assert.match(error.message, /observability\.health\.liveness\.path cannot be the same as app\.health\.path/);
+      assert.match(error.message, /observability\.health\.readiness\.path duplicates observability route \/metrics/);
+      return true;
+    }
+  );
+});

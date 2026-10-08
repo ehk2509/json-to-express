@@ -31,6 +31,7 @@ const kubernetesFiles = require('./kubernetes');
 const sdkFiles = require('./sdk');
 const adminFiles = require('./admin');
 const graphqlSource = require('./graphql');
+const observabilitySource = require('./observability');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -49,6 +50,9 @@ function envExample(spec) {
     if (spec.auth.oidc.clientSecretEnv) values[spec.auth.oidc.clientSecretEnv] = '';
   }
   if (spec.auth.local.passwordReset.webhookUrlEnv) values[spec.auth.local.passwordReset.webhookUrlEnv] = '';
+  if (spec.observability.tracing.enabled && spec.observability.tracing.exporter === 'otlp-http') {
+    values[spec.observability.tracing.endpointEnv] = 'http://127.0.0.1:4318/v1/traces';
+  }
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) {
       if (!(webhook.urlEnv in values)) values[webhook.urlEnv] = '';
@@ -77,6 +81,8 @@ function buildFiles(spec) {
   files.set(paths.errorHandler, errorHandlerSource(spec));
   files.set(paths.validation, validationSource(spec));
   files.set(paths.environment, environmentSource(spec));
+  const observability = observabilitySource(spec);
+  if (observability) files.set(paths.observability, observability);
   if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {

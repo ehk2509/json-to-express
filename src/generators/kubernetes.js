@@ -29,22 +29,35 @@ function envFromLines(name, indent) {
 }
 
 function probes(spec, indent) {
-  if (!spec.app.health.enabled) return [];
   const pad = ' '.repeat(indent);
-  return [
-    pad + 'readinessProbe:',
-    pad + '  httpGet:',
-    pad + '    path: ' + spec.app.health.path,
-    pad + '    port: http',
-    pad + '  initialDelaySeconds: 3',
-    pad + '  periodSeconds: 10',
-    pad + 'livenessProbe:',
-    pad + '  httpGet:',
-    pad + '    path: ' + spec.app.health.path,
-    pad + '    port: http',
-    pad + '  initialDelaySeconds: 10',
-    pad + '  periodSeconds: 20'
-  ];
+  const readinessPath = spec.observability.health.readiness.enabled
+    ? spec.observability.health.readiness.path
+    : (spec.app.health.enabled ? spec.app.health.path : null);
+  const livenessPath = spec.observability.health.liveness.enabled
+    ? spec.observability.health.liveness.path
+    : (spec.app.health.enabled ? spec.app.health.path : null);
+  const lines = [];
+  if (readinessPath) {
+    lines.push(
+      pad + 'readinessProbe:',
+      pad + '  httpGet:',
+      pad + '    path: ' + readinessPath,
+      pad + '    port: http',
+      pad + '  initialDelaySeconds: 3',
+      pad + '  periodSeconds: 10'
+    );
+  }
+  if (livenessPath) {
+    lines.push(
+      pad + 'livenessProbe:',
+      pad + '  httpGet:',
+      pad + '    path: ' + livenessPath,
+      pad + '    port: http',
+      pad + '  initialDelaySeconds: 10',
+      pad + '  periodSeconds: 20'
+    );
+  }
+  return lines;
 }
 
 function deploymentSource(spec, worker) {
