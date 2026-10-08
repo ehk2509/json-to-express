@@ -240,3 +240,27 @@ test('enforces PostgreSQL Prisma capability boundaries', () => {
     }
   );
 });
+
+
+test('validates deployment paths and Compose Docker dependency', () => {
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'deploy-api'},
+      database: {type: 'mongodb'},
+      deployment: {
+        docker: {enabled: false, file: '../Dockerfile'},
+        compose: {enabled: true, file: '../compose.yml'},
+        kubernetes: {enabled: true, directory: '../k8s'}
+      },
+      entities: {Product: {fields: {name: {type: 'string'}}}}
+    }),
+    error => {
+      assert.match(error.message, /deployment\.docker\.file must be a safe relative path/);
+      assert.match(error.message, /deployment\.compose\.file must be a safe relative path/);
+      assert.match(error.message, /deployment\.kubernetes\.directory must be a safe relative path/);
+      assert.match(error.message, /deployment\.compose\.enabled requires deployment\.docker\.enabled/);
+      return true;
+    }
+  );
+});
