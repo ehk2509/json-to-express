@@ -67,6 +67,26 @@ async function main() {
   try {
     await waitForHealth();
 
+  const viewerDenied = await request('/api/products/not-an-id/publish', {
+    method: 'POST',
+    headers: {'x-api-key': process.env.E2E_VIEWER_API_KEY || 'ci-viewer-key'},
+    body: JSON.stringify({})
+  });
+  assert.equal(viewerDenied.response.status, 403);
+
+  const viewerGraphql = await request('/graphql', {
+    method: 'POST',
+    headers: {'x-api-key': process.env.E2E_VIEWER_API_KEY || 'ci-viewer-key'},
+    body: JSON.stringify({
+      query: 'mutation($params: JSON) { actionPublishProduct(params: $params) }',
+      variables: {params: {id: 'not-an-id'}}
+    })
+  });
+  assert.equal(viewerGraphql.response.status, 200);
+  assert.ok(Array.isArray(viewerGraphql.body.errors));
+  assert.equal(viewerGraphql.body.errors[0].extensions.code, 'FORBIDDEN');
+
+
   const gqlCategory = await graphqlRequest(
     'mutation($input: CategoryCreateInput!) { createCategory(input: $input) { id name } }',
     {input: {name: 'GraphQL Accessories'}}
