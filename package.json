@@ -10,7 +10,7 @@
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check-syntax.js",
-    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json"
+    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json && node bin/json-to-express.js validate examples/e2e-s3.json"
   },
   "keywords": [
     "express",

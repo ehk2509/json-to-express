@@ -50,6 +50,7 @@ function appSource(spec) {
     ...prodImports,
     'const errorHandler = require(' + js(relativeRequire(appPath, filePaths(spec).errorHandler)) + ');',
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(appPath, filePaths(spec).observability)) + ');'] : []),
+    ...(spec.storage.enabled ? ['const storage = require(' + js(relativeRequire(appPath, filePaths(spec).storage)) + ');'] : []),
     ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(appPath, filePaths(spec).graphql)) + ');'] : []),
     ...imports,
     ...middlewareImports, '',
@@ -65,6 +66,9 @@ function appSource(spec) {
     ] : []),
     ...(spec.observability.metrics.enabled ? [
       'app.get(' + js(spec.observability.metrics.path) + ', observability.metricsHandler);'
+    ] : []),
+    ...(spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? [
+      'app.get(' + js(spec.storage.signedUrls.path) + ', storage.downloadHandler);'
     ] : []),
     ...(spec.auth.routesEnabled ? ['app.use(AuthRoutes);'] : []),
     ...(spec.api.graphql.enabled ? [

@@ -46,6 +46,18 @@ function environmentContract(spec) {
   if (spec.observability.tracing.enabled && spec.observability.tracing.exporter === 'otlp-http') {
     config[spec.observability.tracing.endpointEnv] = 'http://otel-collector:4318/v1/traces';
   }
+  if (spec.storage.enabled) {
+    if (spec.storage.provider === 'local' && spec.storage.signedUrls.enabled) {
+      secrets[spec.storage.signedUrls.signingSecretEnv] = '<set-me>';
+    }
+    if (spec.storage.provider === 's3') {
+      secrets[spec.storage.s3.bucketEnv] = '<set-me>';
+      secrets[spec.storage.s3.regionEnv] = '<set-me>';
+      if (spec.storage.s3.endpointEnv) secrets[spec.storage.s3.endpointEnv] = '<set-me>';
+      if (spec.storage.s3.accessKeyEnv) secrets[spec.storage.s3.accessKeyEnv] = '<set-me>';
+      if (spec.storage.s3.secretKeyEnv) secrets[spec.storage.s3.secretKeyEnv] = '<set-me>';
+    }
+  }
 
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) secrets[webhook.urlEnv] = '<set-me>';

@@ -5,7 +5,7 @@ function lowerFirst(value) {
 }
 
 function prismaType(field) {
-  return {string: 'String', number: 'Float', boolean: 'Boolean', date: 'DateTime'}[field.type];
+  return {string: 'String', number: 'Float', boolean: 'Boolean', date: 'DateTime', file: 'Json'}[field.type];
 }
 
 function defaultAttribute(field) {

@@ -19,6 +19,9 @@ module.exports = function dockerfileSource(spec) {
     'WORKDIR /app',
     'ENV NODE_ENV=production',
     'COPY --from=build --chown=node:node /app /app',
+    ...(spec.storage.enabled && spec.storage.provider === 'local'
+      ? ['RUN mkdir -p ' + JSON.stringify('/app/' + spec.storage.local.directory) + ' && chown -R node:node ' + JSON.stringify('/app/' + spec.storage.local.directory)]
+      : []),
     'USER node',
     'EXPOSE ' + spec.app.port
   );
@@ -41,11 +44,12 @@ module.exports = function dockerfileSource(spec) {
   return lines.join('\n');
 };
 
-module.exports.ignoreSource = function dockerignoreSource() {
+module.exports.ignoreSource = function dockerignoreSource(spec) {
   return [
     'node_modules',
     'npm-debug.log*',
     '.env',
+    ...(spec && spec.storage && spec.storage.enabled && spec.storage.provider === 'local' ? [spec.storage.local.directory] : []),
     '.env.*',
     '!.env.example',
     '.git',

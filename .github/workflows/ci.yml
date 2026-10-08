@@ -29,6 +29,7 @@ jobs:
       E2E_VIEWER_API_KEY: ci-viewer-key
       OIDC_CLIENT_ID: j2e-e2e-client
       REDIS_URL: redis://127.0.0.1:6379
+      FILE_SIGNING_SECRET: ci-file-signing-secret-at-least-32-chars
     services:
       redis:
         image: redis:7-alpine
@@ -130,6 +131,7 @@ jobs:
       E2E_VIEWER_API_KEY: ci-viewer-key
       OIDC_CLIENT_ID: j2e-e2e-client
       REDIS_URL: redis://127.0.0.1:6379
+      FILE_SIGNING_SECRET: ci-file-signing-secret-at-least-32-chars
     services:
       redis:
         image: redis:7-alpine
@@ -232,3 +234,57 @@ jobs:
       - name: Print PostgreSQL generated server log on failure
         if: failure()
         run: cat .tmp/e2e-postgres/server.log || true
+
+  generated-app-s3-e2e:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: j2e-e2e
+      AWS_REGION: us-east-1
+      S3_ENDPOINT: http://127.0.0.1:9090
+      S3_ACCESS_KEY: test
+      S3_SECRET_KEY: test
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start S3-compatible S3Mock
+        run: |
+          docker run -d --name j2e-s3mock \
+            -p 9090:9090 \
+            -e COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=j2e-e2e \
+            adobe/s3mock:5.2.2
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:9090/favicon.ico > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:9090/favicon.ico
+      - name: Generate S3 application
+        run: node bin/json-to-express.js generate examples/e2e-s3.json
+      - name: Install generated S3 application
+        working-directory: .tmp/e2e-s3
+        run: npm install --no-audit --no-fund
+      - name: Test generated S3 contracts
+        working-directory: .tmp/e2e-s3
+        run: npm test
+      - name: Start generated S3 application
+        working-directory: .tmp/e2e-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_s3
+          PORT: 3458
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Exercise generated S3 storage
+        run: node scripts/e2e-generated-s3.js
+      - name: Print generated S3 logs on failure
+        if: failure()
+        run: |
+          cat .tmp/e2e-s3/server.log || true
+          docker logs j2e-s3mock || true

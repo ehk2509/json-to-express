@@ -106,6 +106,9 @@ function serviceBlock(name, spec, command, exposePort) {
   }
 
   lines.push('    environment:', ...environmentLines(spec));
+  if (name === 'api' && spec.storage.enabled && spec.storage.provider === 'local') {
+    lines.push('    volumes:', '      - ' + yamlScalar('file-data:/app/' + spec.storage.local.directory));
+  }
 
   const dependencies = [];
   if (spec.deployment.compose.database) {
@@ -154,9 +157,12 @@ module.exports = function composeSource(spec) {
   lines.push(...migrationService(spec));
   lines.push(...cacheService(spec));
 
-  if (spec.deployment.compose.database) {
-    lines.push(...databaseService(spec), '', 'volumes:', '  db-data:');
-  }
+  if (spec.deployment.compose.database) lines.push(...databaseService(spec));
+
+  const volumes = [];
+  if (spec.deployment.compose.database) volumes.push('  db-data:');
+  if (spec.storage.enabled && spec.storage.provider === 'local') volumes.push('  file-data:');
+  if (volumes.length) lines.push('', 'volumes:', ...volumes);
 
   lines.push('');
   return lines.join('\n');

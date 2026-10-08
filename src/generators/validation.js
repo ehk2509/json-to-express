@@ -9,7 +9,8 @@ function descriptor(entity) {
       type: field.type,
       required: Boolean(field.required),
       many: Boolean(field.many),
-      enum: field.enum || null
+      enum: field.enum || null,
+      upload: field.upload || null
     };
   }
   return fields;
@@ -39,6 +40,10 @@ module.exports = function validationSource(spec) {
     "  if (definition.type === 'number' && !(typeof value === 'number' && Number.isFinite(value))) return false;",
     "  if (definition.type === 'boolean' && typeof value !== 'boolean') return false;",
     "  if (definition.type === 'date' && Number.isNaN(Date.parse(value))) return false;",
+    "  if (definition.type === 'file') {",
+    '    const values = definition.many ? value : [value];',
+    '    if (!Array.isArray(values) || !values.every(item => item === null || (item && typeof item === "object" && typeof item.key === "string" && typeof item.mimeType === "string" && Number.isFinite(item.size)))) return false;',
+    '  }',
     "  if (definition.type === 'reference') {",
     '    const values = definition.many ? value : [value];',
     '    if (!Array.isArray(values) || !values.every(isIdentifier)) return false;',

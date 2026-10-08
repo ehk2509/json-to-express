@@ -46,6 +46,7 @@ async function main() {
   assert.ok(productEntity.listFields.includes('name'));
   assert.ok(productEntity.fields.find(field => field.name === 'category' && field.ref === 'Category'));
   assert.ok(productEntity.fields.find(field => field.name === 'tags' && field.ref === 'Tag' && field.many === true));
+  assert.ok(productEntity.fields.find(field => field.name === 'image' && field.type === 'file' && field.upload.maxBytes === 1024));
 
   const suffix = Date.now().toString(36);
   const category = await api.entity(categoryEntity).create({name: 'Admin Category ' + suffix});
@@ -60,10 +61,13 @@ async function main() {
     name: 'Admin Keyboard ' + suffix,
     price: 189,
     category: categoryId,
-    tags: [tagId]
+    tags: [tagId],
+    image: new Blob(['admin-image'], {type: 'text/plain'})
   });
   const productId = product[idField];
   assert.ok(productId);
+  assert.equal(product.image.mimeType, 'text/plain');
+  assert.ok(product.image.url);
 
   const pagination = productEntity.operations.list.query.pagination;
   const query = {name: 'Admin Keyboard ' + suffix, price__gte: 100};
@@ -82,9 +86,15 @@ async function main() {
   assert.equal(fetched.price, 189);
   assert.equal(fetched.tags[0].name, 'Admin Tag ' + suffix);
 
-  const updated = await api.entity(productEntity).update(productId, {price: 205, tags: []});
+  const updated = await api.entity(productEntity).update(productId, {
+    price: 205,
+    tags: [],
+    image: new Blob(['admin-image-updated'], {type: 'text/plain'})
+  });
   assert.equal(updated.price, 205);
   assert.deepEqual(updated.tags, []);
+  assert.equal(updated.image.mimeType, 'text/plain');
+  assert.ok(updated.image.url);
 
   const queueAction = config.actions.find(action => action.name === 'queueReprice');
   if (queueAction) {

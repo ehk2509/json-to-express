@@ -33,6 +33,7 @@ const adminFiles = require('./admin');
 const graphqlSource = require('./graphql');
 const observabilitySource = require('./observability');
 const cacheSource = require('./cache');
+const storageSource = require('./storage');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -56,6 +57,18 @@ function envExample(spec) {
   }
   if (spec.cache.enabled && spec.cache.provider === 'redis') {
     values[spec.cache.redis.urlEnv] = 'redis://127.0.0.1:6379';
+  }
+  if (spec.storage.enabled) {
+    if (spec.storage.provider === 'local' && spec.storage.signedUrls.enabled) {
+      values[spec.storage.signedUrls.signingSecretEnv] = 'change-me';
+    }
+    if (spec.storage.provider === 's3') {
+      values[spec.storage.s3.bucketEnv] = '';
+      values[spec.storage.s3.regionEnv] = '';
+      if (spec.storage.s3.endpointEnv) values[spec.storage.s3.endpointEnv] = '';
+      if (spec.storage.s3.accessKeyEnv) values[spec.storage.s3.accessKeyEnv] = '';
+      if (spec.storage.s3.secretKeyEnv) values[spec.storage.s3.secretKeyEnv] = '';
+    }
   }
   for (const event of Object.values(spec.events)) {
     for (const webhook of event.webhooks) {
@@ -89,6 +102,8 @@ function buildFiles(spec) {
   if (observability) files.set(paths.observability, observability);
   const cache = cacheSource(spec);
   if (cache) files.set(paths.cache, cache);
+  const storage = storageSource(spec);
+  if (storage) files.set(paths.storage, storage);
   if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {

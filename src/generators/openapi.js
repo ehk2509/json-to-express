@@ -14,7 +14,31 @@ function filterSchema(field, spec) {
   return fieldSchema(field, spec);
 }
 
+function fileMetadataSchema(field) {
+  const item = {
+    type: 'object',
+    properties: {
+      key: {type: 'string'},
+      originalName: {type: 'string'},
+      mimeType: {type: 'string'},
+      size: {type: 'integer', minimum: 0},
+      checksumSha256: {type: 'string'},
+      provider: {enum: ['local', 's3']},
+      uploadedAt: {type: 'string', format: 'date-time'},
+      url: {type: ['string', 'null'], format: 'uri'}
+    },
+    required: ['key', 'originalName', 'mimeType', 'size', 'checksumSha256', 'provider', 'uploadedAt']
+  };
+  return field.many ? {type: 'array', items: item} : item;
+}
+
+function uploadFieldSchema(field) {
+  const binary = {type: 'string', format: 'binary'};
+  return field.many ? {type: 'array', items: binary} : binary;
+}
+
 function fieldSchema(field, spec) {
+  if (field.type === 'file') return fileMetadataSchema(field);
   if (field.type === 'reference') {
     const item = identifierSchema(spec);
     if (field.many) {
@@ -187,10 +211,36 @@ module.exports = function openapiSource(spec) {
         }
       }
       if (['create', 'update'].includes(name)) {
-        operation.requestBody = {
-          required: name === 'create',
-          content: {'application/json': {schema: {$ref: '#/components/schemas/' + entity.name}}}
-        };
+        const fileFields = entity.fields.filter(field => field.type === 'file');
+        if (fileFields.length) {
+          const multipartProperties = {};
+          const multipartRequired = [];
+          for (const field of entity.fields) {
+            multipartProperties[field.name] = field.type === 'file' ? uploadFieldSchema(field) : fieldSchema(field, spec);
+            if (name === 'create' && field.required) multipartRequired.push(field.name);
+          }
+          operation.requestBody = {
+            required: name === 'create',
+            content: {
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  properties: multipartProperties,
+                  ...(multipartRequired.length ? {required: multipartRequired} : {})
+                }
+              },
+              'application/json': {
+                schema: {$ref: '#/components/schemas/' + entity.name},
+                description: 'JSON requests cannot attach new files; file fields may only be cleared with null.'
+              }
+            }
+          };
+        } else {
+          operation.requestBody = {
+            required: name === 'create',
+            content: {'application/json': {schema: {$ref: '#/components/schemas/' + entity.name}}}
+          };
+        }
       }
       if (op.auth.required) operation.security = securityFor(op.auth);
       document.paths[full][op.method] = operation;

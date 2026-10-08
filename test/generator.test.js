@@ -1593,3 +1593,204 @@ test('generates declarative Redis caching with controller and workflow invalidat
     assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
   }
 });
+
+
+test('generates secure local multipart storage across runtime OpenAPI SDK and admin', async t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-files-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const spec = {
+    specVersion: '1.0',
+    app: {name: 'file-api'},
+    database: {type: 'mongodb'},
+    storage: {
+      provider: 'local',
+      local: {directory: 'uploads'},
+      signedUrls: {enabled: true, expiresSeconds: 300, path: '/files/:token', signingSecretEnv: 'FILE_SECRET'}
+    },
+    docs: {openapi: {enabled: true}},
+    sdk: {enabled: true, languages: ['javascript', 'typescript']},
+    admin: {enabled: true},
+    api: {graphql: true},
+    entities: {
+      Asset: {
+        fields: {
+          name: {type: 'string', required: true},
+          image: {
+            type: 'file',
+            required: true,
+            upload: {maxBytes: 1024, mimeTypes: ['image/*'], directory: 'assets/images'}
+          },
+          attachments: {
+            type: 'file',
+            many: true,
+            upload: {maxBytes: 2048, mimeTypes: ['text/plain']}
+          }
+        }
+      }
+    },
+    deployment: {
+      docker: {enabled: true},
+      compose: {enabled: true, database: true}
+    }
+  };
+
+  const output = path.join(tempRoot, 'app');
+  const result = generateApplication(spec, output);
+  assert.ok(result.files.includes('src/config/storage.js'));
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.equal(pkg.dependencies.multer, '^2.4.0');
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /FILE_SECRET=change-me/);
+
+  const storage = fs.readFileSync(path.join(output, 'src/config/storage.js'), 'utf8');
+  assert.match(storage, /multer\.memoryStorage/);
+  assert.match(storage, /crypto\.randomUUID/);
+  assert.match(storage, /checksumSha256/);
+  assert.match(storage, /timingSafeEqual/);
+  assert.match(storage, /cleanupReplaced/);
+  assert.match(storage, /cleanupEntity/);
+  assert.match(storage, /Invalid storage path/);
+  assert.match(storage, /downloadHandler/);
+
+  const model = fs.readFileSync(path.join(output, 'src/models/Asset.js'), 'utf8');
+  assert.match(model, /mongoose\.Schema\.Types\.Mixed/);
+
+  const routes = fs.readFileSync(path.join(output, 'src/routes/AssetRoutes.js'), 'utf8');
+  assert.match(routes, /storage\.uploadMiddleware\("Asset"\)/);
+  assert.ok(routes.indexOf('storage.uploadMiddleware') < routes.indexOf('validation.body'));
+
+  const controller = fs.readFileSync(path.join(output, 'src/controllers/AssetController.js'), 'utf8');
+  assert.match(controller, /storage\.commitUploads\(req\)/);
+  assert.match(controller, /storage\.cleanupReplaced/);
+  assert.match(controller, /storage\.cleanupEntity/);
+  assert.match(controller, /storage\.enrich/);
+
+  const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
+  assert.match(app, /app\.get\("\/files\/:token", storage\.downloadHandler\)/);
+
+  const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
+  const create = openapi.paths['/api/assets'].post;
+  assert.equal(create.requestBody.content['multipart/form-data'].schema.properties.image.format, 'binary');
+  assert.equal(create.requestBody.content['multipart/form-data'].schema.properties.attachments.type, 'array');
+  assert.equal(openapi.components.schemas.Asset.properties.image.properties.checksumSha256.type, 'string');
+
+  const jsSdk = fs.readFileSync(path.join(output, 'sdk/javascript/index.js'), 'utf8');
+  assert.match(jsSdk, /function prepareBody/);
+  assert.match(jsSdk, /new FormData/);
+  assert.match(jsSdk, /config\.body instanceof FormData/);
+
+  let capturedRequest;
+  const generatedSdk = require(path.join(output, 'sdk/javascript'));
+  const multipartClient = generatedSdk.createClient({
+    baseUrl: 'http://example.test',
+    fetch: async (url, init) => {
+      capturedRequest = {url, init};
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({
+          _id: 'asset-1',
+          name: 'Example',
+          image: {key: 'assets/images/example.png', originalName: 'example.png', mimeType: 'image/png', size: 3, checksumSha256: 'a'.repeat(64), provider: 'local'}
+        })
+      };
+    }
+  });
+  const multipartResult = await multipartClient.assets.create({
+    name: 'Example',
+    image: new Blob(['png'], {type: 'image/png'})
+  });
+  assert.equal(multipartResult.image.mimeType, 'image/png');
+  assert.ok(capturedRequest.init.body instanceof FormData);
+  const capturedImage = capturedRequest.init.body.get('image');
+  assert.ok(capturedImage);
+  assert.equal(typeof capturedImage.arrayBuffer, 'function');
+  assert.equal(capturedImage.type, 'image/png');
+  assert.equal(capturedRequest.init.headers['content-type'], undefined);
+
+  const tsSdk = fs.readFileSync(path.join(output, 'sdk/typescript/index.ts'), 'utf8');
+  assert.match(tsSdk, /export interface FileMetadata/);
+  assert.match(tsSdk, /image: Blob/);
+  assert.match(tsSdk, /attachments\?: Array<Blob>/);
+
+  const admin = fs.readFileSync(path.join(output, 'admin/src/App.jsx'), 'utf8');
+  assert.match(admin, /type="file"/);
+  assert.match(admin, /field\.upload\.maxBytes/);
+  assert.match(admin, /multiple=\{field\.many\}/);
+
+  const compose = fs.readFileSync(path.join(output, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /file-data:\/app\/uploads/);
+  assert.match(compose, /file-data:/);
+
+  const dockerfile = fs.readFileSync(path.join(output, 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /mkdir -p/);
+  assert.match(dockerfile, /\/app\/uploads/);
+
+  const graphql = fs.readFileSync(path.join(output, 'src/graphql/index.js'), 'utf8');
+  assert.match(graphql, /image: JSON!/);
+  assert.doesNotMatch(graphql, /createAsset\(input: AssetCreateInput!/);
+
+  const normalized = result.spec.entities.find(entity => entity.name === 'Asset');
+  assert.equal(normalized.operations.get.cache.enabled, false);
+
+  for (const relativeFile of result.files.filter(file => file.endsWith('.js'))) {
+    const checked = spawnSync(process.execPath, ['--check', path.join(output, relativeFile)], {encoding: 'utf8'});
+    assert.equal(checked.status, 0, relativeFile + ' failed syntax check:\n' + checked.stderr);
+  }
+});
+
+test('generates S3-compatible object storage and signed URL runtime', t => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'j2e-s3-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
+
+  const output = path.join(tempRoot, 'app');
+  generateApplication({
+    specVersion: '1.0',
+    app: {name: 's3-api'},
+    database: {type: 'postgresql'},
+    storage: {
+      provider: 's3',
+      s3: {
+        bucketEnv: 'OBJECT_BUCKET',
+        regionEnv: 'OBJECT_REGION',
+        endpointEnv: 'OBJECT_ENDPOINT',
+        accessKeyEnv: 'OBJECT_ACCESS_KEY',
+        secretKeyEnv: 'OBJECT_SECRET_KEY',
+        forcePathStyle: true
+      }
+    },
+    entities: {
+      Document: {
+        fields: {
+          name: {type: 'string'},
+          file: {type: 'file', upload: {maxBytes: 4096, mimeTypes: ['application/pdf']}}
+        }
+      }
+    }
+  }, output);
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies['@aws-sdk/client-s3']);
+  assert.ok(pkg.dependencies['@aws-sdk/s3-request-presigner']);
+
+  const storage = fs.readFileSync(path.join(output, 'src/config/storage.js'), 'utf8');
+  assert.match(storage, /new S3Client/);
+  assert.match(storage, /PutObjectCommand/);
+  assert.match(storage, /DeleteObjectCommand/);
+  assert.match(storage, /GetObjectCommand/);
+  assert.match(storage, /getSignedUrl/);
+  assert.match(storage, /forcePathStyle/);
+
+  const prisma = fs.readFileSync(path.join(output, 'prisma/schema.prisma'), 'utf8');
+  assert.match(prisma, /file Json\?/);
+
+  const env = fs.readFileSync(path.join(output, '.env.example'), 'utf8');
+  assert.match(env, /OBJECT_BUCKET=/);
+  assert.match(env, /OBJECT_REGION=/);
+  assert.match(env, /OBJECT_ENDPOINT=/);
+  assert.match(env, /OBJECT_ACCESS_KEY=/);
+  assert.match(env, /OBJECT_SECRET_KEY=/);
+});

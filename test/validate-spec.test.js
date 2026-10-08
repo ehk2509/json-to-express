@@ -647,3 +647,80 @@ test('validates declarative cache policies and distributed topology constraints'
     /cache\.provider "memory" cannot be used with multiple Kubernetes replicas/
   );
 });
+
+
+test('validates file upload and storage semantics', () => {
+  assert.doesNotThrow(() => validateSpec({
+    specVersion: '1.0',
+    app: {name: 'files-ok'},
+    database: {type: 'mongodb'},
+    storage: {
+      provider: 'local',
+      local: {directory: 'uploads'},
+      signedUrls: {enabled: true, path: '/files/:token'}
+    },
+    entities: {
+      Asset: {
+        fields: {
+          image: {
+            type: 'file',
+            required: true,
+            upload: {maxBytes: 1024, mimeTypes: ['image/png'], directory: 'assets/images'}
+          },
+          docs: {
+            type: 'file',
+            many: true,
+            upload: {maxBytes: 2048, mimeTypes: ['application/pdf']}
+          }
+        }
+      }
+    }
+  }));
+
+  assert.throws(
+    () => validateSpec({
+      specVersion: '1.0',
+      app: {name: 'files-bad'},
+      database: {type: 'postgresql'},
+      storage: {
+        provider: 'local',
+        local: {directory: '../escape'},
+        signedUrls: {enabled: true, path: '/files/download'}
+      },
+      entities: {
+        Asset: {
+          indexes: [{fields: {image: 1}}],
+          operations: {
+            list: {query: {filters: ['image']}}
+          },
+          fields: {
+            image: {
+              type: 'file',
+              unique: true,
+              enum: ['bad'],
+              minLength: 1,
+              options: {trim: true},
+              upload: {directory: '../escape'}
+            },
+            title: {
+              type: 'string',
+              upload: {maxBytes: 10}
+            }
+          }
+        }
+      }
+    }),
+    error => {
+      assert.match(error.message, /storage\.signedUrls\.path must contain :token/);
+      assert.match(error.message, /storage\.local\.directory must be a safe relative path/);
+      assert.match(error.message, /cannot index a file metadata field/);
+      assert.match(error.message, /operations\.list\.query\.filters cannot include file field "image"/);
+      assert.match(error.message, /unique is not supported for file fields/);
+      assert.match(error.message, /scalar constraints are not supported for file fields/);
+      assert.match(error.message, /options is not supported for file fields/);
+      assert.match(error.message, /fields\.image\.upload\.directory must be a safe relative path/);
+      assert.match(error.message, /fields\.title\.upload requires type "file"/);
+      return true;
+    }
+  );
+});

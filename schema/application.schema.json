@@ -1455,6 +1455,92 @@
           }
         }
       }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "provider": {
+          "enum": [
+            "local",
+            "s3"
+          ],
+          "default": "local"
+        },
+        "signedUrls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "expiresSeconds": {
+              "type": "integer",
+              "minimum": 30,
+              "maximum": 604800,
+              "default": 900
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^/",
+              "default": "/files/:token"
+            },
+            "signingSecretEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "FILE_SIGNING_SECRET"
+            }
+          }
+        },
+        "local": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "directory": {
+              "type": "string",
+              "minLength": 1,
+              "default": "uploads"
+            }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bucketEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "S3_BUCKET"
+            },
+            "regionEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "default": "AWS_REGION"
+            },
+            "endpointEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "accessKeyEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "secretKeyEnv": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "forcePathStyle": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -1639,7 +1725,8 @@
             "number",
             "boolean",
             "date",
-            "reference"
+            "reference",
+            "file"
           ]
         },
         "required": {
@@ -1683,6 +1770,37 @@
             "cascade"
           ],
           "default": "restrict"
+        },
+        "upload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5242880
+            },
+            "mimeTypes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default": [
+                "*/*"
+              ]
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1
+            },
+            "preserveExtension": {
+              "type": "boolean",
+              "default": true
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -1990,7 +2108,8 @@
             "date",
             "datetime",
             "select",
-            "reference"
+            "reference",
+            "file"
           ]
         },
         "hidden": {
