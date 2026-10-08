@@ -28,6 +28,7 @@ const composeSource = require('./compose');
 const kubernetesFiles = require('./kubernetes');
 const sdkFiles = require('./sdk');
 const adminFiles = require('./admin');
+const graphqlSource = require('./graphql');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -66,6 +67,7 @@ function buildFiles(spec) {
   files.set(paths.errorHandler, errorHandlerSource(spec));
   files.set(paths.validation, validationSource(spec));
   files.set(paths.environment, environmentSource(spec));
+  if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {
     files.set(paths.workflowEngine, workflowEngineSource(spec));
