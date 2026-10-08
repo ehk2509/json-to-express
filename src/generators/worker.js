@@ -67,7 +67,7 @@ module.exports = function workerSource(spec) {
     '    await startWorker();',
     '  } finally {',
     ...(spec.cache.enabled ? ['    await cache.disconnect();'] : []),
-    '    if (connectDatabase.disconnect) await connectDatabase.disconnect();'
+    '    if (connectDatabase.disconnect) await connectDatabase.disconnect();',
     ...(spec.observability.enabled ? ['    await observability.shutdownTracing();'] : []),
     '  }',
     '}', '',
