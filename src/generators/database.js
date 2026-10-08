@@ -14,7 +14,7 @@ module.exports = function databaseSource(spec) {
       '}', '',
       'connectDatabase.client = prisma;',
       'connectDatabase.disconnect = () => prisma.$disconnect();',
-      'connectDatabase.ping = async () => { await prisma.$queryRawUnsafe("SELECT 1"); return true; };', ''
+      'connectDatabase.ping = async () => { await prisma.$queryRawUnsafe("SELECT 1"); return true; };', '',
       'module.exports = connectDatabase;', ''
     ].join('\n');
   }
@@ -34,7 +34,7 @@ module.exports = function databaseSource(spec) {
     '  if (mongoose.connection.readyState !== 1) throw new Error("MongoDB is not connected");',
     '  await mongoose.connection.db.admin().ping();',
     '  return true;',
-    '};', ''
+    '};', '',
     'module.exports = connectDatabase;', ''
   ].join('\n');
 };
