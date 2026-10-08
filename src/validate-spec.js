@@ -634,6 +634,32 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.seeds && isObject(spec.seeds)) {
+    if (!spec.database || spec.database.type !== 'postgresql') {
+      errors.push('seeds are currently supported only for postgresql');
+    }
+    for (const [entityName, rows] of Object.entries(spec.seeds)) {
+      const entity = spec.entities && spec.entities[entityName];
+      if (!entity) {
+        errors.push('seeds.' + entityName + ' references an unknown entity');
+        continue;
+      }
+      const fields = entity.fields || {};
+      if (!Array.isArray(rows)) continue;
+      rows.forEach((row, index) => {
+        if (!isObject(row)) return;
+        for (const key of Object.keys(row)) {
+          if (key === 'id') continue;
+          if (!fields[key]) {
+            errors.push('seeds.' + entityName + '[' + index + '].' + key + ' is not an entity field');
+          } else if (['reference', 'file'].includes(fields[key].type)) {
+            errors.push('seeds.' + entityName + '[' + index + '].' + key + ' cannot seed references or files; use scalar fields');
+          }
+        }
+      });
+    }
+  }
+
   if (errors.length) throw new SpecificationError(errors);
   return spec;
 }
