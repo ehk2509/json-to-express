@@ -77,7 +77,10 @@ function validateSpec(inputSpec) {
     errors.push('api.graphql.path cannot be the same as app.health.path');
   }
 
-  if (spec.storage && spec.storage.enabled === true) {
+  const hasFileFields = isObject(spec.entities) && Object.values(spec.entities).some(entity =>
+    isObject(entity) && isObject(entity.fields) && Object.values(entity.fields).some(field => isObject(field) && field.type === 'file')
+  );
+  if (spec.storage && (spec.storage.enabled !== false || hasFileFields)) {
     const storage = spec.storage;
     const signed = storage.signedUrls || {};
     const downloadPath = signed.path || '/files/:token';
