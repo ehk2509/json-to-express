@@ -44,10 +44,14 @@ async function main() {
     name: 'SDK Keyboard ' + suffix,
     price: 149,
     category: categoryId,
-    tags: [tagId]
+    tags: [tagId],
+    image: new Blob(['sdk-image'], {type: 'text/plain'})
   });
   const productId = product[idField];
   assert.ok(productId);
+  assert.equal(product.image.mimeType, 'text/plain');
+  assert.equal(product.image.provider, 'local');
+  assert.ok(product.image.url);
 
   const listed = await client.products.list({
     name: 'SDK Keyboard ' + suffix,
@@ -65,9 +69,15 @@ async function main() {
   assert.equal(fetched.price, 149);
   assert.equal(fetched.tags[0].name, 'SDK Tag ' + suffix);
 
-  const updated = await client.products.update(productId, {price: 175, tags: []});
+  const updated = await client.products.update(productId, {
+    price: 175,
+    tags: [],
+    image: new Blob(['sdk-image-updated'], {type: 'text/plain'})
+  });
   assert.equal(updated.price, 175);
   assert.deepEqual(updated.tags, []);
+  assert.equal(updated.image.mimeType, 'text/plain');
+  assert.ok(updated.image.url);
 
   if (client.actions && client.actions.queueReprice) {
     const queued = await client.actions.queueReprice({
