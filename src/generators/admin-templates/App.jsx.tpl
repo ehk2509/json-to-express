@@ -573,7 +573,7 @@ function Shell({onLogout}) {
   const [route, setRoute] = useState(initial);
   const [toast, setToast] = useState(null);
   const api = useMemo(() => createApi(config, {
-    baseUrl: import.meta.env.VITE_API_BASE_URL || config.baseUrl
+    baseUrl: import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : config.baseUrl)
   }), []);
 
   useEffect(() => {
