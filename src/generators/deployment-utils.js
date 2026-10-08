@@ -40,6 +40,9 @@ function environmentContract(spec) {
   if (spec.auth.local.passwordReset.webhookUrlEnv) {
     secrets[spec.auth.local.passwordReset.webhookUrlEnv] = '<set-me>';
   }
+  if (spec.cache.enabled && spec.cache.provider === 'redis') {
+    secrets[spec.cache.redis.urlEnv] = '<set-me>';
+  }
   if (spec.observability.tracing.enabled && spec.observability.tracing.exporter === 'otlp-http') {
     config[spec.observability.tracing.endpointEnv] = 'http://otel-collector:4318/v1/traces';
   }
