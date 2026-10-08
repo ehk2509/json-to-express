@@ -77,6 +77,18 @@ function validateSpec(inputSpec) {
     errors.push('api.graphql.path cannot be the same as app.health.path');
   }
 
+  if (spec.storage && spec.storage.enabled === true) {
+    const storage = spec.storage;
+    const signed = storage.signedUrls || {};
+    const downloadPath = signed.path || '/files/:token';
+    if (signed.enabled !== false && !downloadPath.includes(':token')) {
+      errors.push('storage.signedUrls.path must contain :token');
+    }
+    if (storage.provider === 'local' && storage.local && storage.local.directory) {
+      validateRelativePath(errors, storage.local.directory, 'storage.local.directory');
+    }
+  }
+
   if (spec.observability && spec.observability.enabled === true) {
     const observability = spec.observability;
     const metrics = observability.metrics || {};
@@ -505,6 +517,14 @@ function validateSpec(inputSpec) {
         }
 
         const list = entity.operations.list;
+        if (isObject(list) && isObject(list.query) && Array.isArray(list.query.filters)) {
+          for (const fieldName of list.query.filters) {
+            const field = entity.fields && entity.fields[fieldName];
+            if (field && field.type === 'file') {
+              errors.push('entities.' + entityName + '.operations.list.query.filters cannot include file field "' + fieldName + '"');
+            }
+          }
+        }
         if (isObject(list) && isObject(list.query) && isObject(list.query.pagination)) {
           const pagination = list.query.pagination;
           if (
@@ -523,6 +543,8 @@ function validateSpec(inputSpec) {
           for (const fieldName of Object.keys(definition.fields)) {
             if (!entity.fields || !Object.prototype.hasOwnProperty.call(entity.fields, fieldName)) {
               errors.push('entities.' + entityName + '.indexes[' + index + '].fields.' + fieldName + ' references an unknown field');
+            } else if (entity.fields[fieldName].type === 'file') {
+              errors.push('entities.' + entityName + '.indexes[' + index + '].fields.' + fieldName + ' cannot index a file metadata field');
             } else if (
               spec.database && spec.database.type === 'postgresql' &&
               entity.fields[fieldName].type === 'reference' && entity.fields[fieldName].many === true
@@ -572,8 +594,26 @@ function validateSpec(inputSpec) {
             } else if (!entityNames.has(field.ref)) {
               errors.push('entities.' + entityName + '.fields.' + fieldName + '.ref references unknown entity "' + field.ref + '"');
             }
-          } else if (field.ref !== undefined || field.many !== undefined || field.onDelete !== undefined) {
-            errors.push('entities.' + entityName + '.fields.' + fieldName + ' reference options require type "reference"');
+            if (field.upload !== undefined) errors.push('entities.' + entityName + '.fields.' + fieldName + '.upload requires type "file"');
+          } else if (field.type === 'file') {
+            if (field.ref !== undefined || field.onDelete !== undefined) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + ' reference options are not supported for file fields');
+            }
+            if (field.unique === true) errors.push('entities.' + entityName + '.fields.' + fieldName + '.unique is not supported for file fields');
+            if (field.enum !== undefined || field.min !== undefined || field.max !== undefined || field.minLength !== undefined || field.maxLength !== undefined) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + ' scalar constraints are not supported for file fields');
+            }
+            if (field.options && Object.keys(field.options).length) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + '.options is not supported for file fields');
+            }
+            if (field.upload && field.upload.directory) {
+              validateRelativePath(errors, field.upload.directory, 'entities.' + entityName + '.fields.' + fieldName + '.upload.directory');
+            }
+          } else {
+            if (field.ref !== undefined || field.many !== undefined || field.onDelete !== undefined) {
+              errors.push('entities.' + entityName + '.fields.' + fieldName + ' reference options require type "reference" or "file" for many');
+            }
+            if (field.upload !== undefined) errors.push('entities.' + entityName + '.fields.' + fieldName + '.upload requires type "file"');
           }
 
           if (!Array.isArray(field.enum)) continue;
