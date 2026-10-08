@@ -990,6 +990,44 @@ The generated Deployment includes readiness/liveness probes when the health endp
 
 The generator intentionally does not create a production MongoDB or PostgreSQL StatefulSet. Kubernetes deployments reference an external database URL through the Secret template so managed databases can be used without modifying generated application code.
 
+## GraphQL API generation
+
+REST and GraphQL can now be generated from the same normalized application model.
+
+~~~json
+{
+  "api": {
+    "rest": true,
+    "graphql": {
+      "enabled": true,
+      "path": "/graphql"
+    }
+  }
+}
+~~~
+
+REST remains enabled by default. Set rest to false for a GraphQL-only application.
+
+The generated GraphQL schema includes:
+
+- a backend-agnostic id: ID! for every entity
+- get<Entity> queries
+- list<Entities> queries
+- typed filter inputs derived from each list operation's allowlist/operators
+- sort and pagination arguments
+- create<Entity>, update<Entity>, and delete<Entity> mutations
+- scalar and reference fields
+- many-to-many relation arrays
+- custom workflow endpoints exposed as action<Name> GraphQL fields
+- a JSON scalar for generic workflow params/query/body/results
+- standard GraphQL introspection
+
+GraphQL is not generated as a second persistence layer. Its CRUD resolvers invoke the same generated controllers used by REST and reuse the same validation/auth primitives. That keeps soft delete, hooks, transactions, relation delete policies, database errors, JWT/RBAC, workflows, outbox events, and background jobs aligned.
+
+Relations are resolved through DataLoader-backed entity caches. PostgreSQL many-to-many fields also get relation loaders so a GraphQL relation can resolve even when the corresponding REST operation did not request a Prisma include.
+
+The GraphQL API intentionally exposes id instead of leaking MongoDB _id, while REST keeps its existing target-specific response shape.
+
 ## Generated JavaScript and TypeScript SDKs
 
 The same normalized model that generates routes and OpenAPI can also generate a standalone client package.
@@ -1293,7 +1331,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-The next expansion layer is additional API/server targets such as GraphQL and Fastify, plus deeper authentication strategies and production observability.
+The next expansion layer is additional server targets such as Fastify, plus deeper authentication strategies and production observability.
 
 ## License
 
