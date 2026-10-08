@@ -68,6 +68,36 @@ module.exports = function prismaSchemaSource(spec) {
     '}', ''
   ];
 
+  if (spec.auth.storeEnabled) {
+    lines.push(
+      'model J2EAuthUser {',
+      '  id String @id @default(uuid())',
+      '  email String @unique',
+      '  passwordHash String',
+      '  roles Json',
+      '  createdAt DateTime @default(now())',
+      '  updatedAt DateTime @updatedAt',
+      '  @@map("_j2e_auth_users")',
+      '}', '',
+      'model J2EAuthToken {',
+      '  id String @id @default(uuid())',
+      '  kind String',
+      '  tokenHash String @unique',
+      '  userId String',
+      '  roles Json',
+      '  expiresAt DateTime',
+      '  revokedAt DateTime?',
+      '  metadata Json?',
+      '  createdAt DateTime @default(now())',
+      '  @@index([kind])',
+      '  @@index([userId])',
+      '  @@index([expiresAt])',
+      '  @@index([kind, userId, revokedAt])',
+      '  @@map("_j2e_auth_tokens")',
+      '}', ''
+    );
+  }
+
   if (spec.outbox.enabled) {
     lines.push(
       'model J2EOutbox {',
