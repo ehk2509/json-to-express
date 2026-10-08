@@ -69,6 +69,33 @@ export function createApi(config, options = {}) {
     else target.removeItem(config.auth.tokenKey + '-api-key');
   }
 
+  function prepareBody(resource, data) {
+    const fileFields = (resource.fields || []).filter(field => field.type === 'file');
+    if (!data || !fileFields.length || typeof FormData === 'undefined' || typeof Blob === 'undefined') return data;
+    const fileNames = new Set(fileFields.map(field => field.name));
+    const hasFile = fileFields.some(field => {
+      const value = data[field.name];
+      return value instanceof Blob || (Array.isArray(value) && value.some(item => item instanceof Blob));
+    });
+    if (!hasFile) return data;
+
+    const form = new FormData();
+    for (const [name, value] of Object.entries(data)) {
+      if (value === undefined) continue;
+      if (fileNames.has(name)) {
+        if (value === null) form.append(name, 'null');
+        else if (Array.isArray(value)) {
+          for (const item of value) if (item instanceof Blob) form.append(name, item);
+        } else if (value instanceof Blob) form.append(name, value);
+        continue;
+      }
+      if (value instanceof Date) form.append(name, value.toISOString());
+      else if (Array.isArray(value) || (value && typeof value === 'object')) form.append(name, JSON.stringify(value));
+      else form.append(name, String(value));
+    }
+    return form;
+  }
+
   async function request(method, route, requestOptions = {}) {
     const headers = {...(requestOptions.headers || {})};
     const authToken = await token();
@@ -78,10 +105,16 @@ export function createApi(config, options = {}) {
 
     let body;
     if (requestOptions.body !== undefined && method !== 'GET' && method !== 'HEAD') {
-      headers['content-type'] = headers['content-type'] || 'application/json';
-      body = headers['content-type'].includes('application/json')
-        ? JSON.stringify(requestOptions.body)
-        : requestOptions.body;
+      const isForm = typeof FormData !== 'undefined' && requestOptions.body instanceof FormData;
+      if (isForm) {
+        delete headers['content-type'];
+        body = requestOptions.body;
+      } else {
+        headers['content-type'] = headers['content-type'] || 'application/json';
+        body = headers['content-type'].includes('application/json')
+          ? JSON.stringify(requestOptions.body)
+          : requestOptions.body;
+      }
     }
 
     const response = await fetchImpl(
@@ -125,14 +158,17 @@ export function createApi(config, options = {}) {
       },
       create(data, requestOptions = {}) {
         if (!operations.create.enabled) throw new Error(resource.name + ' create operation is disabled');
-        return request(operations.create.method, operations.create.path, {...requestOptions, body: data});
+        return request(operations.create.method, operations.create.path, {
+          ...requestOptions,
+          body: prepareBody(resource, data)
+        });
       },
       update(id, data, requestOptions = {}) {
         if (!operations.update.enabled) throw new Error(resource.name + ' update operation is disabled');
         return request(operations.update.method, operations.update.path, {
           ...requestOptions,
           params: {[resource.idParam]: id},
-          body: data
+          body: prepareBody(resource, data)
         });
       },
       remove(id, requestOptions = {}) {
