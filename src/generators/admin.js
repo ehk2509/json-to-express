@@ -136,13 +136,13 @@ module.exports = function adminFiles(spec) {
   return new Map([
     [path.posix.join(root, 'package.json'), packageJson(spec)],
     [path.posix.join(root, 'vite.config.js'), viteConfig(spec)],
-    [path.posix.join(root, 'index.html'), readTemplate('index.html')],
+    [path.posix.join(root, 'index.html'), readTemplate('index.html.tpl')],
     [path.posix.join(root, 'README.md'), readmeSource(spec)],
     [path.posix.join(root, 'src/config.js'), 'export const config = ' + JSON.stringify(configObject(spec), null, 2) + ';\n'],
-    [path.posix.join(root, 'src/api.js'), readTemplate('api.js')],
-    [path.posix.join(root, 'src/App.jsx'), readTemplate('App.jsx')],
-    [path.posix.join(root, 'src/main.jsx'), readTemplate('main.jsx')],
-    [path.posix.join(root, 'src/styles.css'), readTemplate('styles.css')]
+    [path.posix.join(root, 'src/api.js'), readTemplate('api.js.tpl')],
+    [path.posix.join(root, 'src/App.jsx'), readTemplate('App.jsx.tpl')],
+    [path.posix.join(root, 'src/main.jsx'), readTemplate('main.jsx.tpl')],
+    [path.posix.join(root, 'src/styles.css'), readTemplate('styles.css.tpl')]
   ]);
 };
 
