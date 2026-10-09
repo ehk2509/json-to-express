@@ -12,7 +12,7 @@ function safePrismaDelete(entity, spec) {
 
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    (spec.database.type === 'mongodb' || (!entity.audit.enabled && !entity.softDelete.enabled)) &&
+    (spec.database.type === 'mongodb' || !entity.softDelete.enabled) &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
@@ -193,6 +193,7 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        if (action === "create") {',
     '          const data = {...request.body};',
+    '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) {data[entry.audit.createdBy] = request.raw.auth.userId; data[entry.audit.updatedBy] = request.raw.auth.userId;}',
     '          const record = postgres ? await model.create({data: writeData(entry, data, "create")}) : await transactional(op.transaction, async session => (await model.create([data], session ? {session} : {}))[0]);',
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
@@ -205,6 +206,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!existing) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const data = {...request.body};',
+    '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) data[entry.audit.updatedBy] = request.raw.auth.userId;',
     '          const record = postgres ? await model.update({where: {id}, data: writeData(entry, data, "update")}) : await transactional(op.transaction, async session => model.findOneAndUpdate(liveFilter(entry, {_id: id}), data, {new: true, runValidators: op.runValidators, ...(session ? {session} : {})}));',
     '          if (entry.hasFiles) await storage.cleanupReplaced(entry.name, existing, request.body);',
