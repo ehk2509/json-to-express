@@ -59,12 +59,15 @@ async function referencedKeys() {
       const model = connectDatabase.client[entity.name[0].toLowerCase() + entity.name.slice(1)];
       const select = Object.fromEntries(names.map(name => [name, true]));
       select.id = true;
-      let skip = 0;
+      let cursor = null;
       for (;;) {
-        const records = await model.findMany({select, skip, take: 200, orderBy: {id: 'asc'}});
+        const records = await model.findMany({
+          select, take: 200, orderBy: {id: 'asc'},
+          ...(cursor ? {cursor: {id: cursor}, skip: 1} : {})
+        });
         for (const record of records) for (const name of names) referencesIn(record[name], keys);
-        skip += records.length;
         if (records.length < 200) break;
+        cursor = records[records.length - 1].id;
       }
     } else {
       const model = require(entity.modelPath);
@@ -93,7 +96,7 @@ async function inventory(prefixes, cutoff, maxScan) {
         else if (entry.isFile()) {
           scanned += 1;
           const stat = await fs.stat(full);
-          if (stat.mtime <= cutoff) items.push({key: path.relative(root, full).split(path.sep).join('/'), provider: 'local'});
+          if (stat.mtime <= cutoff) items.push({key: path.relative(root, full).split(path.sep).join('/'), provider: 'local', modifiedAt: stat.mtime.toISOString(), size: stat.size, inode: String(stat.ino)});
         }
       }
     }
@@ -124,7 +127,7 @@ async function inventory(prefixes, cutoff, maxScan) {
           scanned += contents.length;
           for (const entry of contents) {
             if (entry.LastModified && entry.LastModified <= cutoff && entry.Key)
-              items.push({key: entry.Key, provider: 's3'});
+              items.push({key: entry.Key, provider: 's3', modifiedAt: entry.LastModified.toISOString(), size: entry.Size, etag: entry.ETag});
           }
           continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
           if (scanned >= maxScan) {truncated = true; break;}
@@ -135,7 +138,40 @@ async function inventory(prefixes, cutoff, maxScan) {
   }
   return {items, scanned, truncated};
 }
-async function reconcile(options) {
+async function objectUnchanged(item, cutoff) {
+  if (config.provider === 'local') {
+    const root = path.resolve(process.cwd(), config.local.directory);
+    const target = path.resolve(root, item.key);
+    if (!target.startsWith(root + path.sep)) throw new Error('Unsafe reconciliation key');
+    try {
+      const stat = await fs.lstat(target);
+      return stat.isFile() && stat.mtime <= cutoff &&
+        String(stat.ino) === item.inode && stat.size === item.size &&
+        stat.mtime.toISOString() === item.modifiedAt;
+    } catch (error) {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+  const {S3Client, HeadObjectCommand} = require('@aws-sdk/client-s3');
+  const options = {region: process.env[config.s3.regionEnv], forcePathStyle: config.s3.forcePathStyle};
+  if (config.s3.endpointEnv && process.env[config.s3.endpointEnv]) options.endpoint = process.env[config.s3.endpointEnv];
+  if (config.s3.accessKeyEnv && config.s3.secretKeyEnv &&
+      process.env[config.s3.accessKeyEnv] && process.env[config.s3.secretKeyEnv]) {
+    options.credentials = {accessKeyId: process.env[config.s3.accessKeyEnv], secretAccessKey: process.env[config.s3.secretKeyEnv]};
+  }
+  const s3 = new S3Client(options);
+  try {
+    const current = await s3.send(new HeadObjectCommand({Bucket: process.env[config.s3.bucketEnv], Key: item.key}));
+    return Boolean(current.LastModified && current.LastModified <= cutoff &&
+      current.LastModified.toISOString() === item.modifiedAt &&
+      current.ContentLength === item.size && current.ETag === item.etag);
+  } catch (error) {
+    if (error.$metadata && error.$metadata.httpStatusCode === 404) return false;
+    throw error;
+  } finally {s3.destroy();}
+}
+async function reconcile(options, hooks = {}) {
   const prefixes = [...new Set(entities.flatMap(entity => entity.fields.map(field => safePrefix(field.prefix))))];
   const cutoff = new Date(Date.now() - options.olderThanHours * 3600000);
   const referenced = await referencedKeys();
@@ -143,10 +179,17 @@ async function reconcile(options) {
   const orphaned = listed.items.filter(item => !referenced.has(item.key));
   const selected = orphaned.slice(0, options.limit);
   let removed = 0;
+  let skippedReferenced = 0;
+  let skippedModified = 0;
   if (options.execute) {
-    // Re-check all references before executing physical deletion.
-    const nowReferenced = await referencedKeys();
-    for (const item of selected) if (!nowReferenced.has(item.key)) {
+    for (const item of selected) {
+      // Test seam exercises real writers at the exact reconciliation boundary.
+      if (hooks.beforeCandidate) await hooks.beforeCandidate(item);
+      // Re-query immediately per key; never rely on one scan for the entire batch.
+      const currentReferences = await referencedKeys();
+      if (currentReferences.has(item.key)) {skippedReferenced += 1; continue;}
+      // Revalidate the object's age, inode/ETag and size before destructive IO.
+      if (!await objectUnchanged(item, cutoff)) {skippedModified += 1; continue;}
       await storage.cleanup([item]);
       removed += 1;
     }
@@ -155,7 +198,8 @@ async function reconcile(options) {
     mode: options.execute ? 'execute' : 'dry-run', provider: config.provider,
     minAgeHours: options.olderThanHours, scanned: listed.scanned, truncated: listed.truncated,
     referenced: referenced.size, candidates: orphaned.length,
-    selected: selected.length, removed, keys: selected.slice(0, 25).map(item => item.key)
+    selected: selected.length, removed, skippedReferenced, skippedModified,
+    keys: selected.slice(0, 25).map(item => item.key)
   };
 }
 async function main() {
@@ -165,7 +209,7 @@ async function main() {
   finally {await connectDatabase.disconnect();}
 }
 if (require.main === module) main().catch(error => {console.error(error);process.exitCode = 1;});
-module.exports = {args, safePrefix, reconcile, referencedKeys, inventory};
+module.exports = {args, safePrefix, reconcile, referencedKeys, inventory, objectUnchanged};
 `;
   return template.trimStart()
     .replace('__DATABASE_REQUIRE__', js(relativeRequire(target, paths.database)))
