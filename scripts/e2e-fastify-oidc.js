@@ -73,6 +73,22 @@ const respond = (res, status, body) => {
     assert.equal(validBearer.status,200,'valid provider-issued JWT must authorize native CRUD');
     const malformedBearer=await fetch(app+'/api/todos',{headers:{authorization:'Bearer not-a-jwt'}});
     assert.equal(malformedBearer.status,401);
+    const wrongAudience = await new jose.SignJWT({sub:'wrong-audience'})
+      .setProtectedHeader({alg:'RS256',kid:jwk.kid}).setIssuer(issuer)
+      .setAudience('wrong-client').setIssuedAt().setExpirationTime('5m').sign(privateKey);
+    assert.equal((await fetch(app+'/api/todos',{headers:{authorization:'Bearer '+wrongAudience}})).status,401,
+      'provider token audience must be checked');
+    const rejectedLogin = await fetch(app+'/auth/oidc/login',{redirect:'manual'});
+    assert.equal(rejectedLogin.status,302);
+    const secondRedirect = new URL(rejectedLogin.headers.get('location'));
+    const secondCookie = rejectedLogin.headers.get('set-cookie').split(';')[0];
+    challenge = secondRedirect.searchParams.get('code_challenge');
+    const secondCallback = app+'/auth/oidc/callback?state='+encodeURIComponent(secondRedirect.searchParams.get('state'));
+    const deniedExchange = await fetch(secondCallback+'&code=invalid',{headers:{cookie:secondCookie}});
+    assert.equal(deniedExchange.status,502,'invalid provider token exchange must fail safely');
+    assert.equal((await fetch(secondCallback+'&code=ci-code',{headers:{cookie:secondCookie}})).status,401,
+      'state remains single-use after an exchange failure');
+    assert.equal(exchanges,1);
     console.log('OIDC provider exchange, PKCE verification, token validation and state replay checks passed');
   } finally {
     await new Promise(resolve => provider.close(resolve));
