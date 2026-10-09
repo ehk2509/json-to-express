@@ -13,7 +13,7 @@ function spec(framework = 'fastify', enabled = true) {
 test('Fastify produces a native configurable health route and register call', async () => {
   const files = buildFiles(normalizeSpec(spec()));
   const native = files.get('src/fastify-native.js');
-  assert.match(files.get('src/server.js'), /registerNativeRoutes\(fastify\)/);
+  assert.match(files.get('src/app.js'), /register0\(fastify\)/);
   new vm.Script(native);
   const routes = [];
   const module = {exports: null};
