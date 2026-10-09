@@ -12,7 +12,6 @@ function safePrismaDelete(entity, spec) {
 
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    !spec.cache.enabled &&
     !entity.audit.enabled && !entity.softDelete.enabled &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
@@ -23,7 +22,7 @@ function eligible(entity, spec) {
         !entity.fields.some(field => field.type === 'reference' && field.many))) &&
     (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      (op.transaction || op.cache.enabled || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
+      (op.transaction || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
     !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
@@ -52,6 +51,7 @@ module.exports = function nativeCrudSource(spec) {
     "'use strict';",
     ...(spec.auth.enabled ? ['const auth = require(' + js(relativeRequire(nativePath, filePaths(spec).auth)) + ');'] : []),
     ...(spec.storage.enabled ? ['const storage = require(' + js(relativeRequire(nativePath, filePaths(spec).storage)) + ');'] : []),
+    ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(nativePath, filePaths(spec).cache)) + ');'] : []),
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
@@ -60,6 +60,7 @@ module.exports = function nativeCrudSource(spec) {
     'const models = [' + entities.map((unused, i) => 'model' + i).join(', ') + '];',
     'const postgres = ' + (spec.database.type === 'postgresql') + ';',
     'const authEnabled = ' + Boolean(spec.auth.enabled) + ';',
+    'const cacheEnabled = ' + Boolean(spec.cache.enabled) + ';',
     'function validId(id) {',
     '  return postgres ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : /^[0-9a-f]{24}$/i.test(id);',
     '}',
@@ -117,6 +118,11 @@ module.exports = function nativeCrudSource(spec) {
     '            return reply.code(400).send({error: "Invalid request", details: errors});',
     '          }',
     '        }',
+    '        const cachePolicy = cacheEnabled && ["list", "get"].includes(action) && op.cache.enabled ? op.cache : null;',
+    '        const cacheRequest = {params: request.params, query: request.query, auth: request.raw.auth};',
+    '        const cacheEntry = cachePolicy ? await cache.nativeRead(entry.name, action, cachePolicy, cacheRequest) : null;',
+    '        if (cacheEntry && cacheEntry.cached !== null) {reply.header("X-Cache", "HIT"); return reply.code(cacheEntry.cached.status).send(cacheEntry.cached.body);}',
+    '        if (cacheEntry) reply.header("X-Cache", "MISS");',
     '        if (action === "list") {',
     '          const q = op.query;',
     '          const populate = op.populate || [];',
@@ -141,17 +147,23 @@ module.exports = function nativeCrudSource(spec) {
     '            if (populate.length) query = query.populate(populate);',
     '            rows = await query.lean();',
     '          }',
-    '          return reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, rows, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : rows);',
+    '          const result = entry.hasFiles ? await storage.enrich(entry.name, rows, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : rows;',
+    '          if (cacheEntry) await cache.nativeWrite(cacheEntry.key, result, op.status, cachePolicy.ttlSeconds);',
+    '          return reply.code(op.status).send(result);',
     '        }',
     '        if (action === "get") {',
     '          const populate = op.populate || [];',
     '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findById(id).populate(populate) : model.findById(id));',
-    '          return record ? reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record) : reply.code(op.notFoundStatus).send({error: "Not found"});',
+    '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
+    '          const result = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
+    '          if (cacheEntry) await cache.nativeWrite(cacheEntry.key, result, op.status, cachePolicy.ttlSeconds);',
+    '          return reply.code(op.status).send(result);',
     '        }',
     '        if (action === "create") {',
     '          const record = postgres ? await model.create({data: writeData(entry, request.body, "create")}) : await model.create(request.body);',
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          storedUploads = [];',
+    '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "update") {',
@@ -170,6 +182,7 @@ module.exports = function nativeCrudSource(spec) {
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
     '          } else await model.findByIdAndDelete(id);',
     '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
+    '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
     '        }',
     '        } catch (error) {',
