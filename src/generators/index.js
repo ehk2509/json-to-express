@@ -39,6 +39,8 @@ const storageSource = require('./storage');
 const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
+const fastifyPostgresDeleteSource = require('./fastify-postgres-delete');
+const fastifyMongoDeleteSource = require('./fastify-mongo-delete');
 const fastifyEndpointSource = require('./fastify-endpoints');
 const fastifyAuthSource = require('./fastify-auth');
 const migrationInitSource = require('./migration-init');
@@ -97,6 +99,9 @@ function buildFiles(spec) {
   const files = new Map();
   const paths = filePaths(spec);
   const directFastify = isDirectFastify(spec);
+  if (spec.app.framework === 'fastify' && !directFastify) {
+    throw new Error('Native Fastify requires supported MongoDB or PostgreSQL CRUD and valid reference population paths. No Express compatibility fallback is generated.');
+  }
 
   files.set('package.json', packageSource(spec));
   files.set('.env.example', envExample(spec));
@@ -106,6 +111,8 @@ function buildFiles(spec) {
   if (spec.app.framework === 'fastify') {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-native.js'), fastifyNativeSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-crud.js'), fastifyCrudSource(spec));
+    if (spec.database.type === 'postgresql') files.set(path.posix.join(spec.generation.paths.source, 'fastify-postgres-delete.js'), fastifyPostgresDeleteSource(spec));
+    if (spec.database.type === 'mongodb') files.set(path.posix.join(spec.generation.paths.source, 'fastify-mongo-delete.js'), fastifyMongoDeleteSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-auth.js'), fastifyAuthSource(spec));
   }

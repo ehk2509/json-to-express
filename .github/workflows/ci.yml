@@ -413,14 +413,22 @@ jobs:
           fs.writeFileSync('/tmp/fastify-direct-spec.json', JSON.stringify({
             specVersion:'1.0',
             generation:{outputDir:'.tmp/fastify-direct-smoke'},
-            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499},
+            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, production:{rateLimit:{enabled:true,max:100,windowMs:60000},compression:true}, middlewareModules:['src/middleware/tenant.js']},
             database:{type:'mongodb'},
+            events:{'ci.empty':{webhooks:[]}},
+            observability:{enabled:true,metrics:{enabled:true}},
             cache:{enabled:true,provider:'redis',redis:{urlEnv:'REDIS_URL'}},
             auth:{enabled:true,strategies:['apiKey'],apiKey:{keys:[{env:'TEST_API_KEY',userId:'reader',roles:['reader']}]}},
             entities:{Todo:{fields:{title:{type:'string',required:true},done:{type:'boolean',default:false}},operations:{get:{auth:{required:true,strategies:['apiKey']},cache:{enabled:true,ttlSeconds:30}}}}}
           }));
           NODE
           node bin/json-to-express.js generate /tmp/fastify-direct-spec.json
+          mkdir -p .tmp/fastify-direct-smoke/src/middleware
+          cat > .tmp/fastify-direct-smoke/src/middleware/tenant.js <<'MIDDLEWARE'
+          module.exports = {
+            fastifyOnRequest(request, reply) {reply.header('x-native-tenant', 'supported');}
+          };
+          MIDDLEWARE
       - name: Verify no Express runtime dependency
         working-directory: .tmp/fastify-direct-smoke
         run: |
@@ -432,6 +440,8 @@ jobs:
           assert.equal(pkg.dependencies.express,undefined);
           assert.equal(pkg.dependencies['@fastify/express'],undefined);
           assert.ok(pkg.dependencies.redis);
+          assert.ok(pkg.dependencies['@fastify/compress']);
+          assert.ok(pkg.dependencies['@fastify/rate-limit']);
           assert.doesNotMatch(fs.readFileSync('src/server.js','utf8'), /fastifyExpress|fastify\.use\(/);
           assert.doesNotMatch(fs.readFileSync('src/app.js','utf8'), /require\(['"]express['"]\)/);
           NODE
@@ -440,6 +450,25 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm test
+      - name: Reject legacy Express middleware in native Fastify app
+        working-directory: .tmp/fastify-direct-smoke
+        run: |
+          cp src/middleware/tenant.js src/middleware/tenant.js.original
+          cat > src/middleware/tenant.js <<'LEGACY'
+          module.exports = (req, res, next) => next();
+          LEGACY
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const app = require('./src/app');
+          app.ready().then(() => {
+            console.error('Express middleware unexpectedly accepted by native Fastify');
+            process.exitCode = 1;
+          }).catch(error => {
+            assert.match(error.message, /Native Fastify middleware exports are required/);
+            assert.match(error.message, /migrate Express/);
+          });
+          NODE
+          mv src/middleware/tenant.js.original src/middleware/tenant.js
       - name: Exercise adapter-free Fastify server
         working-directory: .tmp/fastify-direct-smoke
         env:
@@ -477,6 +506,22 @@ jobs:
             assert.equal((await update.json()).done,true);
             assert.equal((await fetch(base+'/'+record._id,{method:'DELETE',headers:authorized})).status,204);
             assert.equal((await fetch(base+'/'+record._id,{headers:authorized})).status,404);
+            assert.equal((await fetch('http://127.0.0.1:3499/health')).headers.get('x-native-tenant'),'supported');
+            const ready=await fetch('http://127.0.0.1:3499/health/ready');
+            assert.equal(ready.status,200);
+            assert.equal((await ready.json()).status,'ready');
+            const metrics=await fetch('http://127.0.0.1:3499/metrics',{headers:{'x-request-id':'ci-metrics-id'}});
+            assert.equal(metrics.status,200);
+            assert.equal(metrics.headers.get('x-request-id'),'ci-metrics-id');
+            assert.match(await metrics.text(),/j2e_http_requests_total/);
+            const compressed=await fetch('http://127.0.0.1:3499/metrics',{headers:{'accept-encoding':'gzip'}});
+            assert.equal(compressed.status,200);
+            let throttled=false;
+            for (let attempt=0;attempt<120;attempt++) {
+              const response=await fetch('http://127.0.0.1:3499/health');
+              if (response.status===429) {throttled=true;break;}
+            }
+            assert.equal(throttled,true,'native Fastify rate limit must return 429');
           })().catch(error => {console.error(error); process.exitCode=1;});
           NODE
       - name: Print adapter-free Fastify logs
@@ -513,7 +558,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}, operations: {create: {transaction: true, populate: ['owner']}, update: {transaction: true, populate: ['owner']}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}, Project: {fields:{title:{type:'string'}, owner:{type:'reference',ref:'User',onDelete:'cascade'}},softDelete:{enabled:true}}, ProjectEntry:{route:'project-entries',fields:{title:{type:'string'},project:{type:'reference',ref:'Project',onDelete:'cascade'}}}, Label:{fields:{title:{type:'string'},owners:{type:'reference',ref:'User',many:true,onDelete:'nullify'}}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
@@ -593,7 +638,21 @@ jobs:
             assert.equal(noteResponse.status,201);
             assert.equal(logResponse.status,201);
             const note = await noteResponse.json();
+            assert.equal(note.owner.id,owner.id,'created native Prisma response must populate owner');
+            const noteUpdated=await fetch(notes+'/'+note.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({title:'populated update'})});
+            assert.equal(noteUpdated.status,200);
+            assert.equal((await noteUpdated.json()).owner.id,owner.id,'native Prisma update must populate owner');
             const log = await logResponse.json();
+            const post = (url,body) => fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+            const projectResponse=await post('http://127.0.0.1:3498/api/projects',{title:'Cascade project',owner:owner.id});
+            assert.equal(projectResponse.status,201);
+            const project=await projectResponse.json();
+            const childResponse=await post('http://127.0.0.1:3498/api/project-entries',{title:'Nested descendant',project:project.id});
+            assert.equal(childResponse.status,201);
+            const descendant=await childResponse.json();
+            const labelResponse=await post('http://127.0.0.1:3498/api/labels',{title:'Shared label',owners:[owner.id]});
+            assert.equal(labelResponse.status,201);
+            const label=await labelResponse.json();
             assert.equal((await fetch(users+'/'+owner.id,{method:'DELETE'})).status,204);
             assert.equal((await fetch(users+'/'+owner.id)).status,404);
             const noteAfter = await fetch(notes+'/'+note.id);
@@ -605,6 +664,9 @@ jobs:
             try {
               assert.ok((await prisma.user.findUnique({where:{id:owner.id}})).deletedAt);
               assert.ok((await prisma.log.findUnique({where:{id:log.id}})).deletedAt);
+              assert.ok((await prisma.project.findUnique({where:{id:project.id}})).deletedAt, 'multilevel cascade must soft-delete project');
+              assert.equal(await prisma.projectEntry.findUnique({where:{id:descendant.id}}),null,'multilevel cascade must physically delete child');
+              assert.deepEqual((await prisma.label.findUnique({where:{id:label.id},include:{owners:true}})).owners,[],'many-to-many nullify must detach join row');
             } finally {await prisma.$disconnect();}
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
@@ -674,6 +736,67 @@ jobs:
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
+
+  generated-fastify-oidc-provider-e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate native OIDC Fastify application
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const spec = {
+            specVersion:'1.0',
+            generation:{outputDir:'.tmp/fastify-oidc-provider'},
+            app:{name:'fastify-oidc-provider',framework:'fastify',port:3503,host:'127.0.0.1'},
+            database:{type:'mongodb'},
+            auth:{enabled:true,strategies:['oidc','jwt'],
+              jwt:{secretEnv:'JWT_SECRET'},
+              oidc:{enabled:true,issuer:'http://127.0.0.1:3502',clientIdEnv:'OIDC_CLIENT_ID'}
+            },
+            entities:{Todo:{fields:{title:{type:'string'}},operations:{
+              list:{auth:{required:true,strategies:['oidc']}}
+            }}}
+          };
+          fs.writeFileSync('/tmp/fastify-oidc-provider.json',JSON.stringify(spec));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-oidc-provider.json
+      - name: Install and inspect generated native OIDC app
+        working-directory: .tmp/fastify-oidc-provider
+        run: |
+          npm install --no-audit --no-fund
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const pkg=require('./package.json');
+          assert.equal(pkg.dependencies.express,undefined);
+          assert.equal(pkg.dependencies['@fastify/express'],undefined);
+          NODE
+      - name: Test end-to-end OIDC provider exchange
+        working-directory: .tmp/fastify-oidc-provider
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_native_oidc
+          OIDC_CLIENT_ID: ci-oidc-client
+          JWT_SECRET: ci-native-oidc-secret-at-least-32-characters
+          PORT: 3503
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          for attempt in {1..45}; do
+            if curl -fsS http://127.0.0.1:3503/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node ../../scripts/e2e-fastify-oidc.js
+      - name: Print OIDC app logs on failure
+        if: failure()
+        run: cat .tmp/fastify-oidc-provider/server.log || true
 
   generated-fastify-auth-e2e:
     runs-on: ubuntu-latest
@@ -999,12 +1122,15 @@ jobs:
             app:{name:'fastify-mongo-transaction',framework:'fastify',port:3493,host:'127.0.0.1'},
             database:{type:'mongodb',uriEnv:'MONGODB_URI'},
             auth:{enabled:true,strategies:['apiKey'],apiKey:{header:'x-api-key',keys:[{env:'AUDIT_KEY',userId:'auditor',roles:['admin']}]}},
+            storage:{enabled:true,provider:'local',signedUrls:{enabled:false},local:{directory:'uploads'}},
             entities:{
-              Owner:{fields:{name:{type:'string',required:true}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
+              Owner:{fields:{name:{type:'string',required:true},age:{type:'number'},portrait:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
                 operations:{create:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},update:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},delete:{transaction:true}}},
-              Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}}},
+              Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}},operations:{create:{transaction:true,populate:['owner']},update:{transaction:true,populate:['owner']}}},
               Link:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'nullify'}}},
-              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}}
+              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}},
+              CascadeChild:{route:'cascade-children',fields:{cascade:{type:'reference',ref:'Cascade',onDelete:'cascade'}}},
+              Watchlist:{fields:{owners:{type:'reference',ref:'Owner',many:true,onDelete:'nullify'}}}
             }
           };
           fs.writeFileSync('/tmp/fastify-mongo-transaction.json',JSON.stringify(spec));
@@ -1047,18 +1173,49 @@ jobs:
             const updated=await send('/owners/'+owner._id,'PATCH',{name:'New name'});
             assert.equal(updated.status,200);
             assert.equal((await updated.json()).updatedBy,'auditor');
+            const fs=require('node:fs');
+            const path=require('node:path');
+            const storageFiles=()=>fs.existsSync('uploads') ? fs.readdirSync('uploads',{recursive:true}).filter(name=>String(name).endsWith('.png')).length : 0;
+            const filesBefore=storageFiles();
+            const invalidUpload=new FormData();
+            invalidUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'invalid.png');
+            invalidUpload.set('age','invalid-number');
+            const rejected=await fetch(root+'/owners',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:invalidUpload});
+            assert.equal(rejected.status,400);
+            assert.equal(storageFiles(),filesBefore,'rejected multipart must compensate staged storage');
+            const acceptedUpload=new FormData();
+            acceptedUpload.set('name','Uploaded');
+            acceptedUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'valid.png');
+            const storedResponse=await fetch(root+'/owners',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:acceptedUpload});
+            assert.equal(storedResponse.status,201);
+            const storedOwner=await storedResponse.json();
+            assert.ok(storedOwner.portrait.key);
+            assert.ok(fs.existsSync(path.join('uploads',storedOwner.portrait.key)),'transactional commit retains stored file');
+            assert.equal((await fetch(root+'/owners/'+storedOwner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}})).status,204);
+            assert.equal(fs.existsSync(path.join('uploads',storedOwner.portrait.key)),false,'deleted entity cleans referenced storage');
             const linkResponse=await send('/links','POST',{owner:owner._id});
             assert.equal(linkResponse.status,201);
             const link=await linkResponse.json();
             const cascadeResponse=await send('/cascades','POST',{owner:owner._id});
             assert.equal(cascadeResponse.status,201);
             const cascade=await cascadeResponse.json();
+            const nestedResponse=await send('/cascade-children','POST',{cascade:cascade._id});
+            assert.equal(nestedResponse.status,201);
+            const nested=await nestedResponse.json();
+            const watchlistResponse=await send('/watchlists','POST',{owners:[owner._id]});
+            assert.equal(watchlistResponse.status,201);
+            const watchlist=await watchlistResponse.json();
             const dependentResponse=await send('/dependents','POST',{title:'Dependent',owner:owner._id});
             assert.equal(dependentResponse.status,201);
+            const populatedDependent=await dependentResponse.json();
+            assert.equal(populatedDependent.owner._id,owner._id);
+            const populatedUpdate=await send('/dependents/'+populatedDependent._id,'PATCH',{title:'Updated'});
+            assert.equal(populatedUpdate.status,200);
+            assert.equal((await populatedUpdate.json()).owner._id,owner._id);
             const restricted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
             assert.equal(restricted.status,409);
             assert.equal((await fetch(root+'/owners/'+owner._id,{headers:{'x-api-key':'test-audit-key'}})).status,200);
-            const dependent=await dependentResponse.json();
+            const dependent=populatedDependent;
             assert.equal((await fetch(root+'/dependents/'+dependent._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}})).status,204);
             const deleted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
             assert.equal(deleted.status,204);
@@ -1067,6 +1224,10 @@ jobs:
             assert.equal(linked.status,200);
             assert.equal((await linked.json()).owner,null);
             assert.equal((await fetch(root+'/cascades/'+cascade._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            assert.equal((await fetch(root+'/cascade-children/'+nested._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            const afterWatchlist=await fetch(root+'/watchlists/'+watchlist._id,{headers:{'x-api-key':'test-audit-key'}});
+            assert.equal(afterWatchlist.status,200);
+            assert.deepEqual((await afterWatchlist.json()).owners,[]);
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
       - name: Print logs on failure

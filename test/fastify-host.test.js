@@ -23,17 +23,19 @@ test('Express remains the default and keeps existing server startup', () => {
   new vm.Script(files.get('src/server.js'));
 });
 
-test('Fastify compatibility mode preserves adapter startup and shutdown', () => {
-  const input = spec('fastify');
-  input.app.middlewareModules = ['src/middleware/legacy.js'];
-  const files = buildFiles(normalizeSpec(input));
-  const pkg = JSON.parse(files.get('package.json'));
+test('Fastify GraphQL-only startup is native with no Express adapter or CRUD routes', () => {
+  const input=spec('fastify');
+  input.api={rest:false,graphql:{enabled:true}};
+  const files=buildFiles(normalizeSpec(input));
+  const pkg=JSON.parse(files.get('package.json'));
   assert.ok(pkg.dependencies.fastify);
-  assert.ok(pkg.dependencies['@fastify/express']);
-  assert.match(files.get('src/server.js'), /fastify.register\(fastifyExpress\)/);
-  assert.match(files.get('src/server.js'), /registerNativeCrud.matches/);
-  assert.match(files.get('src/server.js'), /app\(req, res, next\)/);
-  assert.match(files.get('src/server.js'), /await fastify.listen/);
-  assert.match(files.get('src/server.js'), /await server.close/);
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.match(files.get('src/server.js'),/const fastify = app/);
+  assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress|fastify.use/);
+  assert.doesNotMatch(files.get('src/fastify-crud.js'),/"name":"Todo"/);
+  assert.match(files.get('src/app.js'),/register0\(fastify\)/);
+  assert.match(files.get('src/server.js'),/await fastify.listen/);
+  assert.match(files.get('src/server.js'),/await server.close/);
   new vm.Script(files.get('src/server.js'));
 });

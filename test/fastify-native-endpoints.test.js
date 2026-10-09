@@ -59,8 +59,8 @@ test('Fastify rate limit and compression use native plugins when enabled', () =>
   const pkg = JSON.parse(files.get('package.json'));
   assert.ok(pkg.dependencies['@fastify/rate-limit']);
   assert.ok(pkg.dependencies['@fastify/compress']);
-  assert.match(files.get('src/server.js'), /@fastify\/rate-limit/);
-  assert.match(files.get('src/server.js'), /@fastify\/compress/);
+  assert.match(files.get('src/app.js'), /@fastify\/rate-limit/);
+  assert.match(files.get('src/app.js'), /@fastify\/compress/);
 });
 
 test('native Fastify local auth register and login emit Fastify handlers', () => {
@@ -97,91 +97,74 @@ test('Fastify OIDC routes delegate PKCE state handling to shared auth engine', (
 test('native Fastify observability intercepts native routes only to avoid duplicate Express metrics', () => {
   const spec = normalizeSpec({specVersion:'1.0',app:{name:'native-observable',framework:'fastify'},database:{type:'mongodb'},observability:{enabled:true},entities:{Todo:{fields:{title:{type:'string'}}}}});
   const files=buildFiles(spec);
-  const server=files.get('src/server.js');
-  assert.match(server,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
-  assert.match(server,/registerNativeCrud.matches/);
-  new vm.Script(server);
+  const native=files.get('src/app.js');
+  assert.match(native,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
+  assert.match(native,/register1\(fastify\)/);
+  new vm.Script(native);
 });
 
-test('custom middleware can supply a native Fastify onRequest hook without touching fallback routes', () => {
+test('Fastify custom middleware always uses native lifecycle exports without an adapter', () => {
   const spec = normalizeSpec({
-    specVersion: '1.0',
-    app: {name: 'native-middleware', framework: 'fastify', middlewareModules: ['src/middleware/tenant.js']},
-    database: {type: 'mongodb'},
-    entities: {Todo: {fields: {title: {type: 'string'}}}}
+    specVersion:'1.0',
+    app:{name:'native-middleware',framework:'fastify',middlewareModules:['src/middleware/tenant.js']},
+    database:{type:'mongodb'},
+    entities:{Todo:{fields:{title:{type:'string'}}}}
   });
-  const files = buildFiles(spec);
-  const server = files.get('src/server.js');
-  assert.match(server, /middleware\.fastifyOnRequest/);
-  assert.match(server, /fastify\.addHook\("onRequest"/);
-  assert.match(server, /registerNativeCrud\.matches\(request\.raw\.method, pathname\)/);
-  assert.match(server, /await middleware\.fastifyOnRequest\(request, reply\)/);
-  new vm.Script(server);
+  const files=buildFiles(spec);
+  const app=files.get('src/app.js');
+  assert.match(app,/middleware.fastifyOnRequest/);
+  assert.match(app,/fastify.addHook\("onRequest"/);
+  assert.match(app,/await middleware.fastifyOnRequest\(request, reply\)/);
+  assert.match(app,/Native Fastify middleware exports are required/);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress|fastify.use\(/);
+  assert.equal(JSON.parse(files.get('package.json')).dependencies.express,undefined);
+  new vm.Script(app);
 });
 
-test('native middleware lifecycle hooks register and execute on native routes', async () => {
-  const spec = normalizeSpec({
-    specVersion: '1.0',
-    app: {name: 'native-lifecycle', framework: 'fastify', middlewareModules: ['src/middleware/check.js']},
-    database: {type: 'mongodb'},
-    entities: {Todo: {fields: {title: {type: 'string'}}}}
+test('native Fastify middleware hooks execute and reject legacy Express-only exports', async () => {
+  const spec=normalizeSpec({
+    specVersion:'1.0',
+    app:{name:'native-lifecycle',framework:'fastify',middlewareModules:['src/middleware/check.js']},
+    database:{type:'mongodb'},
+    entities:{Todo:{fields:{title:{type:'string'}}}}
   });
-  const server = buildFiles(spec).get('src/server.js');
-  const hooks = {};
-  const calls = [];
-  const middleware = {
-    fastifyOnRequest: async () => calls.push('request'),
+  const source=buildFiles(spec).get('src/app.js');
+  const calls=[];
+  const hooks={};
+  const middleware={
+    fastifyOnRequest: () => calls.push('request'),
     fastifyPreValidation: async () => calls.push('validation'),
     fastifyPreHandler: async () => calls.push('handler'),
-    fastifyPreSerialization: async (req, reply, payload) => ({...payload, serialized: true}),
-    fastifyOnSend: async (req, reply, payload) => String(payload) + ':sent',
+    fastifyPreSerialization: async (req,reply,payload) => ({...payload,serialized:true}),
+    fastifyOnSend: async (req,reply,payload) => String(payload)+':sent',
     fastifyOnError: async () => calls.push('error'),
     fastifyOnResponse: async () => calls.push('response')
   };
-  const fakeFastify = {
-    register: async () => {},
-    use: () => {},
-    addHook: (stage, fn) => { (hooks[stage] ||= []).push(fn); },
-    listen: async () => {},
-    close: async () => {}
-  };
-  const match = (method, pathname) => method === 'GET' && pathname === '/api/todos';
-  const mockModule = {matches: match, default: () => {}};
-  const required = name => {
-    if (name === 'dotenv') return {config: () => {}};
-    if (name === 'fastify') return () => fakeFastify;
-    if (name === '@fastify/express') return async () => {};
-    if (name.includes('check')) return middleware;
-    if (name.includes('environment')) return () => {};
-    if (name.includes('database')) return Object.assign(async () => {}, {disconnect: async () => {}});
-    if (name.includes('fastify-')) return Object.assign(() => {}, {matches: match});
-    if (name.includes('app')) return () => {};
-    throw new Error('Unexpected generated server dependency: ' + name);
-  };
-  vm.runInNewContext(server, {
-    require: required,
-    process: {env: {}, once: () => {}, exitCode: 0},
-    console: {log: () => {}, error: () => {}}
-  });
-  for (let i = 0; i < 8; i++) await Promise.resolve();
-  const native = {raw: {method: 'GET', url: '/api/todos'}};
-  const fallback = {raw: {method: 'GET', url: '/fallback'}};
-  const reply = {};
-  for (const stage of ['onRequest', 'preValidation', 'preHandler']) {
-    assert.equal(hooks[stage].length, 1);
-    await hooks[stage][0](native, reply);
-    await hooks[stage][0](fallback, reply);
+  function load(customMiddleware) {
+    const fakeFastify={
+      addHook: (stage,fn) => {(hooks[stage] ||= []).push(fn);},
+      register(plugin) {this.readyPromise=Promise.resolve().then(() => plugin(this));return this;},
+      get() {},post() {},route() {}
+    };
+    const required=name=>{
+      if(name==='fastify') return () => fakeFastify;
+      if(name.includes('middleware/check')) return customMiddleware;
+      if(name.includes('fastify-')) return () => {};
+      throw new Error('Unexpected native dependency: '+name);
+    };
+    const module={exports:{}};
+    vm.runInNewContext(source,{require:required,module});
+    return fakeFastify.readyPromise;
   }
-  assert.deepEqual(calls, ['request', 'validation', 'handler']);
-  assert.equal((await hooks.preSerialization[0](native, reply, {ok:true})).serialized, true);
-  assert.equal((await hooks.preSerialization[0](fallback, reply, {ok:true})).serialized, undefined);
-  assert.equal(await hooks.onSend[0](native, reply, 'value'), 'value:sent');
-  assert.equal(await hooks.onSend[0](fallback, reply, 'value'), 'value');
-  await hooks.onError[0](native, reply, new Error('boom'));
-  await hooks.onError[0](fallback, reply, new Error('boom'));
-  await hooks.onResponse[0](native, reply);
-  await hooks.onResponse[0](fallback, reply);
-  assert.deepEqual(calls, ['request', 'validation', 'handler', 'error', 'response']);
+  await load(middleware);
+  for(const name of ['onRequest','preValidation','preHandler']) await hooks[name][0]({},{});
+  assert.deepEqual(calls,['request','validation','handler']);
+  assert.equal((await hooks.preSerialization[0]({}, {}, {ok:true})).serialized,true);
+  assert.equal(await hooks.onSend[0]({}, {}, 'hello'),'hello:sent');
+  await hooks.onError[0]({}, {}, new Error('boom'));
+  await hooks.onResponse[0]({}, {});
+  assert.deepEqual(calls,['request','validation','handler','error','response']);
+  await assert.rejects(load((req,res,next)=>next()),/Native Fastify middleware exports are required/);
 });
 
 test('audited PostgreSQL entities use native CRUD and protect audit attribution', () => {
@@ -212,8 +195,9 @@ test('PostgreSQL soft-delete entities stay native and filter tombstones', () => 
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /model.findFirst\(\{where: liveFilter\(entry, \{id\}\)/);
   assert.match(source, /rows = await model.findMany\(\{where: conditions/);
-  assert.match(source, /entry.softDelete.enabled \? delegate.update/);
-  assert.match(source, /\[entry.softDelete.field\]: new Date\(\)/);
+  const planner = buildFiles(spec).get('src/fastify-postgres-delete.js');
+  assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
+  assert.match(planner, /meta.softDelete.enabled && !forceHard/);
   new vm.Script(source);
 });
 
@@ -233,7 +217,7 @@ test('PostgreSQL transactional writes use Prisma interactive transactions', () =
   assert.match(source, /op.transaction && !await delegate.findFirst/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.create/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, async delegate =>/);
-  assert.match(source, /return entry.softDelete.enabled \? delegate.update/);
+  assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
   new vm.Script(source);
 });
 
@@ -246,7 +230,7 @@ test('PostgreSQL update and soft-delete writes are guarded against concurrent to
   });
   const source = buildFiles(spec).get('src/fastify-crud.js');
   assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: writeData/);
-  assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: \{\[entry.softDelete.field\]: new Date\(\)\}\}/);
+  assert.match(buildFiles(spec).get('src/fastify-postgres-delete.js'), /meta.softDelete.enabled && !forceHard/);
   new vm.Script(source);
 });
 
@@ -277,12 +261,13 @@ test('PostgreSQL soft-delete parent applies inbound policies in one Prisma trans
     });
     const source = buildFiles(spec).get('src/fastify-crud.js');
     assert.match(source, /"name":"User"/);
-    assert.match(source, /entry.softDelete.enabled && entry.inbound.length/);
-    assert.match(source, /const child = tx/);
+    const planner = buildFiles(spec).get('src/fastify-postgres-delete.js');
+    assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
     assert.match(source, /isolationLevel: "Serializable"/);
-    assert.match(source, /related.count/);
-    assert.match(source, /related.updateMany/);
-    assert.match(source, /related.deleteMany/);
+    assert.match(planner, /relation.onDelete === "restrict"/);
+    assert.match(planner, /relation.onDelete === "nullify"/);
+    assert.match(planner, /relation.onDelete === "cascade"/);
+    new vm.Script(planner);
     new vm.Script(source);
   }
 });
@@ -319,4 +304,25 @@ test('PostgreSQL native hooks are loaded alongside transactional and soft-delete
   assert.match(source, /callHook\(entry, "before", action/);
   assert.match(source, /callHook\(entry, "after", action/);
   new vm.Script(source);
+});
+
+test('PostgreSQL recursive relation deletion planner includes multi-hop and many-to-many policies', () => {
+  const spec = normalizeSpec({
+    specVersion:'1.0',app:{name:'pg-recursive',framework:'fastify'},database:{type:'postgresql'},
+    entities:{
+      Account:{fields:{name:{type:'string'}},softDelete:{enabled:true}},
+      Project:{fields:{account:{type:'reference',ref:'Account',onDelete:'cascade'}},softDelete:{enabled:true}},
+      Task:{fields:{project:{type:'reference',ref:'Project',onDelete:'cascade'}}},
+      Label:{fields:{accounts:{type:'reference',ref:'Account',many:true,onDelete:'nullify'}}}
+    }
+  });
+  const files=buildFiles(spec);
+  const planner=files.get('src/fastify-postgres-delete.js');
+  assert.match(planner, /"model":"Project"/);
+  assert.match(planner, /"model":"Task"/);
+  assert.match(planner, /"many":true/);
+  assert.match(planner, /await remove\(db, relation.model, item.id/);
+  assert.match(planner, /disconnect: \[\{id\}\]/);
+  assert.match(planner, /Cyclic relationship cascade/);
+  new vm.Script(planner);
 });

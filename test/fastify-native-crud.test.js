@@ -113,12 +113,12 @@ test('native Prisma delete respects FK restriction handling', () => {
   new vm.Script(source);
 });
 
-test('native Prisma delete is gated for inbound many-to-many relations', () => {
+test('native Prisma delete supports inbound many-to-many relations', () => {
   const input = spec('postgresql');
   input.entities.User = {fields: {name: {type: 'string'}}};
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User', many: true};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"User"/);
+  assert.match(source, /"name":"User"/);
 });
 
 test('native Fastify local storage routes use multipart parser and cleanup', () => {
@@ -187,10 +187,13 @@ test('native Mongo deletion generates transactional inbound restrict, nullify an
   assert.match(source, /"onDelete":"restrict"/);
   assert.match(source, /"onDelete":"nullify"/);
   assert.match(source, /"onDelete":"cascade"/);
-  assert.match(source, /related.countDocuments/);
-  assert.match(source, /related.updateMany/);
-  assert.match(source, /related.deleteMany/);
+  const planner = buildFiles(normalizeSpec(input)).get('src/fastify-mongo-delete.js');
+  assert.match(planner, /child.countDocuments/);
+  assert.match(planner, /child.updateMany/);
+  assert.match(planner, /await remove\(relation.model, dependent._id/);
+  assert.match(source, /mongoDelete\(relationModels, entry.name, id, session\)/);
   assert.match(source, /entry.inbound.length > 0/);
+  new vm.Script(planner);
   new vm.Script(source);
 });
 
@@ -228,13 +231,14 @@ test('simple Fastify generators run without Express runtime dependencies', () =>
   }
 });
 
-test('unsupported PostgreSQL many-to-many deletes retain compatibility', () => {
+test('PostgreSQL many-to-many deletes can use native Fastify', () => {
   const input = spec('postgresql');
   input.entities.Todo.fields.owner = {type:'reference', ref:'User', many:true};
   input.entities.User = {fields:{name:{type:'string'}}};
   const files = buildFiles(normalizeSpec(input));
-  assert.match(files.get('src/server.js'), /fastifyExpress/);
-  assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/express']);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
+  assert.equal(JSON.parse(files.get('package.json')).dependencies['@fastify/express'],undefined);
+  assert.match(files.get('src/fastify-postgres-delete.js'), /relation.many/);
 });
 
 test('stateless API-key authorization and Redis caching remain adapter-free', () => {
@@ -288,4 +292,141 @@ test('native supported relations and hooks can be adapter-free', () => {
   assert.equal(JSON.parse(files.get('package.json')).dependencies.express,undefined);
   assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress/);
   assert.match(files.get('src/fastify-crud.js'),/hookModules/);
+});
+
+test('advanced Fastify native runtime retains observability, embedded jobs and production plugins', () => {
+  const spec = normalizeSpec({
+    specVersion:'1.0',
+    app:{name:'advanced-fastify-direct',framework:'fastify',production:{
+      rateLimit:{enabled:true,max:10,windowMs:60000},compression:true
+    }},
+    database:{type:'mongodb'},
+    observability:{enabled:true,metrics:{enabled:true}},
+    events:{'ci.event':{webhooks:[]}},
+    outbox:{worker:'embedded'},
+    entities:{Todo:{fields:{title:{type:'string'}}}}
+  });
+  const files=buildFiles(spec);
+  const pkg=JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.ok(files.get('src/app.js').includes('@fastify/rate-limit'));
+  assert.ok(files.get('src/app.js').includes('@fastify/compress'));
+  assert.match(files.get('src/app.js'), /observability.requestMiddleware/);
+  assert.match(files.get('src/server.js'), /outboxWorker.startWorker/);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
+  new vm.Script(files.get('src/app.js'));
+  new vm.Script(files.get('src/server.js'));
+});
+
+test('explicit native-only custom lifecycle modules do not require Express', () => {
+  const input=spec();
+  input.app.middlewareModules=['src/middleware/tenant.js'];
+  const files=buildFiles(normalizeSpec(input));
+  assert.equal(JSON.parse(files.get('package.json')).dependencies.express,undefined);
+  const app=files.get('src/app.js');
+  assert.match(app,/fastifyOnRequest/);
+  assert.match(app,/fastifyPreHandler/);
+  assert.match(app,/fastifyOnResponse/);
+  assert.match(app,/Native Fastify middleware exports are required/);
+  new vm.Script(app);
+  input.api = {rest:false, graphql:{enabled:true}};
+  const graphqlOnly=buildFiles(normalizeSpec(input));
+  assert.equal(JSON.parse(graphqlOnly.get('package.json')).dependencies['@fastify/express'],undefined);
+  assert.match(graphqlOnly.get('src/app.js'),/fastifyOnRequest/);
+});
+
+test('Mongo recursive delete planner includes nested cascades and many-to-many unlinking', () => {
+  const input=spec('mongodb');
+  input.entities.Child={fields:{todo:{type:'reference',ref:'Todo',onDelete:'cascade'}}};
+  input.entities.Grandchild={fields:{child:{type:'reference',ref:'Child',onDelete:'cascade'}}};
+  input.entities.Watchlist={fields:{todos:{type:'reference',ref:'Todo',many:true,onDelete:'nullify'}}};
+  const files=buildFiles(normalizeSpec(input));
+  const planner=files.get('src/fastify-mongo-delete.js');
+  assert.match(planner, /"model":"Child"/);
+  assert.match(planner, /"model":"Grandchild"/);
+  assert.match(planner, /"many":true/);
+  assert.match(planner, /\$pull/);
+  assert.match(planner, /Cyclic relationship cascade/);
+  new vm.Script(planner);
+});
+
+test('native Fastify supports mutation population on both persistence targets', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const input=spec(database);
+    input.entities.User={fields:{name:{type:'string'}}};
+    input.entities.Todo.fields.owner={type:'reference',ref:'User'};
+    input.entities.Todo.operations={
+      create:{populate:['owner'],transaction:true},
+      update:{populate:['owner'],transaction:true},
+      delete:{populate:['owner'],status:200}
+    };
+    const files=buildFiles(normalizeSpec(input));
+    const generated=files.get('src/fastify-crud.js');
+    const pkg=JSON.parse(files.get('package.json'));
+    assert.equal(pkg.dependencies.express,undefined);
+    assert.equal(pkg.dependencies['@fastify/express'],undefined);
+    assert.match(generated,/populateRecord\(entry, record, op.populate\)/);
+    assert.match(generated,/deleteResponse/);
+    assert.match(generated,/include: Object.fromEntries\(fields.map/);
+    new vm.Script(generated);
+  }
+});
+
+test('transactional Fastify multipart mutations no longer require compatibility adapter', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const input=spec(database);
+    input.storage={enabled:true,provider:'local'};
+    input.entities.Todo.fields.photo={type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}};
+    input.entities.Todo.operations={create:{transaction:true},update:{transaction:true}};
+    const files=buildFiles(normalizeSpec(input));
+    assert.equal(JSON.parse(files.get('package.json')).dependencies['@fastify/express'],undefined);
+    assert.match(files.get('src/fastify-crud.js'),/storage.parseFastifyMultipart/);
+    assert.match(files.get('src/fastify-crud.js'),/storage.cleanup\(storedUploads\)/);
+    new vm.Script(files.get('src/server.js'));
+  }
+});
+
+test('invalid relation population fails native Fastify generation instead of falling back', () => {
+  const input=spec('postgresql');
+  input.entities.Todo.operations={create:{populate:['not_a_reference']}};
+  assert.throws(()=>buildFiles(normalizeSpec(input)),/populate references non-reference field/);
+});
+
+test('native Fastify storage only compensates uploads before commit and retries cleanup afterward', () => {
+  const input=spec('mongodb');
+  input.storage={enabled:true,provider:'local'};
+  input.entities.Todo.fields.photo={type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}};
+  input.entities.Todo.operations={create:{transaction:true},update:{transaction:true},delete:{transaction:true}};
+  const files=buildFiles(normalizeSpec(input));
+  const source=files.get('src/fastify-crud.js');
+  const storage=files.get('src/config/storage.js');
+  assert.match(source,/storedUploads = \[\]; \/\/ Database has committed/);
+  assert.match(source,/storedUploads = \[\]; \/\/ Never compensate a committed database write/);
+  assert.match(source,/storage.cleanupAfterCommit\(\(\) => storage.cleanupReplaced/);
+  assert.match(source,/storage.cleanupAfterCommit\(\(\) => storage.cleanupEntity/);
+  assert.match(storage,/async function cleanupAfterCommit/);
+  assert.match(storage,/attempt < 3/);
+  new vm.Script(source);
+  new vm.Script(storage);
+});
+
+test('full native Fastify spec retains generated deployment, SDK, admin and OpenAPI artifacts', () => {
+  const fs=require('node:fs');
+  const path=require('node:path');
+  const input=JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/e2e.json'),'utf8'));
+  input.app.framework='fastify';
+  const files=buildFiles(normalizeSpec(input));
+  const keys=[...files.keys()];
+  const pkg=JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.ok(keys.some(key=>/Dockerfile$/i.test(key)));
+  assert.ok(keys.some(key=>/compose.*\.ya?ml$/.test(key)));
+  assert.ok(keys.some(key=>key.startsWith('deploy/k8s/')));
+  assert.ok(keys.some(key=>key.startsWith('sdk/') && key.endsWith('.ts')));
+  assert.ok(keys.some(key=>key.startsWith('admin/') && /\.(jsx?|tsx?)$/.test(key)));
+  assert.ok(keys.some(key=>key.endsWith('openapi.json')));
+  assert.match(files.get('src/server.js'),/server.close\(\)/);
+  assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress|fastify.use/);
 });

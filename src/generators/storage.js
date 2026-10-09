@@ -110,6 +110,17 @@ module.exports = function storageSource(spec) {
     '  }',
     '}',
     '',
+    'async function cleanupAfterCommit(work) {',
+    '  for (let attempt = 0; attempt < 3; attempt += 1) {',
+    '    try { await work(); return true; }',
+    '    catch (error) {',
+    '      if (attempt === 2) { console.error("Storage cleanup failed after database commit", error); return false; }',
+    '      await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));',
+    '    }',
+    '  }',
+    '  return false;',
+    '}',
+    '',
     'function parseText(definition, value) {',
     '  if (value === undefined) return value;',
     '  if (definition.type === "number") { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : value; }',
@@ -329,7 +340,7 @@ module.exports = function storageSource(spec) {
       '  return reply.send(fs.createReadStream(target));'
     ] : ['  return reply.code(404).send({error: "Signed S3 URLs are returned directly"});']),
     '}',
-    'module.exports = {uploadMiddleware, parseFastifyMultipart, commitUploads, cleanup, cleanupReplaced, cleanupEntity, enrich, signedUrl, downloadHandler, fastifyDownload};',
+    'module.exports = {uploadMiddleware, parseFastifyMultipart, commitUploads, cleanup, cleanupAfterCommit, cleanupReplaced, cleanupEntity, enrich, signedUrl, downloadHandler, fastifyDownload};',
     ''
   ];
   return lines.join('\n');

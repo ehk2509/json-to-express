@@ -2,43 +2,20 @@
 
 const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 
-// Native CRUD supports scalar entities; relationship reads are safe when mutation routes are disabled.
-// Advanced mutations continue through the compatibility router until their invariants are implemented.
-function safePrismaDelete(entity, spec) {
-  return spec.database.type === 'postgresql' &&
-    !spec.entities.some(source => source.fields.some(field =>
-      field.type === 'reference' && field.ref === entity.name && field.many));
-}
-
-// Soft-deleting a parent does not trigger PostgreSQL ON DELETE actions.
-// Keep these entities on the compatibility implementation until native
-// restrict/nullify/cascade handling executes in the same transaction.
-function unsafePrismaSoftDelete(entity, spec) {
-  return spec.database.type === 'postgresql' && entity.softDelete.enabled &&
-    spec.entities.some(source => source.fields.some(field =>
-      field.type === 'reference' && field.ref === entity.name && (field.many || !['restrict', 'nullify', 'cascade'].includes(field.onDelete))));
-}
-
+// Every supported MongoDB/PostgreSQL CRUD operation uses native Fastify routes.
+// Unknown populate paths are rejected before generation to avoid silent data loss.
 function eligible(entity, spec) {
-  return spec.app.framework === 'fastify' && spec.api.rest &&
+  return spec.app.framework === 'fastify' &&
     (spec.database.type === 'mongodb' || spec.database.type === 'postgresql') &&
-    !unsafePrismaSoftDelete(entity, spec) &&
-    (!entity.fields.some(field => field.type === 'file') ||
-      (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
-    (!entity.fields.some(field => field.type === 'reference') ||
-      spec.database.type === 'mongodb' ||
-      ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
-      (spec.database.type === 'postgresql' &&
-        (!entity.operations.delete.enabled || safePrismaDelete(entity, spec)) &&
-        !entity.fields.some(field => field.type === 'reference' && field.many))) &&
-    (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
+    (!entity.fields.some(field => field.type === 'file') || spec.storage.enabled) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      ((op.transaction && !['mongodb', 'postgresql'].includes(spec.database.type)) || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name))))));
+      (op.populate || []).some(name => !entity.fields.some(field =>
+        field.type === 'reference' && field.name === name)));
 }
 
 module.exports = function nativeCrudSource(spec) {
   const nativePath = require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js');
-  const entities = spec.entities.filter(e => eligible(e, spec));
+  const entities = spec.api.rest ? spec.entities.filter(e => eligible(e, spec)) : [];
   const imports = entities.map((entity, index) =>
     'const model' + index + ' = ' +
     (spec.database.type === 'mongodb'
@@ -69,11 +46,17 @@ module.exports = function nativeCrudSource(spec) {
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
+    ...(spec.database.type === 'postgresql' ? [
+      'const postgresDelete = require(' + js(relativeRequire(nativePath, require('node:path').posix.join(spec.generation.paths.source, 'fastify-postgres-delete.js'))) + ');'
+    ] : []),
+    ...(spec.database.type === 'mongodb' ? [
+      'const mongoDelete = require(' + js(relativeRequire(nativePath, require('node:path').posix.join(spec.generation.paths.source, 'fastify-mongo-delete.js'))) + ');'
+    ] : []),
     ...imports,
     ...entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => 'const hooks' + entity.name + ' = require(' + js(relativeRequire(nativePath, entity.hooks.module)) + ');'),
     'const hookModules = {' + entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => js(entity.name) + ': hooks' + entity.name).join(',') + '};',
-    ...(spec.database.type === 'mongodb' ? spec.entities.filter(source => entities.some(target => source.fields.some(field => field.type === 'reference' && field.ref === target.name)) && !entities.some(entity => entity.name === source.name)).map(source => 'const relationModel' + source.name + ' = require(' + js(relativeRequire(nativePath, filePaths(spec, source.name).model)) + ');') : []),
-    'const relationModels = ' + (spec.database.type === 'mongodb' ? '{' + spec.entities.map(source => js(source.name) + ': ' + (entities.some(e => e.name === source.name) ? 'model' + entities.findIndex(e => e.name === source.name) : (spec.entities.some(target => entities.some(e => e.name === target.name) && source.fields.some(f => f.type === "reference" && f.ref === target.name)) ? 'relationModel' + source.name : 'null'))).join(',') + '}' : '{}') + ';',
+    ...(spec.database.type === 'mongodb' ? spec.entities.filter(source => !entities.some(entity => entity.name === source.name)).map(source => 'const relationModel' + source.name + ' = require(' + js(relativeRequire(nativePath, filePaths(spec, source.name).model)) + ');') : []),
+    'const relationModels = ' + (spec.database.type === 'mongodb' ? '{' + spec.entities.map(source => js(source.name) + ': ' + (entities.some(e => e.name === source.name) ? 'model' + entities.findIndex(e => e.name === source.name) : 'relationModel' + source.name)).join(',') + '}' : '{}') + ';',
     'const config = ' + js(config) + ';',
     'const models = [' + entities.map((unused, i) => 'model' + i).join(', ') + '];',
     'const postgres = ' + (spec.database.type === 'postgresql') + ';',
@@ -96,6 +79,11 @@ module.exports = function nativeCrudSource(spec) {
     '    if (field.enum && !field.enum.includes(value)) errors.push(name + " has an invalid value");',
     '  }',
     '  return errors;',
+    '}',
+    'async function populateRecord(entry, record, fields) {',
+    '  if (!record || !fields || !fields.length) return record;',
+    '  if (postgres) return models[entry.modelIndex].findUnique({where: {id: record.id}, include: Object.fromEntries(fields.map(name => [name, true]))});',
+    '  return models[entry.modelIndex].findById(record._id).populate(fields);',
     '}',
     'function writeData(entry, body, mode) {',
     '  const data = {...body};',
@@ -212,8 +200,10 @@ module.exports = function nativeCrudSource(spec) {
     '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) {data[entry.audit.createdBy] = request.raw.auth.userId; data[entry.audit.updatedBy] = request.raw.auth.userId;}',
     '          const record = postgres ? await postgresTransaction(entry, op.transaction, delegate => delegate.create({data: writeData(entry, data, "create")})) : await transactional(op.transaction, async session => (await model.create([data], session ? {session} : {}))[0]);',
-    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
-    '          storedUploads = [];',
+    '          storedUploads = []; // Database has committed; uploaded objects are now referenced.',
+    '          const expanded = await populateRecord(entry, record, op.populate);',
+    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, expanded, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : expanded;',
+
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          return reply.code(op.status).send(responseRecord);',
@@ -225,9 +215,11 @@ module.exports = function nativeCrudSource(spec) {
     '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) data[entry.audit.updatedBy] = request.raw.auth.userId;',
     '          const record = postgres ? await postgresTransaction(entry, op.transaction, async delegate => {if (op.transaction && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} return delegate.update({where: liveFilter(entry, {id}), data: writeData(entry, data, "update")});}) : await transactional(op.transaction, async session => model.findOneAndUpdate(liveFilter(entry, {_id: id}), data, {new: true, runValidators: op.runValidators, ...(session ? {session} : {})}));',
-    '          if (entry.hasFiles) await storage.cleanupReplaced(entry.name, existing, request.body);',
-    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
-    '          storedUploads = [];',
+    '          storedUploads = []; // Never compensate a committed database write.',
+    '          if (entry.hasFiles) await storage.cleanupAfterCommit(() => storage.cleanupReplaced(entry.name, existing, request.body));',
+    '          const expanded = await populateRecord(entry, record, op.populate);',
+    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, expanded, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : expanded;',
+
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          return reply.code(op.status).send(responseRecord);',
@@ -235,30 +227,15 @@ module.exports = function nativeCrudSource(spec) {
     '        if (action === "delete") {',
     '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
+    '          const deleteResponse = op.status === 204 ? null : (op.populate && op.populate.length ? await populateRecord(entry, record, op.populate) : record);',
     '          if (postgres) {',
-    '            try {await postgresTransaction(entry, op.transaction || (entry.softDelete.enabled && entry.inbound.length > 0), async (delegate, tx) => {if ((op.transaction || entry.inbound.length) && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} if (entry.softDelete.enabled && entry.inbound.length) {for (const relation of entry.inbound) {const child = tx; const related = child[relation.model[0].toLowerCase() + relation.model.slice(1)]; const condition = {[relation.field + "Id"]: id, ...(relation.softDelete.enabled ? {[relation.softDelete.field]: null} : {})}; if (relation.onDelete === "restrict") {if (await related.count({where: condition})) {const error = new Error("Delete restricted by related records"); error.statusCode = 409; throw error;}} else if (relation.onDelete === "nullify") await related.updateMany({where: condition, data: {[relation.field + "Id"]: null}}); else if (relation.onDelete === "cascade") {if (relation.softDelete.enabled) await related.updateMany({where: condition, data: {[relation.softDelete.field]: new Date()}}); else await related.deleteMany({where: condition});}}} return entry.softDelete.enabled ? delegate.update({where: liveFilter(entry, {id}), data: {[entry.softDelete.field]: new Date()}}) : delegate.delete({where: {id}});});}',
+    '            try {await postgresTransaction(entry, true, async (delegate, tx) => postgresDelete(tx, entry.name, id));}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
-    '          } else await transactional(op.transaction || entry.inbound.length > 0, async session => {',
-    '            for (const relation of entry.inbound) {',
-    '              const related = relationModels[relation.model];',
-    '              const filter = {[relation.field]: id};',
-    '              if (relation.softDelete.enabled) filter[relation.softDelete.field] = null;',
-    '              if (relation.onDelete === "restrict") {',
-    '                if (await related.countDocuments(filter).session(session || null)) {const error = new Error("Delete restricted by " + relation.model + "." + relation.field); error.statusCode = 409; throw error;}',
-    '              } else if (relation.onDelete === "nullify") {',
-    '                const mutation = relation.many ? {$pull: {[relation.field]: id}} : {$set: {[relation.field]: null}};',
-    '                await related.updateMany(filter, mutation, session ? {session} : {});',
-    '              } else if (relation.onDelete === "cascade") {',
-    '                await related.deleteMany(filter, session ? {session} : {});',
-    '              }',
-    '            }',
-    '            const filter = liveFilter(entry, {_id: id});',
-    '            return entry.softDelete.enabled ? model.findOneAndUpdate(filter, {$set: {[entry.softDelete.field]: new Date()}}, {new: true, ...(session ? {session} : {})}) : model.findOneAndDelete(filter, session ? {session} : {});',
-    '          });',
-    '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
+    '          } else await transactional(op.transaction || entry.inbound.length > 0, session => mongoDelete(relationModels, entry.name, id, session));',
+    '          if (entry.hasFiles) await storage.cleanupAfterCommit(() => storage.cleanupEntity(entry.name, record));',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
-    '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
+    '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(deleteResponse);',
     '        }',
     '        } catch (error) {',
     '          if (storedUploads.length) await storage.cleanup(storedUploads).catch(() => {});',
