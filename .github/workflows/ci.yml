@@ -383,3 +383,89 @@ jobs:
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
           kill $(cat fastify.pid)
+
+  generated-fastify-postgres-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fastify_native
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fastify_native"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate native Fastify PostgreSQL app
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const input = {
+            specVersion: '1.0',
+            generation: {outputDir: '.tmp/fastify-postgres-smoke'},
+            app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
+            database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}}
+          };
+          fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-postgres-spec.json
+      - name: Install generated PostgreSQL app
+        working-directory: .tmp/fastify-postgres-smoke
+        run: npm install --no-audit --no-fund
+      - name: Deploy Prisma migration
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          npm run db:migrate:init
+          npm run db:migrate:deploy
+          npm run prisma:generate
+      - name: Exercise native Fastify PostgreSQL CRUD
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+          PORT: 3498
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:3498/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const url = 'http://127.0.0.1:3498/api/todos';
+          (async () => {
+            const invalidBody = await fetch(url, {method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({done:'not a boolean'})});
+            assert.equal(invalidBody.status, 400);
+            const create = await fetch(url, {method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({title:'PostgreSQL native', done:false})});
+            assert.equal(create.status, 201, await create.text().catch(()=>''));
+            const item = await create.json();
+            assert.ok(item.id);
+            const get = await fetch(url + '/' + item.id);
+            assert.equal(get.status, 200);
+            const list = await fetch(url + '?title=PostgreSQL%20native');
+            assert.equal(list.status, 200);
+            assert.ok((await list.json()).some(row => row.id === item.id));
+            const update = await fetch(url + '/' + item.id, {method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({done:true})});
+            assert.equal(update.status, 200);
+            assert.equal((await update.json()).done, true);
+            assert.equal((await fetch(url + '/bad-id')).status, 400);
+            assert.equal((await fetch(url + '/' + item.id, {method:'DELETE'})).status, 204);
+            assert.equal((await fetch(url + '/' + item.id)).status, 404);
+          })().catch(error => {console.error(error); process.exitCode = 1;});
+          NODE
+      - name: Print Fastify PostgreSQL logs on failure
+        if: failure()
+        run: cat .tmp/fastify-postgres-smoke/server.log || true
