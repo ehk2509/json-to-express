@@ -34,7 +34,7 @@ function eligible(entity, spec) {
     (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       ((op.transaction && !['mongodb', 'postgresql'].includes(spec.database.type)) || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
-    (!entity.hooks || spec.database.type === 'mongodb');
+    true;
 }
 
 module.exports = function nativeCrudSource(spec) {
@@ -71,8 +71,8 @@ module.exports = function nativeCrudSource(spec) {
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
     ...imports,
-    ...(spec.database.type === 'mongodb' ? entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => 'const hooks' + entity.name + ' = require(' + js(relativeRequire(nativePath, entity.hooks.module)) + ');') : []),
-    'const hookModules = {' + entities.filter(entity => spec.database.type === 'mongodb' && entity.hooks && entity.hooks.module).map(entity => js(entity.name) + ': hooks' + entity.name).join(',') + '};',
+    ...entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => 'const hooks' + entity.name + ' = require(' + js(relativeRequire(nativePath, entity.hooks.module)) + ');'),
+    'const hookModules = {' + entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => js(entity.name) + ': hooks' + entity.name).join(',') + '};',
     ...(spec.database.type === 'mongodb' ? spec.entities.filter(source => entities.some(target => source.fields.some(field => field.type === 'reference' && field.ref === target.name)) && !entities.some(entity => entity.name === source.name)).map(source => 'const relationModel' + source.name + ' = require(' + js(relativeRequire(nativePath, filePaths(spec, source.name).model)) + ');') : []),
     'const relationModels = ' + (spec.database.type === 'mongodb' ? '{' + spec.entities.map(source => js(source.name) + ': ' + (entities.some(e => e.name === source.name) ? 'model' + entities.findIndex(e => e.name === source.name) : (spec.entities.some(target => entities.some(e => e.name === target.name) && source.fields.some(f => f.type === "reference" && f.ref === target.name)) ? 'relationModel' + source.name : 'null'))).join(',') + '}' : '{}') + ';',
     'const config = ' + js(config) + ';',
