@@ -540,6 +540,36 @@ jobs:
             }
           })().catch(error => {console.error(error);process.exitCode=1;}).finally(() => prisma.$disconnect());
           NODE
+      - name: Verify Fastify HTTP delete rolls back dependent mutations
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const {PrismaClient} = require('@prisma/client');
+          const prisma = new PrismaClient();
+          (async () => {
+            const owner = await prisma.user.create({data:{name:'HTTP rollback owner'}});
+            const note = await prisma.note.create({data:{title:'HTTP rollback note', owner:{connect:{id:owner.id}}}});
+            try {
+              await prisma.$executeRawUnsafe('CREATE FUNCTION j2e_force_delete_failure() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION \'injected HTTP delete failure\'; END; $');
+              await prisma.$executeRawUnsafe('CREATE TRIGGER j2e_force_delete_failure BEFORE UPDATE ON "User" FOR EACH ROW WHEN (NEW."deletedAt" IS NOT NULL) EXECUTE FUNCTION j2e_force_delete_failure()');
+              const response = await fetch('http://127.0.0.1:3498/api/users/'+owner.id,{method:'DELETE'});
+              assert.equal(response.status,500,'injected database error must fail the HTTP operation');
+              const unchangedOwner = await prisma.user.findUnique({where:{id:owner.id}});
+              const unchangedNote = await prisma.note.findUnique({where:{id:note.id}});
+              assert.equal(unchangedOwner.deletedAt,null,'parent soft delete rolled back');
+              assert.equal(unchangedNote.ownerId,owner.id,'dependent nullification rolled back');
+            } finally {
+              await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS j2e_force_delete_failure ON "User"');
+              await prisma.$executeRawUnsafe('DROP FUNCTION IF EXISTS j2e_force_delete_failure()');
+              await prisma.note.deleteMany({where:{id:note.id}});
+              await prisma.user.deleteMany({where:{id:owner.id}});
+              await prisma.$disconnect();
+            }
+          })().catch(error => {console.error(error);process.exitCode=1;});
+          NODE
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
