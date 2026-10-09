@@ -7,7 +7,7 @@ module.exports = function packageSource(spec) {
   const dependencies = {...config.dependencies};
   const devDependencies = {...config.devDependencies};
   if (isDirectFastify(spec)) {
-    for (const name of ['express', '@fastify/express', 'express-rate-limit', 'cors', 'compression', 'multer']) delete dependencies[name];
+    for (const name of ['express', '@fastify/express', 'express-rate-limit', 'cors', 'compression']) delete dependencies[name];
     delete devDependencies.supertest;
   }
   return JSON.stringify({
