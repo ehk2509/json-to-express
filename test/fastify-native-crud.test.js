@@ -305,8 +305,8 @@ test('advanced Fastify native runtime retains observability, embedded jobs and p
   const pkg=JSON.parse(files.get('package.json'));
   assert.equal(pkg.dependencies.express,undefined);
   assert.equal(pkg.dependencies['@fastify/express'],undefined);
-  assert.match(files.get('src/app.js'), /@fastify\\/rate-limit/);
-  assert.match(files.get('src/app.js'), /@fastify\\/compress/);
+  assert.ok(files.get('src/app.js').includes('@fastify/rate-limit'));
+  assert.ok(files.get('src/app.js').includes('@fastify/compress'));
   assert.match(files.get('src/app.js'), /observability.requestMiddleware/);
   assert.match(files.get('src/server.js'), /outboxWorker.startWorker/);
   assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
