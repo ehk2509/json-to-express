@@ -413,7 +413,7 @@ jobs:
           fs.writeFileSync('/tmp/fastify-direct-spec.json', JSON.stringify({
             specVersion:'1.0',
             generation:{outputDir:'.tmp/fastify-direct-smoke'},
-            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, production:{rateLimit:{enabled:true,max:100,windowMs:60000},compression:true}, fastifyMiddlewareOnly:true, middlewareModules:['src/middleware/tenant.js']},
+            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, production:{rateLimit:{enabled:true,max:100,windowMs:60000},compression:true}, middlewareModules:['src/middleware/tenant.js']},
             database:{type:'mongodb'},
             events:{'ci.empty':{webhooks:[]}},
             observability:{enabled:true,metrics:{enabled:true}},
