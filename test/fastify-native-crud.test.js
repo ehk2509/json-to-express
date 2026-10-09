@@ -32,12 +32,12 @@ test('Prisma variant uses native Prisma methods', () => {
   new vm.Script(source);
 });
 
-test('advanced relational entities stay on compatibility path', () => {
+test('Mongo relational entity receives native handlers', () => {
   const input = spec();
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   input.entities.User = {fields: {name: {type: 'string'}}};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"Todo"/);
+  assert.match(source, /"name":"Todo"/);
 });
 
 test('native Fastify CRUD honors API key authentication and RBAC without Express controller middleware', () => {
