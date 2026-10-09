@@ -1518,6 +1518,16 @@ jobs:
             await connectDB.disconnect();
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
+      - name: SIGKILL Mongo process at commit boundary and restart cleanup worker
+        working-directory: .tmp/fastify-mongo-transaction
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_native_tx?replicaSet=rs0
+          AUDIT_KEY: test-audit-key
+          PORT: 3493
+          HOST: 127.0.0.1
+        run: |
+          cp ../../test/fixtures/storage-chaos-mongo-kill.js ./storage-chaos-mongo-kill.js
+          node storage-chaos-mongo-kill.js
       - name: Print logs on failure
         if: failure()
         run: |
