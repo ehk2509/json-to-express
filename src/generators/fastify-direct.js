@@ -7,7 +7,7 @@ const nativeCrudSource = require('./fastify-crud');
 // Unsupported CRUD + middleware combinations are rejected during generation.
 function isDirectFastify(spec) {
   return spec.app.framework === 'fastify' &&
-    spec.entities.every(entity => nativeCrudSource.eligible(entity, spec));
+    (!spec.api.rest || spec.entities.every(entity => nativeCrudSource.eligible(entity, spec)));
 }
 
 module.exports = isDirectFastify;
