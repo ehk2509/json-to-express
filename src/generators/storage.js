@@ -257,7 +257,7 @@ module.exports = function storageSource(spec) {
     'async function cleanupEntity(entityName, value) {',
     '  return cleanupAfterCommit(planEntity(entityName, value));',
     '}',
-    ''
+    '',
     'function localToken(metadata) {',
     '  const expiresAt = Math.floor(Date.now() / 1000) + config.signedUrls.expiresSeconds;',
     '  const payload = Buffer.from(JSON.stringify({key: safeKey(metadata.key), mimeType: metadata.mimeType, originalName: metadata.originalName, exp: expiresAt})).toString("base64url");',
