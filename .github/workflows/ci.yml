@@ -491,7 +491,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-auth-smoke'},
             app: {name: 'fastify-auth-smoke', framework: 'fastify', port: 3497, host: '127.0.0.1'},
             database: {type: 'mongodb'},
-            auth: {enabled: true, strategies: ['apiKey', 'jwt'], jwt: {secretEnv: 'TEST_JWT_SECRET'}, local: {enabled: true, allowRegistration: true, passwordMinLength: 8}, apiKey: {header: 'x-api-key', keys: [
+            auth: {enabled: true, strategies: ['apiKey', 'jwt'], jwt: {secretEnv: 'TEST_JWT_SECRET', refresh:{enabled:true, returnToken:true, ttlSeconds:3600}}, local: {enabled: true, allowRegistration: true, passwordMinLength: 8}, apiKey: {header: 'x-api-key', keys: [
               {env: 'TEST_ADMIN_KEY', userId: 'admin', roles: ['admin']},
               {env: 'TEST_VIEWER_KEY', userId: 'viewer', roles: ['viewer']}
             ]}},
@@ -546,6 +546,12 @@ jobs:
             const login = await fetch('http://127.0.0.1:3497/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'native@example.com',password:'securePass123'})});
             assert.equal(login.status, 200);
             assert.ok((await login.json()).accessToken);
+            assert.ok(registrationBody.refreshToken);
+            const refresh = await fetch('http://127.0.0.1:3497/auth/refresh', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({refreshToken:registrationBody.refreshToken})});
+            assert.equal(refresh.status, 200);
+            assert.ok((await refresh.json()).accessToken);
+            const logout = await fetch('http://127.0.0.1:3497/auth/logout', {method:'POST'});
+            assert.equal(logout.status, 204);
             const invalidLogin = await fetch('http://127.0.0.1:3497/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'native@example.com',password:'wrong'})});
             assert.equal(invalidLogin.status, 401);
           })().catch(error => {console.error(error); process.exitCode = 1;});
