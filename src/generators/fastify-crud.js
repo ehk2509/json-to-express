@@ -12,7 +12,7 @@ function safePrismaDelete(entity, spec) {
 
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    (spec.database.type === 'mongodb' || !entity.softDelete.enabled) &&
+    (spec.database.type === 'mongodb' || spec.database.type === 'postgresql') &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
@@ -184,7 +184,7 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        if (action === "get") {',
     '          const populate = op.populate || [];',
-    '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findOne(liveFilter(entry, {_id: id})).populate(populate) : model.findOne(liveFilter(entry, {_id: id})));',
+    '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id}), ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findOne(liveFilter(entry, {_id: id})).populate(populate) : model.findOne(liveFilter(entry, {_id: id})));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const result = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
@@ -203,7 +203,7 @@ module.exports = function nativeCrudSource(spec) {
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "update") {',
-    '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findOne(liveFilter(entry, {_id: id}));',
+    '          const existing = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!existing) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const data = {...request.body};',
     '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
@@ -217,10 +217,10 @@ module.exports = function nativeCrudSource(spec) {
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "delete") {',
-    '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findOne(liveFilter(entry, {_id: id}));',
+    '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          if (postgres) {',
-    '            try {await model.delete({where: {id}});}',
+    '            try {if (entry.softDelete.enabled) await model.update({where: {id}, data: {[entry.softDelete.field]: new Date()}}); else await model.delete({where: {id}});}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
     '          } else await transactional(op.transaction || entry.inbound.length > 0, async session => {',
     '            for (const relation of entry.inbound) {',
