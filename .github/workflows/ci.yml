@@ -413,7 +413,7 @@ jobs:
           fs.writeFileSync('/tmp/fastify-direct-spec.json', JSON.stringify({
             specVersion:'1.0',
             generation:{outputDir:'.tmp/fastify-direct-smoke'},
-            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499},
+            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, fastifyMiddlewareOnly:true, middlewareModules:['src/middleware/tenant.js']},
             database:{type:'mongodb'},
             cache:{enabled:true,provider:'redis',redis:{urlEnv:'REDIS_URL'}},
             auth:{enabled:true,strategies:['apiKey'],apiKey:{keys:[{env:'TEST_API_KEY',userId:'reader',roles:['reader']}]}},
@@ -421,6 +421,12 @@ jobs:
           }));
           NODE
           node bin/json-to-express.js generate /tmp/fastify-direct-spec.json
+          mkdir -p .tmp/fastify-direct-smoke/src/middleware
+          cat > .tmp/fastify-direct-smoke/src/middleware/tenant.js <<'MIDDLEWARE'
+          module.exports = {
+            fastifyOnRequest(request, reply) {reply.header('x-native-tenant', 'supported');}
+          };
+          MIDDLEWARE
       - name: Verify no Express runtime dependency
         working-directory: .tmp/fastify-direct-smoke
         run: |
@@ -477,6 +483,7 @@ jobs:
             assert.equal((await update.json()).done,true);
             assert.equal((await fetch(base+'/'+record._id,{method:'DELETE',headers:authorized})).status,204);
             assert.equal((await fetch(base+'/'+record._id,{headers:authorized})).status,404);
+            assert.equal((await fetch('http://127.0.0.1:3499/health')).headers.get('x-native-tenant'),'supported');
           })().catch(error => {console.error(error); process.exitCode=1;});
           NODE
       - name: Print adapter-free Fastify logs
