@@ -12,9 +12,10 @@ function safePrismaDelete(entity, spec) {
 
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    !spec.cache.enabled && !spec.storage.enabled &&
+    !spec.cache.enabled &&
     !entity.audit.enabled && !entity.softDelete.enabled &&
-    !entity.fields.some(field => field.type === 'file') &&
+    (!entity.fields.some(field => field.type === 'file') ||
+      (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
       ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
       (spec.database.type === 'postgresql' &&
@@ -41,6 +42,7 @@ module.exports = function nativeCrudSource(spec) {
     operations: entity.operations,
     idParam: entity.idParam,
     references: entity.fields.filter(field => field.type === 'reference').map(field => ({name:field.name, many:field.many, required:field.required})),
+    hasFiles: entity.fields.some(field => field.type === 'file'),
     base: joinUrl(spec.app.apiPrefix, entity.route),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
       type: field.type, required: field.required, enum: field.enum || null
@@ -49,6 +51,7 @@ module.exports = function nativeCrudSource(spec) {
   return [
     "'use strict';",
     ...(spec.auth.enabled ? ['const auth = require(' + js(relativeRequire(nativePath, filePaths(spec).auth)) + ');'] : []),
+    ...(spec.storage.enabled ? ['const storage = require(' + js(relativeRequire(nativePath, filePaths(spec).storage)) + ');'] : []),
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
@@ -100,6 +103,13 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        const id = request.params && request.params[entry.idParam];',
     '        if (["get", "update", "delete"].includes(action) && !validId(id)) return reply.code(400).send({error: "Invalid identifier"});',
+    '        let storedUploads = [];',
+    '        try {',
+    '        if (entry.hasFiles && ["create", "update"].includes(action)) {',
+    '          const parsed = await storage.parseFastifyMultipart(entry.name, request);',
+    '          request.body = parsed.body;',
+    '          storedUploads = parsed.stored;',
+    '        }',
     '        if (["create", "update"].includes(action) && op.validate) {',
     '          const errors = validate(entry.fields, request.body, action === "update");',
     '          if (errors.length) return reply.code(400).send({error: "Invalid request", details: errors});',
@@ -128,22 +138,25 @@ module.exports = function nativeCrudSource(spec) {
     '            if (populate.length) query = query.populate(populate);',
     '            rows = await query.lean();',
     '          }',
-    '          return reply.code(op.status).send(rows);',
+    '          return reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, rows, request.raw) : rows);',
     '        }',
     '        if (action === "get") {',
     '          const populate = op.populate || [];',
     '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findById(id).populate(populate) : model.findById(id));',
-    '          return record ? reply.code(op.status).send(record) : reply.code(op.notFoundStatus).send({error: "Not found"});',
+    '          return record ? reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, record, request.raw) : record) : reply.code(op.notFoundStatus).send({error: "Not found"});',
     '        }',
     '        if (action === "create") {',
     '          const record = postgres ? await model.create({data: writeData(entry, request.body, "create")}) : await model.create(request.body);',
-    '          return reply.code(op.status).send(record);',
+    '          storedUploads = [];',
+    '          return reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, record, request.raw) : record);',
     '        }',
     '        if (action === "update") {',
     '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
     '          if (!existing) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const record = postgres ? await model.update({where: {id}, data: writeData(entry, request.body, "update")}) : await model.findByIdAndUpdate(id, request.body, {new: true, runValidators: true});',
-    '          return reply.code(op.status).send(record);',
+    '          if (entry.hasFiles) await storage.cleanupReplaced(entry.name, existing, request.body);',
+    '          storedUploads = [];',
+    '          return reply.code(op.status).send(entry.hasFiles ? await storage.enrich(entry.name, record, request.raw) : record);',
     '        }',
     '        if (action === "delete") {',
     '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
@@ -152,7 +165,13 @@ module.exports = function nativeCrudSource(spec) {
     '            try {await model.delete({where: {id}});}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
     '          } else await model.findByIdAndDelete(id);',
+    '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
     '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
+    '        }',
+    '        } catch (error) {',
+    '          if (storedUploads.length) await storage.cleanup(storedUploads).catch(() => {});',
+    '          if (error.statusCode && error.statusCode < 500) return reply.code(error.statusCode).send({error: error.message});',
+    '          throw error;',
     '        }',
     '      }});',
     '    }',
