@@ -82,6 +82,6 @@ module.exports = function fastifyNativeSource(spec) {
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
     '  });'
   );
-  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.storage.enabled && spec.storage.signedUrls.enabled ? ' || (method === "GET" && /^' + spec.storage.signedUrls.path.replace(':token', '[^/]+').replace(/\\/g, '\\\\') + '$/.test(pathname))' : '') + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
+  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.storage.enabled && spec.storage.signedUrls.enabled ? ' || (method === "GET" && pathname.startsWith(' + js(spec.storage.signedUrls.path.split(':token')[0]) + ') && pathname.length > ' + spec.storage.signedUrls.path.split(':token')[0].length + ' && !pathname.slice(' + spec.storage.signedUrls.path.split(':token')[0].length + ').includes("/"))' : '') + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
   return lines.join('\n');
 };
