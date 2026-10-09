@@ -219,6 +219,7 @@ test('simple Fastify generators run without Express runtime dependencies', () =>
     assert.equal(pkg.devDependencies.supertest, undefined);
     assert.doesNotMatch(files.get('src/server.js'), /fastify\.use\(/);
     assert.doesNotMatch(files.get('src/app.js'), /require\('express'\)/);
+    assert.equal([...files.keys()].some(name => /\/routes\//.test(name)),false);
     assert.match(files.get('src/app.js'), /module\.exports = fastify/);
     assert.match(files.get('test/contract.test.js'), /app\.inject/);
     assert.doesNotMatch(files.get('test/contract.test.js'), /supertest/);
