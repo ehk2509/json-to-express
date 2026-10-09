@@ -16,7 +16,7 @@ function safePrismaDelete(entity, spec) {
 function unsafePrismaSoftDelete(entity, spec) {
   return spec.database.type === 'postgresql' && entity.softDelete.enabled &&
     spec.entities.some(source => source.fields.some(field =>
-      field.type === 'reference' && field.ref === entity.name));
+      field.type === 'reference' && field.ref === entity.name && (field.many || !['restrict', 'nullify', 'cascade'].includes(field.onDelete))));
 }
 
 function eligible(entity, spec) {
@@ -46,7 +46,7 @@ module.exports = function nativeCrudSource(spec) {
       ? 'require(' + js(relativeRequire(nativePath, filePaths(spec, entity.name).model)) + ')'
       : 'connectDatabase.client[' + js(entity.name[0].toLowerCase() + entity.name.slice(1)) + ']') + ';');
   const config = entities.map((entity, index) => ({
-    inbound: spec.database.type === 'mongodb' ? spec.entities.flatMap(source => source.fields.filter(field => field.type === 'reference' && field.ref === entity.name).map(field => ({model: source.name, field: field.name, many: Boolean(field.many), onDelete: field.onDelete, softDelete: source.softDelete}))) : [],
+    inbound: spec.entities.flatMap(source => source.fields.filter(field => field.type === 'reference' && field.ref === entity.name).map(field => ({model: source.name, field: field.name, many: Boolean(field.many), onDelete: field.onDelete, softDelete: source.softDelete}))),
     modelIndex: index,
     name: entity.name,
     operations: entity.operations,
@@ -111,7 +111,7 @@ module.exports = function nativeCrudSource(spec) {
     '}',
     'async function postgresTransaction(entry, enabled, work) {',
     '  if (!enabled) return work(models[entry.modelIndex]);',
-    '  return connectDatabase.client.$transaction(async tx => work(tx[entry.name[0].toLowerCase() + entry.name.slice(1)]), {isolationLevel: "Serializable"});',
+    '  return connectDatabase.client.$transaction(async tx => work(tx[entry.name[0].toLowerCase() + entry.name.slice(1)], tx), {isolationLevel: "Serializable"});',
     '}',
     'async function transactional(enabled, work) {',
     '  if (!enabled || postgres) return work(null);',
@@ -234,7 +234,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          if (postgres) {',
-    '            try {await postgresTransaction(entry, op.transaction, async delegate => {if (op.transaction && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} return entry.softDelete.enabled ? delegate.update({where: liveFilter(entry, {id}), data: {[entry.softDelete.field]: new Date()}}) : delegate.delete({where: {id}});});}',
+    '            try {await postgresTransaction(entry, op.transaction || (entry.softDelete.enabled && entry.inbound.length > 0), async (delegate, tx) => {if ((op.transaction || entry.inbound.length) && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} if (entry.softDelete.enabled && entry.inbound.length) {for (const relation of entry.inbound) {const child = tx; const related = child[relation.model[0].toLowerCase() + relation.model.slice(1)]; const condition = {[relation.field + "Id"]: id, ...(relation.softDelete.enabled ? {[relation.softDelete.field]: null} : {})}; if (relation.onDelete === "restrict") {if (await related.count({where: condition})) {const error = new Error("Delete restricted by related records"); error.statusCode = 409; throw error;}} else if (relation.onDelete === "nullify") await related.updateMany({where: condition, data: {[relation.field + "Id"]: null}}); else if (relation.onDelete === "cascade") await related.deleteMany({where: condition});}} return entry.softDelete.enabled ? delegate.update({where: liveFilter(entry, {id}), data: {[entry.softDelete.field]: new Date()}}) : delegate.delete({where: {id}});});}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
     '          } else await transactional(op.transaction || entry.inbound.length > 0, async session => {',
     '            for (const relation of entry.inbound) {',
