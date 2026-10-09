@@ -275,6 +275,10 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.app && spec.app.fastifyMiddlewareOnly && spec.app.framework !== 'fastify') {
+    errors.push('app.fastifyMiddlewareOnly requires app.framework=fastify');
+  }
+
   if (spec.app && Array.isArray(spec.app.middlewareModules)) {
     spec.app.middlewareModules.forEach((value, index) => {
       validateRelativePath(errors, value, 'app.middlewareModules[' + index + ']');
