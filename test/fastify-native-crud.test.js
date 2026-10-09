@@ -70,8 +70,8 @@ test('read-only relational entity uses native Fastify routes without mutation se
   new vm.Script(source);
 });
 
-test('mutating relational entity remains on Express compatibility path', () => {
-  const input = spec('postgresql');
+test('mutating MongoDB relational entity remains on Express compatibility path', () => {
+  const input = spec('mongodb');
   input.entities.User = {fields: {name: {type: 'string'}}};
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
@@ -85,4 +85,17 @@ test('relational entity with populate uses native Fastify when read-only', () =>
   input.entities.Todo.operations = {create: false, update: false, delete: false, list: {populate: ['owner']}};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.match(source, /"name":"Todo"/);
+});
+
+test('native Prisma create and update transform single relation IDs safely', () => {
+  const input = spec('postgresql');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  input.entities.Todo.operations = {delete: false};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /writeData\(entry, request.body, "create"\)/);
+  assert.match(source, /writeData\(entry, request.body, "update"\)/);
+  assert.match(source, /connect: \{id: reference\}/);
+  new vm.Script(source);
 });
