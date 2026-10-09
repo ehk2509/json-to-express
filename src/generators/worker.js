@@ -64,6 +64,10 @@ module.exports = function workerSource(spec) {
     '  await connectDatabase();',
     '  for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, stopWorker);',
     '  try {',
+    ...(spec.storage.enabled ? [
+      '    if (process.argv.includes("--storage-stats")) { console.log(JSON.stringify(await outbox.storageStats())); return; }',
+      '    if (process.argv.includes("--retry-dead-storage")) { console.log("Retried dead storage records:", await outbox.retryDeadStorage()); return; }'
+    ] : []),
     '    if (process.argv.includes("--retry-dead")) { console.log("Retried dead outbox records:", await outbox.retryDead()); return; }',
     '    if (process.argv.includes("--once")) { await processBatch(); return; }',
     '    await startWorker();',
