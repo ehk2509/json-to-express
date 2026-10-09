@@ -17,8 +17,8 @@ test('Fastify produces a native configurable health route and register call', as
   new vm.Script(native);
   const routes = [];
   const module = {exports: null};
-  vm.runInNewContext(native, {module});
-  module.exports({get: (path, handler) => routes.push({path, handler})});
+  vm.runInNewContext(native, {module, require});
+  module.exports({addHook: () => {}, get: (path, handler) => routes.push({path, handler})});
   assert.equal(routes.length, 1);
   assert.equal(routes[0].path, '/probe');
   const reply = {code(status) {this.status = status; return this;}, send(value) {this.payload = value; return this;}};
@@ -36,4 +36,17 @@ test('Express remains unchanged without native file', () => {
   const files = buildFiles(normalizeSpec(spec('express')));
   assert.equal(files.has('src/fastify-native.js'), false);
   assert.doesNotMatch(files.get('src/server.js'), /registerNativeRoutes/);
+});
+
+test('Fastify generates native operational routes and correlation hooks', async () => {
+  const input = spec();
+  input.observability = {enabled: true, health: {liveness: {enabled: true, path: '/live'}, readiness: {enabled: true, path: '/ready'}}, metrics: {enabled: true, path: '/metrics'}};
+  const files = buildFiles(normalizeSpec(input));
+  const generated = files.get('src/fastify-native.js');
+  assert.ok(generated.includes('fastify.get("/live"'));
+  assert.ok(generated.includes('fastify.get("/ready"'));
+  assert.ok(generated.includes('fastify.get("/metrics"'));
+  assert.match(generated, /X-Request-Id/);
+  assert.match(generated, /X-Content-Type-Options/);
+  new vm.Script(generated);
 });
