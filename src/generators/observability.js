@@ -66,7 +66,11 @@ module.exports = function observabilitySource(spec) {
       'const workflowSteps = new client.Counter({name: config.metrics.prefix + "workflow_steps_total", help: "Workflow step executions", labelNames: ["workflow", "action", "status"], registers: [registry]});',
       'const workerRecords = new client.Counter({name: config.metrics.prefix + "worker_records_total", help: "Outbox worker records", labelNames: ["kind", "name", "status"], registers: [registry]});',
       'const outboxPending = new client.Gauge({name: config.metrics.prefix + "outbox_pending", help: "Pending outbox records", registers: [registry]});',
-      'const outboxDead = new client.Gauge({name: config.metrics.prefix + "outbox_dead", help: "Dead outbox records", registers: [registry]});'
+      'const outboxDead = new client.Gauge({name: config.metrics.prefix + "outbox_dead", help: "Dead outbox records", registers: [registry]});',
+      ...(spec.storage.enabled ? [
+        'const storageCleanupPending = new client.Gauge({name: config.metrics.prefix + "storage_cleanup_pending", help: "Pending persistent storage deletions", registers: [registry]});',
+        'const storageCleanupDead = new client.Gauge({name: config.metrics.prefix + "storage_cleanup_dead", help: "Dead-letter persistent storage deletions", registers: [registry]});'
+      ] : [])
     ] : [
       'const registry = null;',
       'const httpRequests = null, httpDuration = null, httpActive = null, graphqlOperations = null;',
@@ -217,7 +221,12 @@ module.exports = function observabilitySource(spec) {
       '  if (typeof outbox.stats !== "function") return;',
       '  const stats = await outbox.stats();',
       '  outboxPending.set(stats.pending || 0);',
-      '  outboxDead.set(stats.dead || 0);'
+      '  outboxDead.set(stats.dead || 0);',
+      ...(spec.storage.enabled ? [
+        '  const storageStats = await outbox.storageStats();',
+        '  storageCleanupPending.set(storageStats.pending || 0);',
+        '  storageCleanupDead.set(storageStats.dead || 0);'
+      ] : [])
     ] : []),
     '}',
     '',

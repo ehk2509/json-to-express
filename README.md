@@ -885,6 +885,27 @@ GraphQL exposes file metadata in reads. File writes stay on the multipart REST s
 
 For production multi-replica deployments, S3-compatible storage is the recommended provider. Local storage is appropriate for development and single-host/container deployments where the generated Compose volume is shared with the API container.
 
+### Durable cleanup and orphan reconciliation
+
+Storage-enabled generated apps now provision an outbox automatically, even when no user events or jobs are declared. Post-commit file replacements and deletes record a durable **storage** job before attempting physical deletion. Failed S3/local deletion is retried by the background worker with backoff, recovery of expired claims, and dead-letter state after eight attempts. Use a separate worker for multi-replica deployments.
+
+```bash
+npm run worker                 # long-running retry processor (if separate mode)
+npm run worker:once            # one batch, useful for scheduled jobs
+npm run storage:stats          # pending/processing/dead for storage-only queue
+npm run storage:dead           # up to 20 dead jobs with errors and attempt counts
+npm run storage:retry-dead     # retry only dead storage-cleanup jobs
+npm run storage:reconcile      # read-only inventory, default age >= 24h
+npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25
+```
+
+Reconciliation checks actual object references across all configured file fields in MongoDB/PostgreSQL, lists only known storage prefixes and rejects traversal. It is **dry-run by default**; deletion requires explicit `--execute`, a minimum 24-hour age, and a maximum of 100 deletions per invocation. Scans are bounded (`--max-scan 5000` by default) and the output reports whether a scan was truncated. Always inspect the dry-run report, especially in multi-replica environments, before running deletion. The CLI scans records, so schedule it during low write activity to reduce race windows.
+
+When observability metrics are enabled, `j2e_storage_cleanup_pending` and `j2e_storage_cleanup_dead` expose the backlog (using the configured metric prefix). The generator also creates `deploy/prometheus/storage-cleanup-alerts.yml` with editable rules for persistent dead letters and growing backlogs. Import those rules into your Prometheus/Prometheus Operator configuration and configure your own notification routing.
+
+**Consistency boundary:** object storage cannot participate in the database's ACID transaction. Cleanup intents are inserted **after** a successful mutation, so an abrupt crash precisely between the database commit and intent insertion is not guaranteed to be recovered by the outbox. Scheduled reconciliation provides a safety net. Outbox retry is at-least-once and file deletion is idempotent. Neither the reconciler nor the outbox offers a globally atomic snapshot of concurrent uploads; use the age threshold and an operator-reviewed dry run before destructive reconciliation.
+
+
 ## Declarative caching
 
 Caching is opt-in and generated from the same JSON contract:

@@ -1,0 +1,110 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const path = require('node:path');
+const {normalizeSpec} = require('../src');
+const {buildFiles} = require('../src/generators');
+
+function makeSpec(database = 'mongodb', provider = 'local') {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'durable-storage', framework: 'fastify'},
+    database: {type: database},
+    storage: {enabled: true, provider},
+    entities: {Asset: {fields: {
+      name: {type: 'string', required: true},
+      file: {type: 'file', upload: {mimeTypes: ['text/plain'], maxBytes: 1024}}
+    }}}
+  });
+}
+
+test('storage always provisions durable outbox, worker and safe reconcile CLI', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    for (const provider of ['local', 's3']) {
+      const files = buildFiles(makeSpec(database, provider));
+      const pkg = JSON.parse(files.get('package.json'));
+      for (const name of ['worker', 'worker:once', 'storage:stats', 'storage:dead', 'storage:retry-dead', 'storage:reconcile']) {
+        assert.ok(pkg.scripts[name], name);
+      }
+      const reconciliation = files.get('scripts/storage-reconcile.js');
+      const storage = files.get('src/config/storage.js');
+      const outbox = files.get('src/workflows/outbox.js');
+      const worker = files.get('src/workflows/worker.js');
+      assert.match(storage, /outbox.enqueueJob\("__j2e_storage_cleanup__"/);
+      assert.match(storage, /await outbox.markDone\(record\)/);
+      assert.match(storage, /await outbox.markFailed\(record, error\)/);
+      assert.match(worker, /record.name === "__j2e_storage_cleanup__"/);
+      assert.match(outbox, /async function storageStats\(\)/);
+      assert.match(outbox, /async function retryDeadStorage\(\)/);
+      assert.match(outbox, /async function storageDead\(limit = 20\)/);
+      assert.match(outbox, /retryDeadStorage, storageDead, stats, storageStats\};/);
+      assert.match(reconciliation, /function safePrefix\(prefix\)/);
+      assert.match(reconciliation, /const referenced = await referencedKeys\(\)/);
+      assert.match(reconciliation, /mode: options.execute \? 'execute' : 'dry-run'/);
+      for (const source of [storage, outbox, worker, reconciliation]) new vm.Script(source);
+      if (database === 'postgresql') assert.match(files.get('prisma/schema.prisma'), /model J2EOutbox/);
+    }
+  }
+});
+
+test('reconciliation rejects unsafe paths, young objects and unbounded scans', () => {
+  const source = buildFiles(makeSpec()).get('scripts/storage-reconcile.js');
+  const module = {exports: {}};
+  const mockRequire = name => {
+    if (name === 'dotenv') return {config() {}};
+    if (name === 'node:fs/promises') return {};
+    if (name === 'node:path') return path;
+    return {};
+  };
+  vm.runInNewContext(source, {require: mockRequire, module, process: {argv: []}}, {filename: 'storage-reconcile.js'});
+  const {args, safePrefix} = module.exports;
+  assert.equal(args([]).execute, false);
+  assert.equal(args(['--execute']).execute, true);
+  assert.throws(() => args(['--older-than-hours', '1']), /minimum/);
+  assert.throws(() => args(['--limit', '101']), /limit/);
+  assert.throws(() => args(['--max-scan', '50001']), /max-scan/);
+  for (const bad of ['', '.', '../private', '/etc/passwd']) assert.throws(() => safePrefix(bad));
+  assert.equal(safePrefix('asset/file'), 'asset/file/');
+});
+
+test('post-commit deletion records intent before physical IO and releases failed jobs', async () => {
+  const source = buildFiles(makeSpec()).get('src/config/storage.js');
+  const events = [];
+  const record = {id:'job1',attempts:0,maxAttempts:8};
+  const outbox = {
+    enqueueJob: async (name, payload, options) => {events.push('enqueue'); assert.equal(name,'__j2e_storage_cleanup__'); assert.equal(options.config.queue,'storage'); return record;},
+    markDone: async () => {events.push('done');},
+    markFailed: async () => {events.push('failed');}
+  };
+  const stubRequire = name => {
+    if (name === 'node:crypto') return require('node:crypto');
+    if (name === 'node:path') return path;
+    if (name === 'node:fs') return require('node:fs');
+    if (name === 'node:fs/promises') return {...require('node:fs/promises'), unlink: async () => {events.push('unlink'); throw new Error('storage outage');}};
+    if (name === 'multer') return Object.assign(() => ({}), {memoryStorage: () => ({})});
+    if (name.endsWith('/outbox')) return outbox;
+    throw new Error('Unexpected require: ' + name);
+  };
+  const module = {exports: {}};
+  vm.runInNewContext(source, {module, require: stubRequire, process, console: {error() {}}, Buffer, setTimeout}, {filename:'storage.js'});
+  const ok = await module.exports.cleanupAfterCommit([{key:'asset/file/test.txt',provider:'local'}]);
+  assert.equal(ok,false);
+  assert.equal(events[0],'enqueue');
+  assert.equal(events.filter(x => x === 'unlink').length,3);
+  assert.equal(events.at(-1),'failed');
+});
+
+test('storage observability includes queue backlog metrics and Prometheus alerts', () => {
+  const raw={specVersion:'1.0',app:{name:'storage-alerts',framework:'fastify'},database:{type:'mongodb'},
+    storage:{enabled:true,provider:'local'},observability:{enabled:true,metrics:{enabled:true,prefix:'svc_'}},
+    entities:{Asset:{fields:{file:{type:'file',upload:{mimeTypes:['text/plain'],maxBytes:1024}}}}}};
+  const files=buildFiles(normalizeSpec(raw));
+  const alerts=files.get('deploy/prometheus/storage-cleanup-alerts.yml');
+  const metrics=files.get('src/config/observability.js');
+  assert.match(alerts,/svc_storage_cleanup_dead > 0/);
+  assert.match(alerts,/svc_storage_cleanup_pending > 100/);
+  assert.match(metrics,/storage_cleanup_dead/);
+  assert.match(metrics,/storage_cleanup_pending/);
+});

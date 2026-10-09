@@ -998,6 +998,7 @@ jobs:
           const fs = require('node:fs');
           const input = JSON.parse(fs.readFileSync('examples/e2e-s3.json','utf8'));
           input.app.framework = 'fastify';
+          input.outbox = {worker: 'separate'};
           input.app.port = 3495;
           input.generation.outputDir = '.tmp/fastify-s3';
           fs.writeFileSync('/tmp/fastify-s3-spec.json',JSON.stringify(input));
@@ -1020,6 +1021,64 @@ jobs:
           echo $! > server.pid
       - name: Exercise generated S3 storage
         run: E2E_S3_BASE_URL=http://127.0.0.1:3495 node scripts/e2e-generated-s3.js
+      - name: Verify persistent S3 deletion after outage and worker restart
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+        run: |
+          node - <<'NODE'
+          const {S3Client,PutObjectCommand,HeadObjectCommand}=require('@aws-sdk/client-s3');
+          const client=new S3Client({region:'us-east-1',endpoint:process.env.S3_ENDPOINT,forcePathStyle:true,credentials:{accessKeyId:'test',secretAccessKey:'test'}});
+          (async()=>{await client.send(new PutObjectCommand({Bucket:'j2e-e2e',Key:'assets/files/recover-after-outage.txt',Body:'durable'}));})()
+            .catch(error=>{console.error(error);process.exitCode=1;})
+            .finally(()=>client.destroy());
+          NODE
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const audit=require('./scripts/storage-reconcile');
+          (async()=>{
+            const listed=await audit.inventory(['assets/files/'],new Date(Date.now()+60000),1000);
+            assert.ok(listed.items.some(item=>item.key==='assets/files/recover-after-outage.txt'),
+              'S3 inventory must list configured upload prefix');
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
+          S3_ENDPOINT=http://127.0.0.1:9091 node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const db=require('./src/config/database');
+          const storage=require('./src/config/storage');
+          const outbox=require('./src/workflows/outbox');
+          (async()=>{
+            await db();
+            try {
+              const success=await storage.cleanupAfterCommit([{key:'assets/files/recover-after-outage.txt',provider:'s3'}]);
+              assert.equal(success,false,'S3 service unavailable through broken endpoint');
+              assert.equal((await outbox.storageStats()).pending,1,'cleanup intent persisted in MongoDB');
+            } finally {await db.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
+          sleep 2
+          node src/workflows/worker.js --once
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const db=require('./src/config/database');
+          const outbox=require('./src/workflows/outbox');
+          const {S3Client,HeadObjectCommand}=require('@aws-sdk/client-s3');
+          (async()=>{
+            await db();
+            try {
+              assert.equal((await outbox.storageStats()).pending,0);
+              const client=new S3Client({region:'us-east-1',endpoint:process.env.S3_ENDPOINT,forcePathStyle:true,credentials:{accessKeyId:'test',secretAccessKey:'test'}});
+              try {
+                await assert.rejects(client.send(new HeadObjectCommand({Bucket:'j2e-e2e',Key:'assets/files/recover-after-outage.txt'})),error=>error.$metadata && error.$metadata.httpStatusCode===404);
+              } finally {client.destroy();}
+            } finally {await db.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
@@ -1046,6 +1105,7 @@ jobs:
           input.app.framework = 'fastify';
           input.app.port = 3494;
           input.storage.provider = 'local';
+          input.outbox = {worker: 'separate'};
           input.storage.local = {directory: 'uploaded-files'};
           input.generation.outputDir = '.tmp/fastify-local-files';
           fs.writeFileSync('/tmp/fastify-local-files.json',JSON.stringify(input));
@@ -1087,6 +1147,63 @@ jobs:
             const missing = await fetch(asset.file.url);
             assert.equal(missing.status,404);
           })().catch(e=>{console.error(e);process.exitCode=1;});
+          NODE
+      - name: Verify durable Mongo cleanup retry and safe orphan reconciliation
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const cp=require('node:child_process');
+          const connectDatabase=require('./src/config/database');
+          const outbox=require('./src/workflows/outbox');
+          const root=path.resolve('uploaded-files');
+          const dir=path.join(root,'assets','files');
+          const exec=(args) => cp.execFileSync(process.execPath,args,{encoding:'utf8',env:process.env});
+          (async()=>{
+            await connectDatabase();
+            try {
+              fs.mkdirSync(dir,{recursive:true});
+              const old=path.join(dir,'old-orphan.txt');
+              const fresh=path.join(dir,'fresh-orphan.txt');
+              fs.writeFileSync(old,'old');
+              fs.writeFileSync(fresh,'fresh');
+              const oldDate=new Date(Date.now()-49*3600000);
+              fs.utimesSync(old,oldDate,oldDate);
+              let report=JSON.parse(exec(['scripts/storage-reconcile.js']));
+              assert.equal(report.mode,'dry-run');
+              assert.ok(report.keys.includes('assets/files/old-orphan.txt'));
+              assert.ok(!report.keys.includes('assets/files/fresh-orphan.txt'));
+              assert.ok(fs.existsSync(old),'dry run must never delete');
+              assert.throws(()=>exec(['scripts/storage-reconcile.js','--execute','--older-than-hours','1']));
+              report=JSON.parse(exec(['scripts/storage-reconcile.js','--execute']));
+              assert.equal(report.removed,1);
+              assert.equal(fs.existsSync(old),false);
+              assert.ok(fs.existsSync(fresh));
+              // Force a recoverable physical deletion failure, then restart worker.
+              const recoverable=path.join(dir,'recoverable');
+              fs.mkdirSync(recoverable,{recursive:true});
+              fs.writeFileSync(path.join(recoverable,'keep.txt'),'blocked');
+              const intent=await outbox.enqueueJob('__j2e_storage_cleanup__',{
+                values:[{key:'assets/files/recoverable',provider:'local'}]
+              },{config:{queue:'storage',maxAttempts:4,backoffMs:1}});
+              assert.equal((await outbox.storageStats()).pending,1);
+              exec(['src/workflows/worker.js','--once']);
+              assert.equal((await outbox.storageStats()).pending,1);
+              fs.rmSync(recoverable,{recursive:true});
+              fs.writeFileSync(recoverable,'restored');
+              await new Promise(resolve=>setTimeout(resolve,80));
+              exec(['src/workflows/worker.js','--once']);
+              const row=await outbox.Outbox.findById(intent._id);
+              assert.equal(row.status,'done');
+              assert.equal(fs.existsSync(recoverable),false);
+              assert.equal((await outbox.storageStats()).pending,0);
+            } finally {await connectDatabase.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
       - name: Print application logs on failure
         if: failure()

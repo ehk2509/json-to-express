@@ -147,7 +147,15 @@ module.exports = function readmeSource(spec) {
       ]),
       'File fields are accepted through multipart/form-data on create/update routes. MIME type and maxBytes policies are enforced per field.', '',
       'Responses persist metadata only (key, originalName, mimeType, size, checksum, provider, uploadedAt) and add signed URLs at request time.', '',
-      'Replacing or deleting records automatically cleans up the corresponding stored objects. Failed uploads are rolled back before the request completes.', '',
+      'Replacing or deleting records automatically schedules durable storage cleanup through the generated database outbox. Failed pre-commit uploads are compensated.', '',
+      'Storage cleanup retries survive process restarts and may be processed by the embedded or separate worker.', '',
+      '    npm run storage:stats',
+      '    npm run storage:dead',
+      '    npm run storage:retry-dead',
+      '    npm run storage:reconcile',
+      '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25', '',
+      'Reconciliation is read-only by default. Execute mode is capped at 100 deletions per invocation, restricted to configured upload prefixes, and enforces a minimum 24-hour object age.', '',
+      'Database mutations and object storage are not one ACID transaction: a crash in the post-commit/pre-intent window may require scheduled orphan reconciliation. Use S3 for distributed API/worker deployments.', '',
       'Read caching is disabled automatically for entities with signed file URLs so expired signed URLs are never served from cache.', ''
     ] : []),
     ...(spec.cache.enabled ? [

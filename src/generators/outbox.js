@@ -72,7 +72,18 @@ function mongoSource(spec) {
     '    Outbox.countDocuments({status: "dead"})',
     '  ]);',
     '  return {pending, processing, dead};',
+    '}', '',    'async function storageStats() {',
+    '  const [pending, processing, dead] = await Promise.all(["pending", "processing", "dead"].map(status => Outbox.countDocuments({queue: "storage", name: "__j2e_storage_cleanup__", status})));',
+    '  return {pending, processing, dead};',
+    '}',
+    'async function retryDeadStorage() {',
+    '  const result = await Outbox.updateMany({queue: "storage", name: "__j2e_storage_cleanup__", status: "dead"}, {$set: {status: "pending", attempts: 0, lockedAt: null, lastError: null, availableAt: new Date()}});',
+    '  return result.modifiedCount || 0;',
     '}', '',
+    'async function storageDead(limit = 20) {',
+    '  return Outbox.find({queue: "storage", name: "__j2e_storage_cleanup__", status: "dead"}).sort({updatedAt: -1}).limit(Math.min(100, Math.max(1, limit))).select("_id attempts lastError createdAt updatedAt availableAt").lean();',
+    '}', '',
+
     'async function markFailed(record, error) {',
     '  const attempts = record.attempts + 1;',
     '  const dead = attempts >= record.maxAttempts;',
@@ -85,7 +96,7 @@ function mongoSource(spec) {
     '    availableAt: dead ? record.availableAt : new Date(Date.now() + delay)',
     '  }});',
     '}', '',
-    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, stats};', ''
+    'module.exports = {Outbox, claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, retryDeadStorage, storageDead, stats, storageStats};', ''
   ].join('\n');
 }
 
@@ -164,7 +175,18 @@ function postgresSource(spec) {
     '    prisma.j2EOutbox.count({where: {status: "dead"}})',
     '  ]);',
     '  return {pending, processing, dead};',
+    '}', '',    'async function storageStats() {',
+    '  const [pending, processing, dead] = await Promise.all(["pending", "processing", "dead"].map(status => prisma.j2EOutbox.count({where: {queue: "storage", name: "__j2e_storage_cleanup__", status}})));',
+    '  return {pending, processing, dead};',
+    '}',
+    'async function retryDeadStorage() {',
+    '  const result = await prisma.j2EOutbox.updateMany({where: {queue: "storage", name: "__j2e_storage_cleanup__", status: "dead"}, data: {status: "pending", attempts: 0, lockedAt: null, lastError: null, availableAt: new Date()}});',
+    '  return result.count || 0;',
     '}', '',
+    'async function storageDead(limit = 20) {',
+    '  return prisma.j2EOutbox.findMany({where: {queue: "storage", name: "__j2e_storage_cleanup__", status: "dead"}, orderBy: {updatedAt: "desc"}, take: Math.min(100, Math.max(1, limit)), select: {id:true, attempts:true, lastError:true, createdAt:true, updatedAt:true, availableAt:true}});',
+    '}', '',
+
     'async function markFailed(record, error) {',
     '  const attempts = record.attempts + 1;',
     '  const dead = attempts >= record.maxAttempts;',
@@ -180,7 +202,7 @@ function postgresSource(spec) {
     '    }',
     '  });',
     '}', '',
-    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, stats};', ''
+    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, retryDeadStorage, storageDead, stats, storageStats};', ''
   ].join('\n');
 }
 
