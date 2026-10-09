@@ -37,7 +37,7 @@ test('advanced relational entities stay on compatibility path', () => {
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   input.entities.User = {fields: {name: {type: 'string'}}};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.match(source, /"name":"Todo"/);
+  assert.doesNotMatch(source, /"name":"Todo"/);
 });
 
 test('native Fastify CRUD honors API key authentication and RBAC without Express controller middleware', () => {
