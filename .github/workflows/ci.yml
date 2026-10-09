@@ -497,6 +497,12 @@ jobs:
             assert.match(await metrics.text(),/j2e_http_requests_total/);
             const compressed=await fetch('http://127.0.0.1:3499/metrics',{headers:{'accept-encoding':'gzip'}});
             assert.equal(compressed.status,200);
+            let throttled=false;
+            for (let attempt=0;attempt<120;attempt++) {
+              const response=await fetch('http://127.0.0.1:3499/health');
+              if (response.status===429) {throttled=true;break;}
+            }
+            assert.equal(throttled,true,'native Fastify rate limit must return 429');
           })().catch(error => {console.error(error); process.exitCode=1;});
           NODE
       - name: Print adapter-free Fastify logs
