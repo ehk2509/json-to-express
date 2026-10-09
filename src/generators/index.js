@@ -36,6 +36,7 @@ const graphqlSource = require('./graphql');
 const observabilitySource = require('./observability');
 const cacheSource = require('./cache');
 const storageSource = require('./storage');
+const storageReconcileSource = require('./storage-reconcile');
 const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
@@ -126,6 +127,7 @@ function buildFiles(spec) {
   if (cache) files.set(paths.cache, cache);
   const storage = storageSource(spec);
   if (storage) files.set(paths.storage, storage);
+  if (spec.storage.enabled) files.set('scripts/storage-reconcile.js', storageReconcileSource(spec));
   if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {
