@@ -10,9 +10,19 @@ function safePrismaDelete(entity, spec) {
       field.type === 'reference' && field.ref === entity.name && field.many));
 }
 
+// Soft-deleting a parent does not trigger PostgreSQL ON DELETE actions.
+// Keep these entities on the compatibility implementation until native
+// restrict/nullify/cascade handling executes in the same transaction.
+function unsafePrismaSoftDelete(entity, spec) {
+  return spec.database.type === 'postgresql' && entity.softDelete.enabled &&
+    spec.entities.some(source => source.fields.some(field =>
+      field.type === 'reference' && field.ref === entity.name));
+}
+
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
     (spec.database.type === 'mongodb' || spec.database.type === 'postgresql') &&
+    !unsafePrismaSoftDelete(entity, spec) &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
