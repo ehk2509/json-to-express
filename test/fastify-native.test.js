@@ -69,7 +69,7 @@ test('Fastify CORS preflight enforces configured origin and sends empty 204', as
   assert.equal(ok.headers['Access-Control-Allow-Origin'], 'https://allowed.example');
   assert.equal(ok.headers['Access-Control-Allow-Headers'], 'X-API-Key');
   const denied = reply();
-  await onRequest({method:'OPTIONS', headers:{origin:'https://evil.example', 'access-control-request-method':'POST'}}, denied);
+  await onRequest({raw:{}, method:'OPTIONS', headers:{origin:'https://evil.example', 'access-control-request-method':'POST'}}, denied);
   assert.equal(denied.codeValue, 403);
   const internal = reply();
   errorHandler(new Error('secret internal details'), {}, internal);
