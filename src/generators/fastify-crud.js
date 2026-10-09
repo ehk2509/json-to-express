@@ -250,6 +250,7 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        } catch (error) {',
     '          if (storedUploads.length) await storage.cleanup(storedUploads).catch(() => {});',
+    '          if (postgres && error.code === "P2025") return reply.code(op.notFoundStatus || 404).send({error: "Not found"});',
     '          if (error.statusCode && error.statusCode < 500) return reply.code(error.statusCode).send({error: error.message});',
     '          throw error;',
     '        }',
