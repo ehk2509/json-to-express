@@ -7,7 +7,7 @@ const nativeCrudSource = require('./fastify-crud');
 // production facilities that still need explicit runtime parity tests.
 function isDirectFastify(spec) {
   return spec.app.framework === 'fastify' &&
-    !spec.app.middlewareModules.length &&
+    (!spec.app.middlewareModules.length || spec.app.fastifyMiddlewareOnly) &&
     spec.entities.every(entity => nativeCrudSource.eligible(entity, spec));
 }
 
