@@ -182,3 +182,25 @@ test('Express PostgreSQL and MongoDB controllers use transactional cleanup inten
     new vm.Script(source);
   }
 });
+
+test('recursive delete planners collect file references from cascaded descendants', () => {
+  for(const database of ['mongodb','postgresql']) {
+    const spec=normalizeSpec({
+      specVersion:'1.0',app:{name:'cascade-intents',framework:'fastify'},
+      database:{type:database},storage:{enabled:true,provider:'local'},
+      entities:{
+        Parent:{fields:{title:{type:'string'}},softDelete:{enabled:true}},
+        Child:{fields:{parent:{type:'reference',ref:'Parent',onDelete:'cascade'},
+          attachment:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}}}}
+      }
+    });
+    const files=buildFiles(spec);
+    const planner=files.get(database==='mongodb'?'src/fastify-mongo-delete.js':'src/fastify-postgres-delete.js');
+    const crud=files.get('src/fastify-crud.js');
+    assert.match(planner,/fileFields/);
+    assert.match(planner,/values.push/);
+    assert.match(planner,/return values/);
+    assert.match(crud,/storage.enqueueCleanupIntent\(affected, (session|tx)\)/);
+    new vm.Script(planner);
+  }
+});
