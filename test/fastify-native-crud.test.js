@@ -151,3 +151,13 @@ test('native Fastify cache reuses shared key/version engine and invalidates muta
   new vm.Script(native);
   new vm.Script(cacheSource);
 });
+
+test('native signed local downloads use authenticated token path', () => {
+  const input = spec('mongodb');
+  input.storage = {enabled:true, provider:'local', signedUrls:{enabled:true}};
+  input.entities.Todo.fields.photo = {type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}};
+  const files = buildFiles(normalizeSpec(input));
+  assert.match(files.get('src/fastify-native.js'), /storage.fastifyDownload/);
+  assert.match(files.get('src/config/storage.js'), /verifyLocalToken\(request.params.token\)/);
+  new vm.Script(files.get('src/fastify-native.js'));
+});
