@@ -212,7 +212,7 @@ test('PostgreSQL soft-delete entities stay native and filter tombstones', () => 
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /model.findFirst\(\{where: liveFilter\(entry, \{id\}\)/);
   assert.match(source, /rows = await model.findMany\(\{where: conditions/);
-  assert.match(source, /if \(entry.softDelete.enabled\) await model.update/);
+  assert.match(source, /entry.softDelete.enabled \? delegate.update/);
   assert.match(source, /\[entry.softDelete.field\]: new Date\(\)/);
   new vm.Script(source);
 });
