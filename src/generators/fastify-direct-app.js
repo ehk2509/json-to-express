@@ -9,6 +9,7 @@ module.exports = function directFastifyAppSource(spec) {
   return [
     "'use strict';",
     "const fastify = require('fastify')({logger: false});",
+    ...(spec.storage.enabled ? ["fastify.register(require('@fastify/multipart'));"] : []),
     ...nativeModules.map((name, i) =>
       'const register' + i + ' = require(' + js(relativeRequire(appPath, require('node:path').posix.join(root, name + '.js'))) + ');'),
     ...nativeModules.map((name, i) => 'register' + i + '(fastify);'),
