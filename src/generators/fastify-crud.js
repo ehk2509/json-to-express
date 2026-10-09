@@ -15,7 +15,7 @@ function eligible(entity, spec) {
 
 module.exports = function nativeCrudSource(spec) {
   const nativePath = require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js');
-  const entities = spec.entities.filter(e => eligible(e, spec));
+  const entities = spec.api.rest ? spec.entities.filter(e => eligible(e, spec)) : [];
   const imports = entities.map((entity, index) =>
     'const model' + index + ' = ' +
     (spec.database.type === 'mongodb'
