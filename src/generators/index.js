@@ -7,6 +7,8 @@ const prismaSchemaSource = require('./prisma-schema');
 const prismaControllerSource = require('./prisma-controller');
 const routesSource = require('./routes');
 const appSource = require('./app');
+const directFastifyAppSource = require('./fastify-direct-app');
+const isDirectFastify = require('./fastify-direct');
 const serverSource = require('./server');
 const databaseSource = require('./database');
 const errorHandlerSource = require('./error-handler');
@@ -98,7 +100,7 @@ function buildFiles(spec) {
   files.set('package.json', packageSource(spec));
   files.set('.env.example', envExample(spec));
   files.set('README.md', readmeSource(spec));
-  files.set(paths.app, appSource(spec));
+  files.set(paths.app, isDirectFastify(spec) ? directFastifyAppSource(spec) : appSource(spec));
   files.set(paths.server, serverSource(spec));
   if (spec.app.framework === 'fastify') {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-native.js'), fastifyNativeSource(spec));
