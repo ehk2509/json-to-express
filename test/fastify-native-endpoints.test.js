@@ -264,7 +264,7 @@ test('native PostgreSQL CRUD maps concurrent missing-record writes to not found'
   new vm.Script(source);
 });
 
-test('PostgreSQL soft-delete parents with inbound references remain on compatibility routes', () => {
+test('PostgreSQL soft-delete parent applies inbound policies in one Prisma transaction', () => {
   for (const onDelete of ['restrict', 'nullify', 'cascade']) {
     const spec = normalizeSpec({
       specVersion: '1.0',
@@ -276,8 +276,13 @@ test('PostgreSQL soft-delete parents with inbound references remain on compatibi
       }
     });
     const source = buildFiles(spec).get('src/fastify-crud.js');
-    assert.doesNotMatch(source, /"name":"User"/, onDelete + ' must not silently bypass inbound policy');
-    assert.match(source, /"name":"Post"/);
+    assert.match(source, /"name":"User"/);
+    assert.match(source, /entry.softDelete.enabled && entry.inbound.length/);
+    assert.match(source, /const child = tx/);
+    assert.match(source, /isolationLevel: "Serializable"/);
+    assert.match(source, /related.count/);
+    assert.match(source, /related.updateMany/);
+    assert.match(source, /related.deleteMany/);
     new vm.Script(source);
   }
 });
