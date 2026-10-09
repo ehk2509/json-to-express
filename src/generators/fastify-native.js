@@ -71,7 +71,6 @@ module.exports = function fastifyNativeSource(spec) {
   if (spec.storage.enabled && spec.storage.signedUrls.enabled) lines.push('  fastify.get(' + js(spec.storage.signedUrls.path) + ', storage.fastifyDownload);');
   if (spec.api.graphql.enabled) lines.push('  fastify.route({method: ["GET", "POST"], url: ' + js(spec.api.graphql.path) + ', handler: graphqlApi.fastifyHandler});');
   const nativeGetPaths = [
-    ...(spec.storage.enabled && spec.storage.signedUrls.enabled ? [spec.storage.signedUrls.path] : []),
     ...(spec.app.health.enabled ? [spec.app.health.path] : []),
     ...(spec.observability.health.liveness.enabled ? [spec.observability.health.liveness.path] : []),
     ...(spec.observability.health.readiness.enabled ? [spec.observability.health.readiness.path] : []),
@@ -83,6 +82,6 @@ module.exports = function fastifyNativeSource(spec) {
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
     '  });'
   );
-  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
+  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.storage.enabled && spec.storage.signedUrls.enabled ? ' || (method === "GET" && /^' + spec.storage.signedUrls.path.replace(':token', '[^/]+').replace(/\\/g, '\\\\') + '$/.test(pathname))' : '') + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
   return lines.join('\n');
 };
