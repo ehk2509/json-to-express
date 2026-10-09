@@ -414,7 +414,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User'}}, operations: {delete: false}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
@@ -464,6 +464,18 @@ jobs:
             assert.equal((await fetch(url + '/bad-id')).status, 400);
             assert.equal((await fetch(url + '/' + item.id, {method:'DELETE'})).status, 204);
             assert.equal((await fetch(url + '/' + item.id)).status, 404);
+            const users = 'http://127.0.0.1:3498/api/users';
+            const tasks = 'http://127.0.0.1:3498/api/tasks';
+            const ownerResponse = await fetch(users,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'Owner'})});
+            assert.equal(ownerResponse.status,201);
+            const owner = await ownerResponse.json();
+            const newTask = await fetch(tasks,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:'Related',owner:owner.id})});
+            assert.equal(newTask.status,201);
+            const task = await newTask.json();
+            assert.ok(task.id);
+            const moved = await fetch(tasks+'/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({owner:null})});
+            assert.equal(moved.status,200);
+            assert.equal((await moved.json()).ownerId,null);
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
       - name: Print Fastify PostgreSQL logs on failure
