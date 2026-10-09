@@ -54,7 +54,7 @@ test('native Fastify CRUD honors API key authentication and RBAC without Express
   const source = files.get('src/fastify-crud.js');
   assert.match(source, /auth.readAuth\(request.raw, op.auth\)/);
   assert.match(source, /request.raw.auth/);
-  assert.match(source, /model.findByIdAndUpdate/);
+  assert.match(source, /model.findOneAndUpdate/);
   new vm.Script(source);
 });
 
