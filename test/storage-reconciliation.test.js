@@ -74,7 +74,7 @@ test('post-commit deletion records intent before physical IO and releases failed
   const events = [];
   const record = {id:'job1',attempts:0,maxAttempts:8};
   const outbox = {
-    enqueueJob: async (name, payload, options) => {events.push('enqueue'); assert.equal(name,'__j2e_storage_cleanup__'); assert.equal(options.config.queue,'storage'); return record;},
+    enqueueJob: async (name, payload, options) => {events.push('enqueue'); assert.equal(name,'__j2e_storage_cleanup__'); assert.equal(options.config.queue,'storage'); return {...record,payload};},
     markDone: async () => {events.push('done');},
     markFailed: async () => {events.push('failed');}
   };
