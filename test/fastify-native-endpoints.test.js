@@ -119,39 +119,66 @@ test('custom middleware can supply a native Fastify onRequest hook without touch
   new vm.Script(server);
 });
 
-test('native custom middleware supports preValidation, preHandler and onSend in module order', () => {
+test('native middleware lifecycle hooks register and execute on native routes', async () => {
   const spec = normalizeSpec({
     specVersion: '1.0',
-    app: {name:'native-lifecycle',framework:'fastify',middlewareModules:['src/middleware/first.js','src/middleware/second.js']},
-    database: {type:'mongodb'},
-    entities: {Todo:{fields:{title:{type:'string'}}}}
+    app: {name: 'native-lifecycle', framework: 'fastify', middlewareModules: ['src/middleware/check.js']},
+    database: {type: 'mongodb'},
+    entities: {Todo: {fields: {title: {type: 'string'}}}}
   });
   const server = buildFiles(spec).get('src/server.js');
-  for (const stage of ['onRequest','preValidation','preHandler','onSend']) {
-    assert.match(server, new RegExp('fastify\\.addHook\\("' + stage + '"'));
-    assert.match(server, new RegExp('middleware\\.fastify' + stage[0].toUpperCase() + stage.slice(1)));
-  }
-  assert.ok(server.indexOf('first') < server.indexOf('second'));
-  assert.match(server, /isNativeRequest\\(request\\)/);
-  assert.match(server, /: payload\\)/);
-  new vm.Script(server);
-});
-
-test('native middleware exposes serialization, error and response lifecycle without altering Express fallback', () => {
-  const spec = normalizeSpec({
-    specVersion: '1.0',
-    app: {name:'native-error-hooks',framework:'fastify',middlewareModules:['src/middleware/audit.js']},
-    database: {type:'mongodb'},
-    entities: {Todo:{fields:{title:{type:'string'}}}}
+  const hooks = {};
+  const calls = [];
+  const middleware = {
+    fastifyOnRequest: async () => calls.push('request'),
+    fastifyPreValidation: async () => calls.push('validation'),
+    fastifyPreHandler: async () => calls.push('handler'),
+    fastifyPreSerialization: async (req, reply, payload) => ({...payload, serialized: true}),
+    fastifyOnSend: async (req, reply, payload) => String(payload) + ':sent',
+    fastifyOnError: async () => calls.push('error'),
+    fastifyOnResponse: async () => calls.push('response')
+  };
+  const fakeFastify = {
+    register: async () => {},
+    use: () => {},
+    addHook: (stage, fn) => { (hooks[stage] ||= []).push(fn); },
+    listen: async () => {},
+    close: async () => {}
+  };
+  const match = (method, pathname) => method === 'GET' && pathname === '/api/todos';
+  const mockModule = {matches: match, default: () => {}};
+  const required = name => {
+    if (name === 'dotenv') return {config: () => {}};
+    if (name === 'fastify') return () => fakeFastify;
+    if (name.includes('check')) return middleware;
+    if (name.includes('environment')) return () => {};
+    if (name.includes('database')) return Object.assign(async () => {}, {disconnect: async () => {}});
+    if (name.includes('fastify-')) return Object.assign(() => {}, {matches: match});
+    if (name.includes('app')) return () => {};
+    throw new Error('Unexpected generated server dependency: ' + name);
+  };
+  vm.runInNewContext(server, {
+    require: required,
+    process: {env: {}, once: () => {}, exitCode: 0},
+    console: {log: () => {}, error: () => {}}
   });
-  const server = buildFiles(spec).get('src/server.js');
-  for (const stage of ['preSerialization', 'onError', 'onResponse']) {
-    assert.match(server, new RegExp('fastify\\.addHook\\("' + stage + '"'));
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  const native = {raw: {method: 'GET', url: '/api/todos'}};
+  const fallback = {raw: {method: 'GET', url: '/fallback'}};
+  const reply = {};
+  for (const stage of ['onRequest', 'preValidation', 'preHandler']) {
+    assert.equal(hooks[stage].length, 1);
+    await hooks[stage][0](native, reply);
+    await hooks[stage][0](fallback, reply);
   }
-  assert.match(server, /middleware\\.fastifyPreSerialization\\(request, reply, payload\\)/);
-  assert.match(server, /middleware\\.fastifyOnError\\(request, reply, error\\)/);
-  assert.match(server, /middleware\\.fastifyOnResponse\\(request, reply\\)/);
-  assert.match(server, /if \\(isNativeRequest\\(request\\)\\)/);
-  assert.match(server, /app\\(req, res, next\\)/);
-  new vm.Script(server);
+  assert.deepEqual(calls, ['request', 'validation', 'handler']);
+  assert.equal((await hooks.preSerialization[0](native, reply, {ok:true})).serialized, true);
+  assert.equal((await hooks.preSerialization[0](fallback, reply, {ok:true})).serialized, undefined);
+  assert.equal(await hooks.onSend[0](native, reply, 'value'), 'value:sent');
+  assert.equal(await hooks.onSend[0](fallback, reply, 'value'), 'value');
+  await hooks.onError[0](native, reply, new Error('boom'));
+  await hooks.onError[0](fallback, reply, new Error('boom'));
+  await hooks.onResponse[0](native, reply);
+  await hooks.onResponse[0](fallback, reply);
+  assert.deepEqual(calls, ['request', 'validation', 'handler', 'error', 'response']);
 });
