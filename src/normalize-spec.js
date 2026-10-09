@@ -214,7 +214,7 @@ function normalizeSpec(inputSpec) {
   const dependencies = {
     dotenv: '^16.4.5',
     express: '^4.21.1',
-    ...(spec.app.framework === 'fastify' ? {fastify: '^5.6.0', '@fastify/express': '^4.0.0', ...(valueOr(rateLimit.enabled, false) ? {'@fastify/rate-limit': '^10.3.0'} : {}), ...(valueOr(production.compression, false) ? {'@fastify/compress': '^8.3.0'} : {})} : {}),
+    ...(spec.app.framework === 'fastify' ? {fastify: '^5.6.0', '@fastify/express': '^4.0.0', ...(storageEnabled ? {'@fastify/multipart': '^9.2.1'} : {}), ...(valueOr(rateLimit.enabled, false) ? {'@fastify/rate-limit': '^10.3.0'} : {}), ...(valueOr(production.compression, false) ? {'@fastify/compress': '^8.3.0'} : {})} : {}),
     ...(isMongo ? {mongoose: '^8.8.0'} : {}),
     ...(isPostgres ? {'@prisma/client': '^6.16.2'} : {}),
     ...(jwtEnabled ? {jsonwebtoken: '^9.0.2'} : {}),
