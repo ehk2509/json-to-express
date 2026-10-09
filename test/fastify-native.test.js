@@ -43,9 +43,9 @@ test('Fastify generates native operational routes and correlation hooks', async 
   input.observability = {enabled: true, health: {liveness: {enabled: true, path: '/live'}, readiness: {enabled: true, path: '/ready'}}, metrics: {enabled: true, path: '/metrics'}};
   const files = buildFiles(normalizeSpec(input));
   const generated = files.get('src/fastify-native.js');
-  assert.match(generated, /fastify.get\("/live"/);
-  assert.match(generated, /fastify.get\("/ready"/);
-  assert.match(generated, /fastify.get\("/metrics"/);
+  assert.ok(generated.includes('fastify.get("/live"'));
+  assert.ok(generated.includes('fastify.get("/ready"'));
+  assert.ok(generated.includes('fastify.get("/metrics"'));
   assert.match(generated, /X-Request-Id/);
   assert.match(generated, /X-Content-Type-Options/);
   new vm.Script(generated);
