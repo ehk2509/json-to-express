@@ -450,7 +450,7 @@ jobs:
             const invalidBody = await fetch(url, {method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({done:'not a boolean'})});
             assert.equal(invalidBody.status, 400);
             const create = await fetch(url, {method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({title:'PostgreSQL native', done:false})});
-            assert.equal(create.status, 201, await create.text().catch(()=>''));
+            assert.equal(create.status, 201);
             const item = await create.json();
             assert.ok(item.id);
             const get = await fetch(url + '/' + item.id);
