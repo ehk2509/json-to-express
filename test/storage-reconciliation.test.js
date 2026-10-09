@@ -205,3 +205,54 @@ test('recursive delete planners collect file references from cascaded descendant
     new vm.Script(planner);
   }
 });
+
+
+test('reconcile rechecks each candidate after a writer races in and refuses changed files', async () => {
+  const source = buildFiles(makeSpec()).get('scripts/storage-reconcile.js');
+  const now = new Date();
+  const old = new Date(now.getTime() - 49*3600000);
+  const names=['referenced.txt','changed.txt','orphan.txt'];
+  const rows=[];
+  const removed=[];
+  const modified=new Set();
+  const root=path.resolve(process.cwd(), 'uploads');
+  const fakeFs={
+    readdir:async folder => folder===path.join(root,'assets','file')
+      ? names.map(name=>({name,isDirectory:()=>false,isFile:()=>true})) : [],
+    stat:async()=>({mtime:old,size:7,ino:42}),
+    lstat:async file=>({isFile:()=>true,mtime:modified.has(path.basename(file))?now:old,size:7,ino:42})
+  };
+  const model={find:()=>({lean:()=>({cursor:async function*(){yield* rows;}})})};
+  const connect=async()=>{}; connect.disconnect=async()=>{};
+  const mod={exports:{}};
+  const fakeRequire=name=>{
+    if(name==='dotenv')return {config(){}};
+    if(name==='node:path')return path;
+    if(name==='node:fs/promises')return fakeFs;
+    if(name.includes('database'))return connect;
+    if(name.includes('storage'))return {cleanup:async values=>removed.push(...values.map(v=>v.key))};
+    return model;
+  };
+  vm.runInNewContext(source,{module:mod,require:fakeRequire,process:{argv:[],cwd:()=>process.cwd()},Date});
+  const report=await mod.exports.reconcile(mod.exports.args(['--execute']),{
+    async beforeCandidate(item){
+      if(item.key.endsWith('/referenced.txt')) rows.push({file:{key:item.key}});
+      if(item.key.endsWith('/changed.txt')) modified.add('changed.txt');
+    }
+  });
+  assert.equal(report.removed,1);
+  assert.equal(report.skippedReferenced,1);
+  assert.equal(report.skippedModified,1);
+  assert.deepEqual(removed,['assets/file/orphan.txt']);
+});
+
+test('reconciliation holds configured prefix and per-object age guards', () => {
+  const generated=buildFiles(makeSpec()).get('scripts/storage-reconcile.js');
+  assert.match(generated,/fs\.lstat\(target\)/);
+  assert.match(generated,/currentReferences = await referencedKeys\(\)/);
+  assert.match(generated,/HeadObjectCommand/);
+  assert.match(generated,/cursor: \{id: cursor\}/);
+  assert.match(generated,/skippedReferenced/);
+  assert.match(generated,/skippedModified/);
+  new vm.Script(generated);
+});
