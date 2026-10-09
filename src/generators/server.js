@@ -35,6 +35,16 @@ function serverSource(spec) {
         '    return observability.requestMiddleware(request.raw, reply.raw, done);',
         '  });'
       ] : []),
+      // Run native middleware on native routes only. Express middleware remains attached to fallback routes.
+      ...spec.app.middlewareModules.map(modulePath =>
+        '  { const middleware = require(' + js(relativeRequire(paths.server, modulePath)) + ');' +
+        ' if (typeof middleware.fastifyOnRequest === "function") {' +
+        ' fastify.addHook("onRequest", async (request, reply) => {' +
+        ' const pathname = String(request.raw.url).split("?")[0];' +
+        ' if (registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname)) await middleware.fastifyOnRequest(request, reply);' +
+        ' });' +
+        ' } }'
+      ),
       ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
       ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
       ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
