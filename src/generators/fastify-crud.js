@@ -36,6 +36,7 @@ module.exports = function nativeCrudSource(spec) {
       ? 'require(' + js(relativeRequire(nativePath, filePaths(spec, entity.name).model)) + ')'
       : 'connectDatabase.client[' + js(entity.name[0].toLowerCase() + entity.name.slice(1)) + ']') + ';');
   const config = entities.map((entity, index) => ({
+    inbound: spec.database.type === 'mongodb' ? spec.entities.flatMap(source => source.fields.filter(field => field.type === 'reference' && field.ref === entity.name).map(field => ({model: source.name, field: field.name, many: Boolean(field.many), onDelete: field.onDelete, softDelete: source.softDelete}))) : [],
     modelIndex: index,
     name: entity.name,
     operations: entity.operations,
@@ -59,6 +60,8 @@ module.exports = function nativeCrudSource(spec) {
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
     ...imports,
+    ...(spec.database.type === 'mongodb' ? spec.entities.filter(source => entities.some(target => source.fields.some(field => field.type === 'reference' && field.ref === target.name)) && !entities.some(entity => entity.name === source.name)).map(source => 'const relationModel' + source.name + ' = require(' + js(relativeRequire(nativePath, filePaths(spec, source.name).model)) + ');') : []),
+    'const relationModels = ' + (spec.database.type === 'mongodb' ? '{' + spec.entities.map(source => js(source.name) + ': ' + (entities.some(e => e.name === source.name) ? 'model' + entities.findIndex(e => e.name === source.name) : (spec.entities.some(target => entities.some(e => e.name === target.name) && source.fields.some(f => f.type === "reference" && f.ref === target.name)) ? 'relationModel' + source.name : 'null'))).join(',') + '}' : '{}') + ';',
     'const config = ' + js(config) + ';',
     'const models = [' + entities.map((unused, i) => 'model' + i).join(', ') + '];',
     'const postgres = ' + (spec.database.type === 'postgresql') + ';',
@@ -196,7 +199,20 @@ module.exports = function nativeCrudSource(spec) {
     '          if (postgres) {',
     '            try {await model.delete({where: {id}});}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
-    '          } else await transactional(op.transaction, async session => {',
+    '          } else await transactional(op.transaction || entry.inbound.length > 0, async session => {',
+    '            for (const relation of entry.inbound) {',
+    '              const related = relationModels[relation.model];',
+    '              const filter = {[relation.field]: id};',
+    '              if (relation.softDelete.enabled) filter[relation.softDelete.field] = null;',
+    '              if (relation.onDelete === "restrict") {',
+    '                if (await related.countDocuments(filter).session(session || null)) {const error = new Error("Delete restricted by " + relation.model + "." + relation.field); error.statusCode = 409; throw error;}',
+    '              } else if (relation.onDelete === "nullify") {',
+    '                const mutation = relation.many ? {$pull: {[relation.field]: id}} : {$set: {[relation.field]: null}};',
+    '                await related.updateMany(filter, mutation, session ? {session} : {});',
+    '              } else if (relation.onDelete === "cascade") {',
+    '                await related.deleteMany(filter, session ? {session} : {});',
+    '              }',
+    '            }',
     '            const filter = liveFilter(entry, {_id: id});',
     '            return entry.softDelete.enabled ? model.findOneAndUpdate(filter, {$set: {[entry.softDelete.field]: new Date()}}, {new: true, ...(session ? {session} : {})}) : model.findOneAndDelete(filter, session ? {session} : {});',
     '          });',
