@@ -10,6 +10,7 @@ module.exports = function fastifyNativeSource(spec) {
     ...(spec.app.production.requestId ? ["const crypto = require('node:crypto');"] : []),
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(nativePath, filePaths(spec).observability)) + ');'] : []),
     ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(nativePath, filePaths(spec).graphql)) + ');'] : []),
+    ...(spec.storage.enabled && spec.storage.signedUrls.enabled ? ['const storage = require(' + js(relativeRequire(nativePath, filePaths(spec).storage)) + ');'] : []),
     '',
     'module.exports = function registerNativeRoutes(fastify) {'
   ];
@@ -67,8 +68,10 @@ module.exports = function fastifyNativeSource(spec) {
       '  });'
     );
   }
+  if (spec.storage.enabled && spec.storage.signedUrls.enabled) lines.push('  fastify.get(' + js(spec.storage.signedUrls.path) + ', storage.fastifyDownload);');
   if (spec.api.graphql.enabled) lines.push('  fastify.route({method: ["GET", "POST"], url: ' + js(spec.api.graphql.path) + ', handler: graphqlApi.fastifyHandler});');
   const nativeGetPaths = [
+    ...(spec.storage.enabled && spec.storage.signedUrls.enabled ? [spec.storage.signedUrls.path] : []),
     ...(spec.app.health.enabled ? [spec.app.health.path] : []),
     ...(spec.observability.health.liveness.enabled ? [spec.observability.health.liveness.path] : []),
     ...(spec.observability.health.readiness.enabled ? [spec.observability.health.readiness.path] : []),
