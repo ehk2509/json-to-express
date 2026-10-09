@@ -26,7 +26,7 @@ async function child(stage,id,key) {
   await session.withTransaction(async () => {
     await Owner.updateOne({_id:id},{$set:{portrait:null}},{session});
     await outbox.enqueueJob('__j2e_storage_cleanup__',{values:[{key,provider:'local'}]},{
-      session,config:{queue:'storage',maxAttempts:8,backoffMs:10}
+      session,delayMs:60000,config:{queue:'storage',maxAttempts:8,backoffMs:10}
     });
     if(stage==='before-commit')process.kill(process.pid,'SIGKILL');
   });
