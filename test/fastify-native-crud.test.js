@@ -130,7 +130,7 @@ test('native Fastify local storage routes use multipart parser and cleanup', () 
   assert.match(native, /storage.parseFastifyMultipart/);
   assert.match(native, /storage.cleanupReplaced/);
   assert.match(native, /storage.cleanupEntity/);
-  assert.match(files.get('src/server.js'), /@fastify\/multipart/);
+  assert.match(files.get('src/app.js'), /@fastify\/multipart/);
   assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/multipart']);
   assert.match(files.get('src/config/storage.js'), /async function parseFastifyMultipart/);
   new vm.Script(native);
