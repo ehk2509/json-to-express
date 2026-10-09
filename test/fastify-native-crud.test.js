@@ -39,3 +39,21 @@ test('advanced relational entities stay on compatibility path', () => {
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.doesNotMatch(source, /"name":"Todo"/);
 });
+
+test('native Fastify CRUD honors API key authentication and RBAC without Express controller middleware', () => {
+  const input = spec();
+  input.auth = {enabled: true, strategies: ['apiKey'], apiKey: {header: 'x-api-key', keys: [
+    {env: 'TEST_ADMIN_KEY', userId: 'admin', roles: ['admin']},
+    {env: 'TEST_VIEWER_KEY', userId: 'viewer', roles: ['viewer']}
+  ]}};
+  input.entities.Todo.operations = {
+    list: {auth: {required: true, strategies: ['apiKey'], roles: ['viewer']}},
+    create: {auth: {required: true, strategies: ['apiKey'], roles: ['admin']}}
+  };
+  const files = buildFiles(normalizeSpec(input));
+  const source = files.get('src/fastify-crud.js');
+  assert.match(source, /auth.readAuth\(request.raw, op.auth\)/);
+  assert.match(source, /request.raw.auth/);
+  assert.match(source, /model.findByIdAndUpdate/);
+  new vm.Script(source);
+});
