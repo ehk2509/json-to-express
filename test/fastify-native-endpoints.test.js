@@ -41,7 +41,7 @@ test('GraphQL uses a Fastify route and generated native executor', () => {
   });
   const files = buildFiles(spec);
   assert.match(files.get('src/fastify-native.js'), /graphqlApi.fastifyHandler/);
-  assert.match(files.get('src/graphql.js'), /async function fastifyHandler/);
-  assert.match(files.get('src/graphql.js'), /contextValue: \{req, \.\.\.loaders\}/);
-  new vm.Script(files.get('src/graphql.js'));
+  assert.match(files.get('src/graphql/index.js'), /async function fastifyHandler/);
+  assert.match(files.get('src/graphql/index.js'), /contextValue: \{req, \.\.\.loaders\}/);
+  new vm.Script(files.get('src/graphql/index.js'));
 });
