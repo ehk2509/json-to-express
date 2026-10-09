@@ -38,25 +38,6 @@ function serverSource(spec) {
         '    return observability.requestMiddleware(request.raw, reply.raw, done);',
         '  });'
       ] : []),
-      // Explicit Fastify lifecycle exports preserve middleware ordering without double-running Express fallbacks.
-      ...spec.app.middlewareModules.flatMap(modulePath => {
-        const moduleRequire = js(relativeRequire(paths.server, modulePath));
-        return [
-          '  { const middleware = require(' + moduleRequire + ');',
-          '    const isNativeRequest = request => {',
-          '      const pathname = String(request.raw.url).split("?")[0];',
-          '      return registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname);',
-          '    };',
-          ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
-            '    if (typeof middleware.' + 'fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
-          ),
-          '    if (typeof middleware.fastifyPreSerialization === "function") fastify.addHook("preSerialization", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyPreSerialization(request, reply, payload) : payload);',
-          '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyOnSend(request, reply, payload) : payload);',
-          '    if (typeof middleware.fastifyOnError === "function") fastify.addHook("onError", async (request, reply, error) => { if (isNativeRequest(request)) await middleware.fastifyOnError(request, reply, error); });',
-          '    if (typeof middleware.fastifyOnResponse === "function") fastify.addHook("onResponse", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastifyOnResponse(request, reply); });',
-          '  }'
-        ];
-      }),
       ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
       ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
       ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
