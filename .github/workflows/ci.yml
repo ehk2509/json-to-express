@@ -513,11 +513,18 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
           node bin/json-to-express.js generate /tmp/fastify-postgres-spec.json
+          mkdir -p .tmp/fastify-postgres-smoke/src/hooks
+          cat > .tmp/fastify-postgres-smoke/src/hooks/user.js <<'HOOK'
+          module.exports = {
+            preCreate({req}) {req.body.name = 'native-' + req.body.name;},
+            postCreate({result}) {if (!result.name.startsWith('native-')) throw new Error('Postgres hook not executed');}
+          };
+          HOOK
       - name: Install generated PostgreSQL app
         working-directory: .tmp/fastify-postgres-smoke
         run: npm install --no-audit --no-fund
@@ -568,6 +575,7 @@ jobs:
             const ownerResponse = await fetch(users,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'Owner'})});
             assert.equal(ownerResponse.status,201);
             const owner = await ownerResponse.json();
+            assert.equal(owner.name, 'native-Owner');
             const newTask = await fetch(tasks,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:'Related',owner:owner.id})});
             assert.equal(newTask.status,201);
             const task = await newTask.json();
