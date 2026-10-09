@@ -1124,7 +1124,7 @@ jobs:
             auth:{enabled:true,strategies:['apiKey'],apiKey:{header:'x-api-key',keys:[{env:'AUDIT_KEY',userId:'auditor',roles:['admin']}]}},
             storage:{enabled:true,provider:'local',signedUrls:{enabled:false},local:{directory:'uploads'}},
             entities:{
-              Owner:{fields:{name:{type:'string',required:true},portrait:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
+              Owner:{fields:{name:{type:'string',required:true},age:{type:'number'},portrait:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
                 operations:{create:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},update:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},delete:{transaction:true}}},
               Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}},operations:{create:{transaction:true,populate:['owner']},update:{transaction:true,populate:['owner']}}},
               Link:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'nullify'}}},
@@ -1179,6 +1179,7 @@ jobs:
             const filesBefore=storageFiles();
             const invalidUpload=new FormData();
             invalidUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'invalid.png');
+            invalidUpload.set('age','invalid-number');
             const rejected=await fetch(root+'/owners',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:invalidUpload});
             assert.equal(rejected.status,400);
             assert.equal(storageFiles(),filesBefore,'rejected multipart must compensate staged storage');
