@@ -1414,12 +1414,12 @@ jobs:
             const item=await created.json();
             const file=path.join('uploaded-files',item.file.key);
             assert.ok(fs.existsSync(file));
-            const real=storage.enqueueCleanupIntent;
+            const real=storage.cleanupAfterCommit;
             try {
-              storage.enqueueCleanupIntent=async()=>{throw new Error('simulated unavailable enqueue database');};
+              storage.cleanupAfterCommit=async()=>{throw new Error('simulated unavailable enqueue database');};
               const failed=await app.inject({method:'DELETE',url:'/api/assets/'+item._id});
               assert.equal(failed.statusCode,500);
-            } finally {storage.enqueueCleanupIntent=real;}
+            } finally {storage.cleanupAfterCommit=real;}
             console.log('chaos: simulated outage injection completed');
             assert.equal(await Asset.findById(item._id),null,'standalone operation committed before failed outbox enqueue');
             assert.ok(fs.existsSync(file),'no unsafe rollback/physical deletion after enqueue outage');
