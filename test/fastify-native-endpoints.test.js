@@ -286,3 +286,16 @@ test('PostgreSQL soft-delete parent applies inbound policies in one Prisma trans
     new vm.Script(source);
   }
 });
+
+test('PostgreSQL serializable transactions retry P2034 at most twice', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name: 'postgres-conflict-retry', framework: 'fastify'},
+    database: {type: 'postgresql'},
+    entities: {Todo: {fields: {title: {type: 'string'}}, operations: {update: {transaction: true}}}}
+  });
+  const source = buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /attempt < 3/);
+  assert.match(source, /error.code !== "P2034" \|\| attempt === 2/);
+  assert.match(source, /isolationLevel: "Serializable"/);
+  new vm.Script(source);
+});
