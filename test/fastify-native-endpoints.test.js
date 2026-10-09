@@ -229,9 +229,11 @@ test('PostgreSQL transactional writes use Prisma interactive transactions', () =
   const source = buildFiles(spec).get('src/fastify-crud.js');
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /connectDatabase.client.\$transaction\(async tx => work/);
+  assert.match(source, /isolationLevel: "Serializable"/);
+  assert.match(source, /op.transaction && !await delegate.findFirst/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.create/);
-  assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.update/);
-  assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => entry.softDelete.enabled/);
+  assert.match(source, /postgresTransaction\(entry, op.transaction, async delegate =>/);
+  assert.match(source, /return entry.softDelete.enabled \? delegate.update/);
   new vm.Script(source);
 });
 
