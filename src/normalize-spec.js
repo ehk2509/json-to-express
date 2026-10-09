@@ -539,7 +539,7 @@ function normalizeSpec(inputSpec) {
             'db:migrate:dev': 'prisma migrate dev --schema ' + prismaSchemaPath,
             'db:migrate:deploy': 'prisma migrate deploy --schema ' + prismaSchemaPath,
             'db:migrate:status': 'prisma migrate status --schema ' + prismaSchemaPath,
-            ...((spec.seeds && Object.keys(spec.seeds).length) || (spec.factories && Object.keys(spec.factories).length) ? {'db:seed': 'node prisma/seed.js'} : {})
+            ...((spec.seeds && Object.keys(spec.seeds).length) || (spec.factories && Object.keys(spec.factories).length) || (spec.fixtures && Object.keys(spec.fixtures).length) ? {'db:seed': 'node prisma/seed.js'} : {})
           } : {}),
           ...(hasAsyncWork ? {
             worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
@@ -605,6 +605,7 @@ function normalizeSpec(inputSpec) {
       }
     ])),
     seeds: spec.seeds || {},
+    fixtures: spec.fixtures || {},
     factories: spec.factories || {},
     entities: []
   };
