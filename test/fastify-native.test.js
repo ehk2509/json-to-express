@@ -18,7 +18,7 @@ test('Fastify produces a native configurable health route and register call', as
   const routes = [];
   const module = {exports: null};
   vm.runInNewContext(native, {module, require});
-  module.exports({get: (path, handler) => routes.push({path, handler})});
+  module.exports({addHook: () => {}, get: (path, handler) => routes.push({path, handler})});
   assert.equal(routes.length, 1);
   assert.equal(routes[0].path, '/probe');
   const reply = {code(status) {this.status = status; return this;}, send(value) {this.payload = value; return this;}};
