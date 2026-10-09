@@ -217,7 +217,7 @@ test('reconcile rechecks each candidate after a writer races in and refuses chan
   const modified=new Set();
   const root=path.resolve(process.cwd(), 'uploads');
   const fakeFs={
-    readdir:async folder => folder===path.join(root,'asset','file')
+    readdir:async folder => folder===path.join(root,'assets','file')
       ? names.map(name=>({name,isDirectory:()=>false,isFile:()=>true})) : [],
     stat:async()=>({mtime:old,size:7,ino:42}),
     lstat:async file=>({isFile:()=>true,mtime:modified.has(path.basename(file))?now:old,size:7,ino:42})
@@ -243,7 +243,7 @@ test('reconcile rechecks each candidate after a writer races in and refuses chan
   assert.equal(report.removed,1);
   assert.equal(report.skippedReferenced,1);
   assert.equal(report.skippedModified,1);
-  assert.deepEqual(removed,['asset/file/orphan.txt']);
+  assert.deepEqual(removed,['assets/file/orphan.txt']);
 });
 
 test('reconciliation holds configured prefix and per-object age guards', () => {
