@@ -263,3 +263,21 @@ test('native PostgreSQL CRUD maps concurrent missing-record writes to not found'
   assert.match(source, /error.code === "P2003"/);
   new vm.Script(source);
 });
+
+test('PostgreSQL soft-delete parents with inbound references remain on compatibility routes', () => {
+  for (const onDelete of ['restrict', 'nullify', 'cascade']) {
+    const spec = normalizeSpec({
+      specVersion: '1.0',
+      app: {name:'postgres-soft-relation',framework:'fastify'},
+      database: {type:'postgresql'},
+      entities: {
+        User: {fields: {name: {type:'string'}}, softDelete: {enabled:true}},
+        Post: {fields: {title: {type:'string'}, author: {type:'reference', ref:'User', onDelete}}}
+      }
+    });
+    const source = buildFiles(spec).get('src/fastify-crud.js');
+    assert.doesNotMatch(source, /"name":"User"/, onDelete + ' must not silently bypass inbound policy');
+    assert.match(source, /"name":"Post"/);
+    new vm.Script(source);
+  }
+});
