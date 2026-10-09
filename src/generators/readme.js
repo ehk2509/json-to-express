@@ -150,6 +150,7 @@ module.exports = function readmeSource(spec) {
       'Replacing or deleting records automatically schedules durable storage cleanup through the generated database outbox. Failed pre-commit uploads are compensated.', '',
       'Storage cleanup retries survive process restarts and may be processed by the embedded or separate worker.', '',
       '    npm run storage:stats',
+      '    npm run storage:dead',
       '    npm run storage:retry-dead',
       '    npm run storage:reconcile',
       '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25', '',
