@@ -425,7 +425,7 @@ test('full native Fastify spec retains generated deployment, SDK, admin and Open
   assert.ok(keys.some(key=>/compose.*\.ya?ml$/.test(key)));
   assert.ok(keys.some(key=>key.startsWith('deploy/k8s/')));
   assert.ok(keys.some(key=>key.startsWith('sdk/') && key.endsWith('.ts')));
-  assert.ok(keys.some(key=>key.startsWith('admin/') && key.endsWith('.vue')));
+  assert.ok(keys.some(key=>key.startsWith('admin/') && /\.(jsx?|tsx?)$/.test(key)));
   assert.ok(keys.some(key=>key.endsWith('openapi.json')));
   assert.match(files.get('src/server.js'),/server.close\(\)/);
   assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress|fastify.use/);
