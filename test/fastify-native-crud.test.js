@@ -20,7 +20,8 @@ test('native Fastify CRUD is generated and registered for simple Mongo entities'
   assert.ok(source);
   assert.match(source, /fastify.route/);
   assert.match(source, /model.findOneAndUpdate/);
-  assert.match(files.get('src/server.js'), /registerNativeCrud\(fastify\)/);
+  assert.match(files.get('src/app.js'), /register1\(fastify\)/);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
   new vm.Script(source);
 });
 
@@ -206,4 +207,31 @@ test('Mongo native Fastify generates lifecycle hooks alongside audit, soft-delet
   assert.match(source,/session.withTransaction/);
   assert.match(source,/liveFilter/);
   new vm.Script(source);
+});
+
+test('simple Fastify generators run without Express runtime dependencies', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const files = buildFiles(normalizeSpec(spec(database)));
+    const pkg = JSON.parse(files.get('package.json'));
+    assert.ok(pkg.dependencies.fastify);
+    assert.equal(pkg.dependencies.express, undefined);
+    assert.equal(pkg.dependencies['@fastify/express'], undefined);
+    assert.equal(pkg.devDependencies.supertest, undefined);
+    assert.doesNotMatch(files.get('src/server.js'), /fastify\.use\(/);
+    assert.doesNotMatch(files.get('src/app.js'), /require\('express'\)/);
+    assert.match(files.get('src/app.js'), /module\.exports = fastify/);
+    assert.match(files.get('test/contract.test.js'), /app\.inject/);
+    assert.doesNotMatch(files.get('test/contract.test.js'), /supertest/);
+    new vm.Script(files.get('src/server.js'));
+    new vm.Script(files.get('src/app.js'));
+  }
+});
+
+test('advanced Fastify generators retain compatibility until parity is complete', () => {
+  const input = spec();
+  input.entities.Todo.fields.owner = {type:'reference', ref:'User'};
+  input.entities.User = {fields:{name:{type:'string'}}};
+  const files = buildFiles(normalizeSpec(input));
+  assert.match(files.get('src/server.js'), /fastifyExpress/);
+  assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/express']);
 });
