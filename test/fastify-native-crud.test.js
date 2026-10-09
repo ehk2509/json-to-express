@@ -70,12 +70,12 @@ test('read-only relational entity uses native Fastify routes without mutation se
   new vm.Script(source);
 });
 
-test('mutating MongoDB relational entity remains on Express compatibility path', () => {
+test('mutating MongoDB relational entity uses native routes', () => {
   const input = spec('mongodb');
   input.entities.User = {fields: {name: {type: 'string'}}};
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"Todo"/);
+  assert.match(source, /"name":"Todo"/);
 });
 
 test('relational entity with populate uses native Fastify when read-only', () => {
