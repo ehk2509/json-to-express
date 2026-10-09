@@ -33,8 +33,7 @@ function eligible(entity, spec) {
         !entity.fields.some(field => field.type === 'reference' && field.many))) &&
     (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      ((op.transaction && !['mongodb', 'postgresql'].includes(spec.database.type)) || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
-    true;
+      ((op.transaction && !['mongodb', 'postgresql'].includes(spec.database.type)) || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name))))));
 }
 
 module.exports = function nativeCrudSource(spec) {
