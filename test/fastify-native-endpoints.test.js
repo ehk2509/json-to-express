@@ -136,3 +136,22 @@ test('native custom middleware supports preValidation, preHandler and onSend in 
   assert.match(server, /: payload\\)/);
   new vm.Script(server);
 });
+
+test('native middleware exposes serialization, error and response lifecycle without altering Express fallback', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'native-error-hooks',framework:'fastify',middlewareModules:['src/middleware/audit.js']},
+    database: {type:'mongodb'},
+    entities: {Todo:{fields:{title:{type:'string'}}}}
+  });
+  const server = buildFiles(spec).get('src/server.js');
+  for (const stage of ['preSerialization', 'onError', 'onResponse']) {
+    assert.match(server, new RegExp('fastify\\.addHook\\("' + stage + '"'));
+  }
+  assert.match(server, /middleware\\.fastifyPreSerialization\\(request, reply, payload\\)/);
+  assert.match(server, /middleware\\.fastifyOnError\\(request, reply, error\\)/);
+  assert.match(server, /middleware\\.fastifyOnResponse\\(request, reply\\)/);
+  assert.match(server, /if \\(isNativeRequest\\(request\\)\\)/);
+  assert.match(server, /app\\(req, res, next\\)/);
+  new vm.Script(server);
+});
