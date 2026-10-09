@@ -12,7 +12,7 @@ function eligible(entity, spec) {
     (!entity.fields.some(field => field.type === 'reference') ||
       ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      (op.transaction || op.populate.length || op.cache.enabled)) &&
+      (op.transaction || op.cache.enabled || (op.populate.length && !['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
     !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
@@ -30,6 +30,7 @@ module.exports = function nativeCrudSource(spec) {
     name: entity.name,
     operations: entity.operations,
     idParam: entity.idParam,
+    referenceNames: entity.fields.filter(field => field.type === 'reference').map(field => field.name),
     base: joinUrl(spec.app.apiPrefix, entity.route),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
       type: field.type, required: field.required, enum: field.enum || null
@@ -84,6 +85,7 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        if (action === "list") {',
     '          const q = op.query;',
+    '          const populate = op.populate || [];',
     '          const conditions = {};',
     '          for (const field of q.filters || []) {',
     '            if (request.query[field] !== undefined) conditions[field] = request.query[field];',
@@ -97,17 +99,19 @@ module.exports = function nativeCrudSource(spec) {
     '          const skip = limit ? (page - 1) * limit : undefined;',
     '          let rows;',
     '          if (postgres) {',
-    '            rows = await model.findMany({where: conditions, ...(limit ? {take: limit, skip} : {}), ...(orderBy.length ? {orderBy} : {})});',
+    '            rows = await model.findMany({where: conditions, ...(limit ? {take: limit, skip} : {}), ...(orderBy.length ? {orderBy} : {}), ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})});',
     '          } else {',
     '            let query = model.find(conditions);',
     '            if (sortFields.length) query = query.sort(sortFields.join(" "));',
     '            if (limit) query = query.skip(skip).limit(limit);',
+    '            if (populate.length) query = query.populate(populate);',
     '            rows = await query.lean();',
     '          }',
     '          return reply.code(op.status).send(rows);',
     '        }',
     '        if (action === "get") {',
-    '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
+    '          const populate = op.populate || [];',
+    '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findById(id).populate(populate) : model.findById(id));',
     '          return record ? reply.code(op.status).send(record) : reply.code(op.notFoundStatus).send({error: "Not found"});',
     '        }',
     '        if (action === "create") {',
