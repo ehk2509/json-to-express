@@ -1274,6 +1274,62 @@ jobs:
             } finally {await connectDatabase.disconnect();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: Race orphan reconciliation with a new MongoDB reference and file replacement
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const db=require('./src/config/database');
+          const Asset=require('./src/models/Asset');
+          const audit=require('./scripts/storage-reconcile');
+          const dir=path.join('uploaded-files','assets','files');
+          const oldDate=new Date(Date.now()-49*3600000);
+          function oldFile(name){
+            const key='assets/files/'+name;
+            const file=path.join(dir,name);
+            fs.mkdirSync(dir,{recursive:true});
+            fs.writeFileSync(file,'previous');
+            fs.utimesSync(file,oldDate,oldDate);
+            return {key,file};
+          }
+          (async()=>{
+            await db();
+            try {
+              const linked=oldFile('late-writer.txt');
+              const replaced=oldFile('replaced-object.txt');
+              const orphan=oldFile('two-workers.txt');
+              let added=false,modified=false;
+              const result=await audit.reconcile(audit.args(['--execute']),{
+                async beforeCandidate(item){
+                  if(item.key===linked.key){
+                    await Asset.create({name:'Concurrent writer',file:{key:linked.key,provider:'local',originalName:'late-writer.txt',mimeType:'text/plain',size:8}});
+                    added=true;
+                  }
+                  if(item.key===replaced.key) {
+                    fs.writeFileSync(replaced.file,'replacement');
+                    modified=true;
+                  }
+                }
+              });
+              assert.ok(added && modified);
+              assert.ok(result.skippedReferenced>=1,'newly referenced object must not be deleted');
+              assert.ok(result.skippedModified>=1,'overwritten old object must not be deleted');
+              assert.ok(fs.existsSync(linked.file));
+              assert.ok(fs.existsSync(replaced.file));
+              assert.equal(fs.existsSync(orphan.file),false,'unreferenced old object should be deleted');
+              assert.equal((await Asset.countDocuments({'file.key':linked.key})),1);
+              const pair=oldFile('multi-reconciler.txt');
+              const runs=await Promise.all([audit.reconcile(audit.args(['--execute'])),audit.reconcile(audit.args(['--execute']))]);
+              assert.ok(runs.every(x=>x.mode==='execute'));
+              assert.equal(fs.existsSync(pair.file),false,'idempotent competing reconciliations');
+            } finally {await db.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
