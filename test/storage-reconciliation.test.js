@@ -95,3 +95,16 @@ test('post-commit deletion records intent before physical IO and releases failed
   assert.equal(events.filter(x => x === 'unlink').length,3);
   assert.equal(events.at(-1),'failed');
 });
+
+test('storage observability includes queue backlog metrics and Prometheus alerts', () => {
+  const raw={specVersion:'1.0',app:{name:'storage-alerts',framework:'fastify'},database:{type:'mongodb'},
+    storage:{enabled:true,provider:'local'},observability:{enabled:true,metrics:{enabled:true,prefix:'svc_'}},
+    entities:{Asset:{fields:{file:{type:'file',upload:{mimeTypes:['text/plain'],maxBytes:1024}}}}}};
+  const files=buildFiles(normalizeSpec(raw));
+  const alerts=files.get('deploy/prometheus/storage-cleanup-alerts.yml');
+  const metrics=files.get('src/config/observability.js');
+  assert.match(alerts,/svc_storage_cleanup_dead > 0/);
+  assert.match(alerts,/svc_storage_cleanup_pending > 100/);
+  assert.match(metrics,/storage_cleanup_dead/);
+  assert.match(metrics,/storage_cleanup_pending/);
+});
