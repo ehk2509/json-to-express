@@ -1153,7 +1153,7 @@ jobs:
           const connectDatabase=require('./src/config/database');
           const outbox=require('./src/workflows/outbox');
           const root=path.resolve('uploaded-files');
-          const dir=path.join(root,'asset','file');
+          const dir=path.join(root,'assets','files');
           const exec=(args) => cp.execFileSync(process.execPath,args,{encoding:'utf8',env:process.env});
           (async()=>{
             await connectDatabase();
@@ -1167,8 +1167,8 @@ jobs:
               fs.utimesSync(old,oldDate,oldDate);
               let report=JSON.parse(exec(['scripts/storage-reconcile.js']));
               assert.equal(report.mode,'dry-run');
-              assert.ok(report.keys.includes('asset/file/old-orphan.txt'));
-              assert.ok(!report.keys.includes('asset/file/fresh-orphan.txt'));
+              assert.ok(report.keys.includes('assets/files/old-orphan.txt'));
+              assert.ok(!report.keys.includes('assets/files/fresh-orphan.txt'));
               assert.ok(fs.existsSync(old),'dry run must never delete');
               assert.throws(()=>exec(['scripts/storage-reconcile.js','--execute','--older-than-hours','1']));
               report=JSON.parse(exec(['scripts/storage-reconcile.js','--execute']));
@@ -1180,7 +1180,7 @@ jobs:
               fs.mkdirSync(recoverable,{recursive:true});
               fs.writeFileSync(path.join(recoverable,'keep.txt'),'blocked');
               const intent=await outbox.enqueueJob('__j2e_storage_cleanup__',{
-                values:[{key:'asset/file/recoverable',provider:'local'}]
+                values:[{key:'assets/files/recoverable',provider:'local'}]
               },{config:{queue:'storage',maxAttempts:4,backoffMs:1}});
               assert.equal((await outbox.storageStats()).pending,1);
               exec(['src/workflows/worker.js','--once']);
