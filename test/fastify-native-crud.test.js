@@ -57,3 +57,32 @@ test('native Fastify CRUD honors API key authentication and RBAC without Express
   assert.match(source, /model.findByIdAndUpdate/);
   new vm.Script(source);
 });
+
+test('read-only relational entity uses native Fastify routes without mutation semantics', () => {
+  const input = spec('postgresql');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  input.entities.Todo.operations = {create: false, update: false, delete: false};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /model.findMany/);
+  assert.match(source, /model.findUnique/);
+  new vm.Script(source);
+});
+
+test('mutating relational entity remains on Express compatibility path', () => {
+  const input = spec('postgresql');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.doesNotMatch(source, /"name":"Todo"/);
+});
+
+test('relational entity with populate stays on compatibility path even when read-only', () => {
+  const input = spec('mongodb');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  input.entities.Todo.operations = {create: false, update: false, delete: false, list: {populate: ['owner']}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.doesNotMatch(source, /"name":"Todo"/);
+});
