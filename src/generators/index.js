@@ -40,6 +40,7 @@ const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
 const fastifyPostgresDeleteSource = require('./fastify-postgres-delete');
+const fastifyMongoDeleteSource = require('./fastify-mongo-delete');
 const fastifyEndpointSource = require('./fastify-endpoints');
 const fastifyAuthSource = require('./fastify-auth');
 const migrationInitSource = require('./migration-init');
@@ -108,6 +109,7 @@ function buildFiles(spec) {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-native.js'), fastifyNativeSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-crud.js'), fastifyCrudSource(spec));
     if (spec.database.type === 'postgresql') files.set(path.posix.join(spec.generation.paths.source, 'fastify-postgres-delete.js'), fastifyPostgresDeleteSource(spec));
+    if (spec.database.type === 'mongodb') files.set(path.posix.join(spec.generation.paths.source, 'fastify-mongo-delete.js'), fastifyMongoDeleteSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-auth.js'), fastifyAuthSource(spec));
   }
