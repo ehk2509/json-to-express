@@ -93,7 +93,7 @@ async function main() {
   assert.equal(await downloadedSecond.text(), 'second-object');
 
   const removed = await request('/api/assets/' + created.body._id, {method: 'DELETE'});
-  assert.equal(removed.response.status, 204);
+  assert.equal(removed.response.status, 204, JSON.stringify(removed.body));
 
   await assertMissing(secondUrl);
 
