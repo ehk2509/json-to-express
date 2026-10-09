@@ -3,8 +3,8 @@
 // Adapter-free mode is intentionally narrow. Widen only with integration coverage.
 function isDirectFastify(spec) {
   return spec.app.framework === 'fastify' &&
-    !spec.auth.enabled && !spec.auth.routesEnabled &&
-    !spec.storage.enabled && !spec.observability.enabled && !spec.cache.enabled &&
+    !spec.auth.routesEnabled &&
+    !spec.storage.enabled && !spec.observability.enabled &&
     !spec.outbox.enabled && !spec.api.graphql.enabled &&
     !spec.endpoints.length && !spec.workflows.length &&
     !spec.app.middlewareModules.length &&
