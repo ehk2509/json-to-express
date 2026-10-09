@@ -66,7 +66,7 @@ test('read-only relational entity uses native Fastify routes without mutation se
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /model.findMany/);
-  assert.match(source, /model.findUnique/);
+  assert.match(source, /model.findFirst/);
   new vm.Script(source);
 });
 
