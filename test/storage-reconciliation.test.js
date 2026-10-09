@@ -39,6 +39,7 @@ test('storage always provisions durable outbox, worker and safe reconcile CLI', 
       assert.match(outbox, /async function storageStats\(\)/);
       assert.match(outbox, /async function retryDeadStorage\(\)/);
       assert.match(outbox, /async function storageDead\(limit = 20\)/);
+      assert.match(outbox, /retryDeadStorage, storageDead, stats, storageStats\};/);
       assert.match(reconciliation, /function safePrefix\(prefix\)/);
       assert.match(reconciliation, /const referenced = await referencedKeys\(\)/);
       assert.match(reconciliation, /mode: options.execute \? 'execute' : 'dry-run'/);
