@@ -469,3 +469,77 @@ jobs:
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
+
+  generated-fastify-auth-e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate native Fastify with API key RBAC
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const spec = {
+            specVersion: '1.0',
+            generation: {outputDir: '.tmp/fastify-auth-smoke'},
+            app: {name: 'fastify-auth-smoke', framework: 'fastify', port: 3497, host: '127.0.0.1'},
+            database: {type: 'mongodb'},
+            auth: {enabled: true, strategies: ['apiKey'], apiKey: {header: 'x-api-key', keys: [
+              {env: 'TEST_ADMIN_KEY', userId: 'admin', roles: ['admin']},
+              {env: 'TEST_VIEWER_KEY', userId: 'viewer', roles: ['viewer']}
+            ]}},
+            entities: {Todo: {
+              fields: {title: {type: 'string', required: true}},
+              operations: {
+                list: {auth: {required: true, strategies: ['apiKey'], roles: ['viewer']}},
+                create: {auth: {required: true, strategies: ['apiKey'], roles: ['admin']}}
+              }
+            }}
+          };
+          fs.writeFileSync('/tmp/fastify-auth-spec.json', JSON.stringify(spec));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-auth-spec.json
+      - name: Install generated application
+        working-directory: .tmp/fastify-auth-smoke
+        run: npm install --no-audit --no-fund
+      - name: Exercise native Fastify API key RBAC
+        working-directory: .tmp/fastify-auth-smoke
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_auth
+          PORT: 3497
+          HOST: 127.0.0.1
+          TEST_ADMIN_KEY: test-admin-key
+          TEST_VIEWER_KEY: test-viewer-key
+        run: |
+          npm start > server.log 2>&1 &
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:3497/health >/dev/null; then break; fi
+            sleep 1
+          done
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const url = 'http://127.0.0.1:3497/api/todos';
+          const submit = key => fetch(url, {method: 'POST', headers: {'content-type': 'application/json', ...(key ? {'x-api-key': key} : {})}, body: JSON.stringify({title: 'RBAC test'})});
+          (async () => {
+            assert.equal((await submit()).status, 401);
+            assert.equal((await submit('test-viewer-key')).status, 403);
+            const created = await submit('test-admin-key');
+            assert.equal(created.status, 201);
+            const item = await created.json();
+            assert.ok(item._id);
+            assert.equal((await fetch(url)).status, 401);
+            const list = await fetch(url, {headers: {'x-api-key': 'test-viewer-key'}});
+            assert.equal(list.status, 200);
+            assert.ok((await list.json()).some(row => String(row._id) === String(item._id)));
+          })().catch(error => {console.error(error); process.exitCode = 1;});
+          NODE
+      - name: Print application logs on failure
+        if: failure()
+        run: cat .tmp/fastify-auth-smoke/server.log || true

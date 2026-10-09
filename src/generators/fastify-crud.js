@@ -6,11 +6,11 @@ const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 // Advanced entities continue to use the compatibility router until feature parity.
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    !spec.auth.enabled && !spec.cache.enabled && !spec.storage.enabled &&
+    !spec.cache.enabled && !spec.storage.enabled &&
     !entity.audit.enabled && !entity.softDelete.enabled &&
     !entity.fields.some(field => ['reference', 'file'].includes(field.type)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      (op.transaction || op.auth.required || op.populate.length || op.cache.enabled)) &&
+      (op.transaction || op.populate.length || op.cache.enabled)) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
     !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
@@ -35,6 +35,7 @@ module.exports = function nativeCrudSource(spec) {
   }));
   return [
     "'use strict';",
+    ...(spec.auth.enabled ? ['const auth = require(' + js(relativeRequire(nativePath, filePaths(spec).auth)) + ');'] : []),
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
@@ -42,6 +43,7 @@ module.exports = function nativeCrudSource(spec) {
     'const config = ' + js(config) + ';',
     'const models = [' + entities.map((unused, i) => 'model' + i).join(', ') + '];',
     'const postgres = ' + (spec.database.type === 'postgresql') + ';',
+    'const authEnabled = ' + Boolean(spec.auth.enabled) + ';',
     'function validId(id) {',
     '  return postgres ? /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) : /^[0-9a-f]{24}$/i.test(id);',
     '}',
@@ -68,6 +70,10 @@ module.exports = function nativeCrudSource(spec) {
     '      const fullPath = entry.base + (op.path === "/" ? "" : op.path);',
     '      const url = fullPath;',
     '      fastify.route({method: op.method.toUpperCase(), url, handler: async (request, reply) => {',
+    '        if (authEnabled && op.auth && op.auth.required) {',
+    '          try { request.raw.auth = await auth.readAuth(request.raw, op.auth); }',
+    '          catch (error) { return reply.code(error.statusCode || 401).send({error: error.message}); }',
+    '        }',
     '        const id = request.params && request.params[entry.idParam];',
     '        if (["get", "update", "delete"].includes(action) && !validId(id)) return reply.code(400).send({error: "Invalid identifier"});',
     '        if (["create", "update"].includes(action) && op.validate) {',
