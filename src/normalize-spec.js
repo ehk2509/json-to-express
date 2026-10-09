@@ -544,7 +544,12 @@ function normalizeSpec(inputSpec) {
           ...(hasAsyncWork ? {
             worker: 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js'),
             'worker:once': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --once',
-            'outbox:retry': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead'
+            'outbox:retry': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead',
+            ...(storageEnabled ? {
+              'storage:stats': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --storage-stats',
+              'storage:retry-dead': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead-storage',
+              'storage:reconcile': 'node scripts/storage-reconcile.js'
+            } : {})
           } : {}),
           ...(packageConfig.scripts || {})
         },
