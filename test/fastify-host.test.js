@@ -25,7 +25,7 @@ test('Express remains the default and keeps existing server startup', () => {
 
 test('Fastify compatibility mode preserves adapter startup and shutdown', () => {
   const input = spec('fastify');
-  input.app.middlewareModules = ['src/middleware/legacy.js'];
+  input.api = {rest: false, graphql: {enabled: true}};
   const files = buildFiles(normalizeSpec(input));
   const pkg = JSON.parse(files.get('package.json'));
   assert.ok(pkg.dependencies.fastify);
