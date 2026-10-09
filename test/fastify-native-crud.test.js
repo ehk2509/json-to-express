@@ -235,3 +235,22 @@ test('advanced Fastify generators retain compatibility until parity is complete'
   assert.match(files.get('src/server.js'), /fastifyExpress/);
   assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/express']);
 });
+
+test('stateless API-key authorization and Redis caching remain adapter-free', () => {
+  const input = spec();
+  input.auth = {enabled: true, strategies: ['apiKey'], apiKey: {keys: [
+    {env: 'NATIVE_API_KEY', userId:'test', roles:['writer']}
+  ]}};
+  input.cache = {enabled:true, provider:'redis'};
+  input.entities.Todo.operations = {
+    get: {auth:{required:true,strategies:['apiKey']},cache:{enabled:true,ttlSeconds:30}}
+  };
+  const files = buildFiles(normalizeSpec(input));
+  const pkg = JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express, undefined);
+  assert.equal(pkg.dependencies['@fastify/express'], undefined);
+  assert.ok(pkg.dependencies.redis);
+  assert.match(files.get('src/fastify-crud.js'), /auth.readAuth/);
+  assert.match(files.get('src/fastify-crud.js'), /cache.nativeRead/);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
+});
