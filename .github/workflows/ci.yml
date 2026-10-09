@@ -767,7 +767,7 @@ jobs:
             form.set('name','Local signed asset');
             form.set('file', new Blob(['local-content'],{type:'text/plain'}),'sample.txt');
             const result = await fetch('http://127.0.0.1:3494/api/assets',{method:'POST',body:form});
-            assert.equal(result.status,201,await result.text());
+            assert.equal(result.status,201);
             const asset = await result.json();
             assert.ok(asset.file.url);
             const downloaded = await fetch(asset.file.url);
