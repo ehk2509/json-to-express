@@ -209,7 +209,7 @@ function normalizeSpec(inputSpec) {
   const databaseType = spec.database.type;
   const isMongo = databaseType === 'mongodb';
   const isPostgres = databaseType === 'postgresql';
-  const hasAsyncWork = Object.keys(spec.events || {}).length > 0 || Object.keys(spec.jobs || {}).length > 0;
+  const hasAsyncWork = storageEnabled || Object.keys(spec.events || {}).length > 0 || Object.keys(spec.jobs || {}).length > 0;
 
   const dependencies = {
     dotenv: '^16.4.5',
