@@ -473,9 +473,12 @@ jobs:
             assert.equal(newTask.status,201);
             const task = await newTask.json();
             assert.ok(task.id);
+            const restricted = await fetch(users+'/'+owner.id,{method:'DELETE'});
+            assert.equal(restricted.status,409);
             const moved = await fetch(tasks+'/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({owner:null})});
             assert.equal(moved.status,200);
             assert.equal((await moved.json()).ownerId,null);
+            assert.equal((await fetch(users+'/'+owner.id,{method:'DELETE'})).status,204);
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
       - name: Print Fastify PostgreSQL logs on failure
