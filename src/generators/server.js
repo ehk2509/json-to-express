@@ -44,10 +44,13 @@ function serverSource(spec) {
           '      const pathname = String(request.raw.url).split("?")[0];',
           '      return registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname);',
           '    };',
-          ...['onRequest', 'preParsing', 'preValidation', 'preHandler'].filter(stage => stage !== 'preParsing').map(stage =>
+          ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
             '    if (typeof middleware.' + 'fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
           ),
+          '    if (typeof middleware.fastifyPreSerialization === "function") fastify.addHook("preSerialization", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyPreSerialization(request, reply, payload) : payload);',
           '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyOnSend(request, reply, payload) : payload);',
+          '    if (typeof middleware.fastifyOnError === "function") fastify.addHook("onError", async (request, reply, error) => { if (isNativeRequest(request)) await middleware.fastifyOnError(request, reply, error); });',
+          '    if (typeof middleware.fastifyOnResponse === "function") fastify.addHook("onResponse", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastifyOnResponse(request, reply); });',
           '  }'
         ];
       }),
