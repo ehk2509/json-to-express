@@ -35,6 +35,7 @@ const observabilitySource = require('./observability');
 const cacheSource = require('./cache');
 const storageSource = require('./storage');
 const seedSource = require('./seed');
+const migrationInitSource = require('./migration-init');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -144,6 +145,7 @@ function buildFiles(spec) {
 
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
+    files.set('scripts/create-initial-migration.js', migrationInitSource(spec));
     if (Object.keys(spec.seeds).length || Object.keys(spec.factories).length) files.set('prisma/seed.js', seedSource(spec));
   }
 
