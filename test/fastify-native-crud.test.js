@@ -187,10 +187,13 @@ test('native Mongo deletion generates transactional inbound restrict, nullify an
   assert.match(source, /"onDelete":"restrict"/);
   assert.match(source, /"onDelete":"nullify"/);
   assert.match(source, /"onDelete":"cascade"/);
-  assert.match(source, /related.countDocuments/);
-  assert.match(source, /related.updateMany/);
-  assert.match(source, /related.deleteMany/);
+  const planner = buildFiles(normalizeSpec(input)).get('src/fastify-mongo-delete.js');
+  assert.match(planner, /child.countDocuments/);
+  assert.match(planner, /child.updateMany/);
+  assert.match(planner, /await remove\(relation.model, dependent._id/);
+  assert.match(source, /mongoDelete\(relationModels, entry.name, id, session\)/);
   assert.match(source, /entry.inbound.length > 0/);
+  new vm.Script(planner);
   new vm.Script(source);
 });
 
@@ -330,4 +333,19 @@ test('explicit native-only custom lifecycle modules do not require Express', () 
   new vm.Script(app);
   input.app.fastifyMiddlewareOnly=false;
   assert.match(buildFiles(normalizeSpec(input)).get('src/server.js'),/fastifyExpress/);
+});
+
+test('Mongo recursive delete planner includes nested cascades and many-to-many unlinking', () => {
+  const input=spec('mongodb');
+  input.entities.Child={fields:{todo:{type:'reference',ref:'Todo',onDelete:'cascade'}}};
+  input.entities.Grandchild={fields:{child:{type:'reference',ref:'Child',onDelete:'cascade'}}};
+  input.entities.Watchlist={fields:{todos:{type:'reference',ref:'Todo',many:true,onDelete:'nullify'}}};
+  const files=buildFiles(normalizeSpec(input));
+  const planner=files.get('src/fastify-mongo-delete.js');
+  assert.match(planner, /"model":"Child"/);
+  assert.match(planner, /"model":"Grandchild"/);
+  assert.match(planner, /"many":true/);
+  assert.match(planner, /\$pull/);
+  assert.match(planner, /Cyclic relationship cascade/);
+  new vm.Script(planner);
 });
