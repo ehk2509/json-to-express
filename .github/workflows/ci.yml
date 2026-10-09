@@ -413,8 +413,10 @@ jobs:
           fs.writeFileSync('/tmp/fastify-direct-spec.json', JSON.stringify({
             specVersion:'1.0',
             generation:{outputDir:'.tmp/fastify-direct-smoke'},
-            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, fastifyMiddlewareOnly:true, middlewareModules:['src/middleware/tenant.js']},
+            app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499, production:{rateLimit:{enabled:true,max:100,windowMs:60000},compression:true}, fastifyMiddlewareOnly:true, middlewareModules:['src/middleware/tenant.js']},
             database:{type:'mongodb'},
+            events:{'ci.empty':{webhooks:[]}},
+            observability:{enabled:true,metrics:{enabled:true}},
             cache:{enabled:true,provider:'redis',redis:{urlEnv:'REDIS_URL'}},
             auth:{enabled:true,strategies:['apiKey'],apiKey:{keys:[{env:'TEST_API_KEY',userId:'reader',roles:['reader']}]}},
             entities:{Todo:{fields:{title:{type:'string',required:true},done:{type:'boolean',default:false}},operations:{get:{auth:{required:true,strategies:['apiKey']},cache:{enabled:true,ttlSeconds:30}}}}}
@@ -438,6 +440,8 @@ jobs:
           assert.equal(pkg.dependencies.express,undefined);
           assert.equal(pkg.dependencies['@fastify/express'],undefined);
           assert.ok(pkg.dependencies.redis);
+          assert.ok(pkg.dependencies['@fastify/compress']);
+          assert.ok(pkg.dependencies['@fastify/rate-limit']);
           assert.doesNotMatch(fs.readFileSync('src/server.js','utf8'), /fastifyExpress|fastify\.use\(/);
           assert.doesNotMatch(fs.readFileSync('src/app.js','utf8'), /require\(['"]express['"]\)/);
           NODE
@@ -484,6 +488,15 @@ jobs:
             assert.equal((await fetch(base+'/'+record._id,{method:'DELETE',headers:authorized})).status,204);
             assert.equal((await fetch(base+'/'+record._id,{headers:authorized})).status,404);
             assert.equal((await fetch('http://127.0.0.1:3499/health')).headers.get('x-native-tenant'),'supported');
+            const ready=await fetch('http://127.0.0.1:3499/health/ready');
+            assert.equal(ready.status,200);
+            assert.equal((await ready.json()).status,'ready');
+            const metrics=await fetch('http://127.0.0.1:3499/metrics',{headers:{'x-request-id':'ci-metrics-id'}});
+            assert.equal(metrics.status,200);
+            assert.equal(metrics.headers.get('x-request-id'),'ci-metrics-id');
+            assert.match(await metrics.text(),/j2e_http_requests_total/);
+            const compressed=await fetch('http://127.0.0.1:3499/metrics',{headers:{'accept-encoding':'gzip'}});
+            assert.equal(compressed.status,200);
           })().catch(error => {console.error(error); process.exitCode=1;});
           NODE
       - name: Print adapter-free Fastify logs
