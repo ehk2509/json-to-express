@@ -331,7 +331,7 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
-          const input = {specVersion: '1.0', app: {name: 'fastify-crud-smoke'}, database: {type: 'mongodb'}, entities: {Todo: {fields: {title: {type: 'string', required: true}}}}};
+          const input = {specVersion: '1.0', app: {name: 'fastify-crud-smoke'}, database: {type: 'mongodb'}, cache: {enabled: true, provider: 'memory'}, entities: {Todo: {fields: {title: {type: 'string', required: true}}, operations: {list: {cache: {enabled:true, ttlSeconds:120}}, get: {cache: {enabled:true, ttlSeconds:120}}}}}};
           input.app.framework = 'fastify';
           input.app.port = 3499;
           input.app.health = {enabled: true, path: '/health', response: {status: 'ok'}};
@@ -367,13 +367,19 @@ jobs:
             assert.ok(item._id);
             const get = await fetch(base + '/' + item._id);
             assert.equal(get.status, 200);
+            assert.equal(get.headers.get('x-cache'), 'MISS');
             assert.equal((await get.json()).title, 'Native Fastify');
+            const cached = await fetch(base + '/' + item._id);
+            assert.equal(cached.headers.get('x-cache'), 'HIT');
             const list = await fetch(base);
             assert.equal(list.status, 200);
             assert.ok((await list.json()).some(row => row.title === 'Native Fastify'));
             const update = await fetch(base + '/' + item._id, {method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({title:'Updated Native'})});
             assert.equal(update.status, 200);
             assert.equal((await update.json()).title, 'Updated Native');
+            const afterUpdate = await fetch(base + '/' + item._id);
+            assert.equal(afterUpdate.headers.get('x-cache'), 'MISS');
+            assert.equal((await afterUpdate.json()).title, 'Updated Native');
             const invalid = await fetch(base + '/invalid-id');
             assert.equal(invalid.status, 400);
             const remove = await fetch(base + '/' + item._id, {method:'DELETE'});
