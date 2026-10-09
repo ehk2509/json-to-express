@@ -59,8 +59,8 @@ test('Fastify rate limit and compression use native plugins when enabled', () =>
   const pkg = JSON.parse(files.get('package.json'));
   assert.ok(pkg.dependencies['@fastify/rate-limit']);
   assert.ok(pkg.dependencies['@fastify/compress']);
-  assert.match(files.get('src/server.js'), /@fastify\/rate-limit/);
-  assert.match(files.get('src/server.js'), /@fastify\/compress/);
+  assert.match(files.get('src/app.js'), /@fastify\/rate-limit/);
+  assert.match(files.get('src/app.js'), /@fastify\/compress/);
 });
 
 test('native Fastify local auth register and login emit Fastify handlers', () => {
@@ -97,9 +97,9 @@ test('Fastify OIDC routes delegate PKCE state handling to shared auth engine', (
 test('native Fastify observability intercepts native routes only to avoid duplicate Express metrics', () => {
   const spec = normalizeSpec({specVersion:'1.0',app:{name:'native-observable',framework:'fastify'},database:{type:'mongodb'},observability:{enabled:true},entities:{Todo:{fields:{title:{type:'string'}}}}});
   const files=buildFiles(spec);
-  const server=files.get('src/server.js');
-  assert.match(server,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
-  assert.match(server,/registerNativeCrud.matches/);
+  const native=files.get('src/app.js');
+  assert.match(native,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
+  assert.match(native,/register1\(fastify\)/);
   new vm.Script(server);
 });
 
