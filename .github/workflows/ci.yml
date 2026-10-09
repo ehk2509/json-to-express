@@ -491,7 +491,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-auth-smoke'},
             app: {name: 'fastify-auth-smoke', framework: 'fastify', port: 3497, host: '127.0.0.1'},
             database: {type: 'mongodb'},
-            auth: {enabled: true, strategies: ['apiKey'], apiKey: {header: 'x-api-key', keys: [
+            auth: {enabled: true, strategies: ['apiKey', 'jwt'], jwt: {secretEnv: 'TEST_JWT_SECRET'}, local: {enabled: true, allowRegistration: true, passwordMinLength: 8}, apiKey: {header: 'x-api-key', keys: [
               {env: 'TEST_ADMIN_KEY', userId: 'admin', roles: ['admin']},
               {env: 'TEST_VIEWER_KEY', userId: 'viewer', roles: ['viewer']}
             ]}},
@@ -517,6 +517,7 @@ jobs:
           HOST: 127.0.0.1
           TEST_ADMIN_KEY: test-admin-key
           TEST_VIEWER_KEY: test-viewer-key
+          TEST_JWT_SECRET: very-secret-ci-auth-key
         run: |
           npm start > server.log 2>&1 &
           for attempt in {1..40}; do
@@ -538,6 +539,15 @@ jobs:
             const list = await fetch(url, {headers: {'x-api-key': 'test-viewer-key'}});
             assert.equal(list.status, 200);
             assert.ok((await list.json()).some(row => String(row._id) === String(item._id)));
+            const registration = await fetch('http://127.0.0.1:3497/auth/register', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'native@example.com',password:'securePass123'})});
+            assert.equal(registration.status, 201);
+            const registrationBody = await registration.json();
+            assert.ok(registrationBody.accessToken);
+            const login = await fetch('http://127.0.0.1:3497/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'native@example.com',password:'securePass123'})});
+            assert.equal(login.status, 200);
+            assert.ok((await login.json()).accessToken);
+            const invalidLogin = await fetch('http://127.0.0.1:3497/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'native@example.com',password:'wrong'})});
+            assert.equal(invalidLogin.status, 401);
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
       - name: Print application logs on failure
