@@ -547,6 +547,7 @@ function normalizeSpec(inputSpec) {
             'outbox:retry': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead',
             ...(storageEnabled ? {
               'storage:stats': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --storage-stats',
+              'storage:dead': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --storage-dead',
               'storage:retry-dead': 'node ' + path.posix.join(paths.source, paths.workflows, 'worker.js') + ' --retry-dead-storage',
               'storage:reconcile': 'node scripts/storage-reconcile.js'
             } : {})
