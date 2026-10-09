@@ -37,6 +37,7 @@ const storageSource = require('./storage');
 const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
+const fastifyEndpointSource = require('./fastify-endpoints');
 const migrationInitSource = require('./migration-init');
 const {filePaths} = require('./utils');
 
@@ -101,6 +102,7 @@ function buildFiles(spec) {
   if (spec.app.framework === 'fastify') {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-native.js'), fastifyNativeSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-crud.js'), fastifyCrudSource(spec));
+    files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
   }
   files.set(paths.database, databaseSource(spec));
   files.set(paths.errorHandler, errorHandlerSource(spec));
