@@ -23,8 +23,7 @@ function eligible(entity, spec) {
     (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       ((op.transaction && spec.database.type !== 'mongodb') || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
-    !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
-    !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
+    (!entity.hooks || spec.database.type === 'mongodb');
 }
 
 module.exports = function nativeCrudSource(spec) {
@@ -43,6 +42,7 @@ module.exports = function nativeCrudSource(spec) {
     idParam: entity.idParam,
     references: entity.fields.filter(field => field.type === 'reference').map(field => ({name:field.name, many:field.many, required:field.required})),
     hasFiles: entity.fields.some(field => field.type === 'file'),
+    hooks: entity.hooks ? {before: entity.hooks.before || {}, after: entity.hooks.after || {}} : null,
     softDelete: entity.softDelete,
     audit: entity.audit,
     base: joinUrl(spec.app.apiPrefix, entity.route),
@@ -60,6 +60,8 @@ module.exports = function nativeCrudSource(spec) {
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
     ...imports,
+    ...(spec.database.type === 'mongodb' ? entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => 'const hooks' + entity.name + ' = require(' + js(relativeRequire(nativePath, entity.hooks.module)) + ');') : []),
+    'const hookModules = {' + entities.filter(entity => spec.database.type === 'mongodb' && entity.hooks && entity.hooks.module).map(entity => js(entity.name) + ': hooks' + entity.name).join(',') + '};',
     ...(spec.database.type === 'mongodb' ? spec.entities.filter(source => entities.some(target => source.fields.some(field => field.type === 'reference' && field.ref === target.name)) && !entities.some(entity => entity.name === source.name)).map(source => 'const relationModel' + source.name + ' = require(' + js(relativeRequire(nativePath, filePaths(spec, source.name).model)) + ');') : []),
     'const relationModels = ' + (spec.database.type === 'mongodb' ? '{' + spec.entities.map(source => js(source.name) + ': ' + (entities.some(e => e.name === source.name) ? 'model' + entities.findIndex(e => e.name === source.name) : (spec.entities.some(target => entities.some(e => e.name === target.name) && source.fields.some(f => f.type === "reference" && f.ref === target.name)) ? 'relationModel' + source.name : 'null'))).join(',') + '}' : '{}') + ';',
     'const config = ' + js(config) + ';',
@@ -103,6 +105,16 @@ module.exports = function nativeCrudSource(spec) {
     '  finally {await session.endSession();}',
     '}',
     'function liveFilter(entry, filter = {}) {return entry.softDelete.enabled ? {...filter, [entry.softDelete.field]: null} : filter;}',
+    'async function callHook(entry, phase, action, request, reply, model, result) {',
+    '  const name = entry.hooks && entry.hooks[phase] && entry.hooks[phase][action];',
+    '  const callback = name && hookModules[entry.name] && hookModules[entry.name][name];',
+    '  if (typeof callback !== "function") return false;',
+    '  const req = {body: request.body, params: request.params, query: request.query, headers: request.headers, auth: request.raw.auth, id: request.raw.id};',
+    '  const res = {headersSent: false, status(code) {reply.code(code); return this;}, json(body) {this.headersSent = true; reply.send(body); return this;}, send(body) {this.headersSent = true; reply.send(body); return this;}, end() {this.headersSent = true; reply.send(); return this;}};',
+    '  await callback({req, res, model, ...(phase === "after" ? {result} : {})});',
+    '  request.body = req.body;',
+    '  return res.headersSent;',
+    '}',
     'module.exports = function registerCrud(fastify) {',
     '  for (const entry of config) {',
     '    const model = models[entry.modelIndex];',
@@ -117,6 +129,7 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        const id = request.params && request.params[entry.idParam];',
     '        if (["get", "update", "delete"].includes(action) && !validId(id)) return reply.code(400).send({error: "Invalid identifier"});',
+    '        if (await callHook(entry, "before", action, request, reply, model)) return;',
     '        let storedUploads = [];',
     '        try {',
     '        if (entry.hasFiles && ["create", "update"].includes(action)) {',
@@ -161,6 +174,7 @@ module.exports = function nativeCrudSource(spec) {
     '            rows = await query.lean();',
     '          }',
     '          const result = entry.hasFiles ? await storage.enrich(entry.name, rows, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : rows;',
+    '          if (await callHook(entry, "after", action, request, reply, model, rows)) return;',
     '          if (cacheEntry) await cache.nativeWrite(cacheEntry.key, result, op.status, cachePolicy.ttlSeconds);',
     '          return reply.code(op.status).send(result);',
     '        }',
@@ -169,6 +183,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findOne(liveFilter(entry, {_id: id})).populate(populate) : model.findOne(liveFilter(entry, {_id: id})));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const result = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
+    '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          if (cacheEntry) await cache.nativeWrite(cacheEntry.key, result, op.status, cachePolicy.ttlSeconds);',
     '          return reply.code(op.status).send(result);',
     '        }',
@@ -179,6 +194,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          storedUploads = [];',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
+    '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "update") {',
@@ -191,6 +207,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          storedUploads = [];',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
+    '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "delete") {',
@@ -218,6 +235,7 @@ module.exports = function nativeCrudSource(spec) {
     '          });',
     '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
+    '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
     '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
     '        }',
     '        } catch (error) {',
