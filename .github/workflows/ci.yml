@@ -716,6 +716,18 @@ jobs:
             const intent=await prisma.j2EOutbox.findFirst({where:{name:'__j2e_storage_cleanup__',status:'pending'}});
             assert.ok(intent);
             await prisma.j2EOutbox.update({where:{id:intent.id},data:{availableAt:new Date(Date.now()-1000)}});
+            // Two racing deletes must not create duplicate intents or delete live references.
+            const form2=new FormData();
+            form2.set('title','Concurrent asset');
+            form2.set('photo',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'concurrent.png');
+            const resp2=await fetch('http://127.0.0.1:3498/api/assets',{method:'POST',body:form2});
+            assert.equal(resp2.status,201);
+            const asset2=await resp2.json();
+            const concurrentUrl='http://127.0.0.1:3498/api/assets/'+asset2.id;
+            const races=await Promise.all([fetch(concurrentUrl,{method:'DELETE'}),fetch(concurrentUrl,{method:'DELETE'})]);
+            assert.deepEqual(races.map(x=>x.status).sort((a,b)=>a-b),[204,404],'concurrent deletes should serialize and surface not-found');
+            const afterConcurrent=await prisma.j2EOutbox.findMany({where:{name:'__j2e_storage_cleanup__'}});
+            assert.equal(afterConcurrent.length,2,'one durable deletion intent per successfully deleted object');
             await app.close();
             await db.disconnect();
             await prisma.$disconnect();
