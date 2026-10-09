@@ -487,7 +487,6 @@ function normalizeSpec(inputSpec) {
         response: valueOr(health.response, {status: 'ok'})
       },
       middlewareModules: spec.app.middlewareModules || [],
-      fastifyMiddlewareOnly: spec.app.fastifyMiddlewareOnly === true,
       express: {
         trustProxy: valueOr(expressConfig.trustProxy, false),
         json: {enabled: valueOr(jsonConfig.enabled, true), limit: valueOr(jsonConfig.limit, valueOr(spec.app.bodyLimit, '1mb'))},
