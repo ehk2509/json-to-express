@@ -1308,6 +1308,30 @@ jobs:
             const storedOwner=await storedResponse.json();
             assert.ok(storedOwner.portrait.key);
             assert.ok(fs.existsSync(path.join('uploads',storedOwner.portrait.key)),'transactional commit retains stored file');
+            // A failing enqueue must abort both the MongoDB mutation and the outbox write.
+            const connectDB=require('./src/config/database');
+            const storage=require('./src/config/storage');
+            const outbox=require('./src/workflows/outbox');
+            const nativeApp=require('./src/app');
+            await connectDB();
+            const enqueueOriginal=storage.enqueueCleanupIntent;
+            const prior=(await (require('./src/models/Owner')).findById(storedOwner._id).lean());
+            const beforePending=await outbox.storageStats();
+            try {
+              storage.enqueueCleanupIntent=async () => {throw new Error('injected enqueue failure');};
+              const failed=await nativeApp.inject({
+                method:'PATCH',url:'/api/owners/'+storedOwner._id,
+                headers:{'x-api-key':'test-audit-key','content-type':'application/json'},
+                payload:JSON.stringify({portrait:null})
+              });
+              assert.equal(failed.statusCode,500,'cleanup enqueue failure aborts the transaction');
+            } finally {storage.enqueueCleanupIntent=enqueueOriginal;}
+            const persisted=await (require('./src/models/Owner')).findById(storedOwner._id).lean();
+            assert.equal(persisted.portrait.key,prior.portrait.key,'MongoDB file reference rolled back');
+            assert.equal((await outbox.storageStats()).pending,beforePending.pending,'no phantom cleanup intent');
+            assert.equal(fs.existsSync(path.join('uploads',prior.portrait.key)),true,'rollback preserves file');
+            await nativeApp.close();
+            await connectDB.disconnect();
             assert.equal((await fetch(root+'/owners/'+storedOwner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}})).status,204);
             assert.equal(fs.existsSync(path.join('uploads',storedOwner.portrait.key)),false,'deleted entity cleans referenced storage');
             const linkResponse=await send('/links','POST',{owner:owner._id});
