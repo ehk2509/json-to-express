@@ -25,7 +25,7 @@ test('storage always provisions durable outbox, worker and safe reconcile CLI', 
     for (const provider of ['local', 's3']) {
       const files = buildFiles(makeSpec(database, provider));
       const pkg = JSON.parse(files.get('package.json'));
-      for (const name of ['worker', 'worker:once', 'storage:stats', 'storage:retry-dead', 'storage:reconcile']) {
+      for (const name of ['worker', 'worker:once', 'storage:stats', 'storage:dead', 'storage:retry-dead', 'storage:reconcile']) {
         assert.ok(pkg.scripts[name], name);
       }
       const reconciliation = files.get('scripts/storage-reconcile.js');
@@ -38,6 +38,7 @@ test('storage always provisions durable outbox, worker and safe reconcile CLI', 
       assert.match(worker, /record.name === "__j2e_storage_cleanup__"/);
       assert.match(outbox, /async function storageStats\(\)/);
       assert.match(outbox, /async function retryDeadStorage\(\)/);
+      assert.match(outbox, /async function storageDead\(limit = 20\)/);
       assert.match(reconciliation, /function safePrefix\(prefix\)/);
       assert.match(reconciliation, /const referenced = await referencedKeys\(\)/);
       assert.match(reconciliation, /mode: options.execute \? 'execute' : 'dry-run'/);
