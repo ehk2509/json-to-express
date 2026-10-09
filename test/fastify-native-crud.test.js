@@ -19,7 +19,7 @@ test('native Fastify CRUD is generated and registered for simple Mongo entities'
   const source = files.get('src/fastify-crud.js');
   assert.ok(source);
   assert.match(source, /fastify.route/);
-  assert.match(source, /model.findByIdAndUpdate/);
+  assert.match(source, /model.findOneAndUpdate/);
   assert.match(files.get('src/server.js'), /registerNativeCrud\(fastify\)/);
   new vm.Script(source);
 });
