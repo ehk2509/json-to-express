@@ -1,6 +1,6 @@
 # json-to-express
 
-Generate a runnable Express or Fastify application from a declarative JSON specification. `app.framework: "fastify"` uses native Fastify handlers when supported; configurations with fully native CRUD and routes now generate an adapter-free Fastify app without the Express runtime. Advanced configurations still use a hybrid compatibility mode while native parity is being completed.
+Generate a runnable Express or Fastify application from a declarative JSON specification. `app.framework: "fastify"` uses native Fastify handlers when supported; configurations with fully native CRUD and routes now generate an adapter-free Fastify app without the Express runtime. Fastify configurations use native routes and hooks without an Express compatibility adapter; unsupported configurations fail generation with an explicit error.
 
 The project is JSON-first: runtime behavior, project layout, routes, persistence target, query behavior, middleware, hooks, package metadata, and server settings are described in JSON.
 
@@ -1667,7 +1667,7 @@ Fastify custom middleware **must** use native lifecycle hooks. List developer-ow
 
 **Migration from Express:** Replace `module.exports = (req, res, next) => { ...; next(); }` with `module.exports = {fastifyOnRequest(request, reply) { /* use request.headers, reply.header(...) */ }}`. Native request properties live on `request`; use `reply.code(...).send(...)` to end a response. Do not call `next()` in an async native hook. The generated app fails at startup with a descriptive error if a module exports only Express middleware. If any entity in the same Fastify specification cannot use native CRUD, generation fails rather than silently running custom middleware in an Express fallback. Express framework applications continue to support Express middleware.
 
-Fastify does **not** yet guarantee adapter-free parity for every spec: unsupported mutation/population combinations without custom middleware may still retain `@fastify/express`. Custom middleware in Fastify must migrate to native hooks; it never triggers Express fallback. Certain cyclic relation graphs and failure modes require further parity tests before the compatibility adapter can be removed universally. See issue #18.
+Fastify never generates `@fastify/express` or an Express fallback. Invalid population paths and unsupported configurations fail generation rather than dropping behavior silently. Custom middleware must use native lifecycle exports. Storage cleanup and cyclic/concurrent relationship failure tests are part of the parity verification; see issue #18.
 
 ## License
 
