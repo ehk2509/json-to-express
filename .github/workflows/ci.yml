@@ -807,7 +807,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
         run: |
-          cp ../../test/fixtures/storage-chaos-postgres-kill.js ./storage-chaos-postgres-kill.js
+          cp ../../scripts/fixtures/storage-chaos-postgres-kill.js ./storage-chaos-postgres-kill.js
           node storage-chaos-postgres-kill.js
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
@@ -1533,7 +1533,7 @@ jobs:
           PORT: 3493
           HOST: 127.0.0.1
         run: |
-          cp ../../test/fixtures/storage-chaos-mongo-kill.js ./storage-chaos-mongo-kill.js
+          cp ../../scripts/fixtures/storage-chaos-mongo-kill.js ./storage-chaos-mongo-kill.js
           node storage-chaos-mongo-kill.js
       - name: Print logs on failure
         if: failure()
