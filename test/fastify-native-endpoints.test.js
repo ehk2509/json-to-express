@@ -192,7 +192,7 @@ test('audited PostgreSQL entities use native CRUD and protect audit attribution'
   });
   const files = buildFiles(spec);
   const native = files.get('src/fastify-crud.js');
-  assert.match(native, /name: "Todo"/);
+  assert.match(native, /"name":"Todo"/);
   assert.match(native, /delete data\[entry.audit.createdBy\]/);
   assert.match(native, /delete data\[entry.audit.updatedBy\]/);
   assert.match(native, /data\[entry.audit.createdBy\] = request.raw.auth.userId/);
