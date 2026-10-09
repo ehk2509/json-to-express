@@ -247,3 +247,17 @@ test('PostgreSQL update and soft-delete writes are guarded against concurrent to
   assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: \{\[entry.softDelete.field\]: new Date\(\)\}\}/);
   new vm.Script(source);
 });
+
+test('native PostgreSQL CRUD maps concurrent missing-record writes to not found', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'postgres-race-safe', framework:'fastify'},
+    database: {type:'postgresql'},
+    entities: {Todo:{fields:{title:{type:'string'}},softDelete:{enabled:true},operations:{update:{transaction:true},delete:{transaction:true}}}}
+  });
+  const source = buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /error.code === "P2025"/);
+  assert.match(source, /reply.code\(op.notFoundStatus \|\| 404\)/);
+  assert.match(source, /error.code === "P2003"/);
+  new vm.Script(source);
+});
