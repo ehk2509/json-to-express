@@ -78,3 +78,18 @@ test('native Fastify local auth register and login emit Fastify handlers', () =>
   assert.match(files.get('src/server.js'),/registerNativeAuth.matches/);
   new vm.Script(source);
 });
+
+test('Fastify OIDC routes delegate PKCE state handling to shared auth engine', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name:'fastify-oidc-native',framework:'fastify'},
+    database: {type:'mongodb'},
+    auth: {enabled:true,strategies:['oidc'],oidc:{enabled:true,issuer:'https://issuer.example',audience:'client',clientIdEnv:'OIDC_CLIENT_ID'}},
+    entities: {Todo:{fields:{name:{type:'string'}}}}
+  });
+  const files = buildFiles(spec);
+  const native = files.get('src/fastify-auth.js');
+  assert.match(native, /auth.beginOidc/);
+  assert.match(native, /auth.completeOidc/);
+  assert.match(native, /oidcRoutes.callback/);
+  new vm.Script(native);
+});
