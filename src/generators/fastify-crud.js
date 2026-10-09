@@ -5,7 +5,7 @@ const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 // Native Fastify CRUD is deliberately enabled only for plain scalar entities.
 // Advanced entities continue to use the compatibility router until feature parity.
 function eligible(entity, spec) {
-  return spec.app.framework === 'fastify' &&
+  return spec.app.framework === 'fastify' && spec.api.rest &&
     !spec.auth.enabled && !spec.cache.enabled && !spec.storage.enabled &&
     !entity.audit.enabled && !entity.softDelete.enabled &&
     !entity.fields.some(field => ['reference', 'file'].includes(field.type)) &&
@@ -75,7 +75,27 @@ module.exports = function nativeCrudSource(spec) {
     '          if (errors.length) return reply.code(400).send({error: "Invalid request", details: errors});',
     '        }',
     '        if (action === "list") {',
-    '          const rows = postgres ? await model.findMany() : await model.find({}).lean();',
+    '          const q = op.query;',
+    '          const conditions = {};',
+    '          for (const field of q.filters || []) {',
+    '            if (request.query[field] !== undefined) conditions[field] = request.query[field];',
+    '          }',
+    '          const p = q.pagination;',
+    '          const limit = p.enabled ? Math.min(p.maxLimit, Math.max(1, Number(request.query[p.limitParam]) || p.defaultLimit)) : undefined;',
+    '          const page = p.enabled ? Math.max(1, Number(request.query[p.pageParam]) || 1) : 1;',
+    '          const sortValue = q.sortParam && request.query[q.sortParam];',
+    '          const sortFields = sortValue ? String(sortValue).split(/[ ,]+/).filter(Boolean) : [];',
+    '          const orderBy = sortFields.map(field => ({[field.replace(/^-/, "")]: field.startsWith("-") ? "desc" : "asc"}));',
+    '          const skip = limit ? (page - 1) * limit : undefined;',
+    '          let rows;',
+    '          if (postgres) {',
+    '            rows = await model.findMany({where: conditions, ...(limit ? {take: limit, skip} : {}), ...(orderBy.length ? {orderBy} : {})});',
+    '          } else {',
+    '            let query = model.find(conditions);',
+    '            if (sortFields.length) query = query.sort(sortFields.join(" "));',
+    '            if (limit) query = query.skip(skip).limit(limit);',
+    '            rows = await query.lean();',
+    '          }',
     '          return reply.code(op.status).send(rows);',
     '        }',
     '        if (action === "get") {',
