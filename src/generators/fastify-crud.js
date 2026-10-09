@@ -12,7 +12,7 @@ function eligible(entity, spec) {
     (!entity.fields.some(field => field.type === 'reference') ||
       ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      (op.transaction || op.cache.enabled || (op.populate.length && !['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op))))) &&
+      (op.transaction || op.cache.enabled || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
     !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
