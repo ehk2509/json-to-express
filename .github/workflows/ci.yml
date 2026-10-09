@@ -314,3 +314,47 @@ jobs:
         run: |
           cat .tmp/e2e-s3/server.log || true
           docker logs j2e-s3mock || true
+
+  generated-fastify-e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate Fastify application
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync('examples/shop.json', 'utf8'));
+          input.app.framework = 'fastify';
+          input.app.port = 3499;
+          input.app.health = {enabled: true, path: '/health', response: {status: 'ok'}};
+          input.generation = {outputDir: '.tmp/fastify-smoke'};
+          fs.writeFileSync('/tmp/fastify-spec.json', JSON.stringify(input));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-spec.json
+      - name: Install generated Fastify app
+        working-directory: .tmp/fastify-smoke
+        run: npm install --no-audit --no-fund
+      - name: Start generated Fastify app and check native health route
+        working-directory: .tmp/fastify-smoke
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify
+          PORT: 3499
+          HOST: 127.0.0.1
+        run: |
+          npm start > fastify.log 2>&1 &
+          echo $! > fastify.pid
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:3499/health >/tmp/fastify-health.json; then break; fi
+            sleep 1
+          done
+          grep -q '"status":"ok"' /tmp/fastify-health.json || { cat fastify.log; exit 1; }
+          curl -fsSi http://127.0.0.1:3499/health | grep -qi 'x-content-type-options: nosniff'
+          kill $(cat fastify.pid)
