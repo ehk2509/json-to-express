@@ -22,7 +22,7 @@ async function child(stage,id,key){
   await prisma.$transaction(async tx=>{
     await tx.asset.update({where:{id},data:{photo:null}});
     await outbox.enqueueJob('__j2e_storage_cleanup__',{values:[{key,provider:'local'}]},{
-      db:tx,config:{queue:'storage',maxAttempts:8,backoffMs:10}
+      db:tx,delayMs:60000,config:{queue:'storage',maxAttempts:8,backoffMs:10}
     });
     if(stage==='before-commit')process.kill(process.pid,'SIGKILL');
   });
