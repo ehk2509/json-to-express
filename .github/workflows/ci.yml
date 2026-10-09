@@ -331,7 +331,7 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
-          const input = JSON.parse(fs.readFileSync('examples/shop.json', 'utf8'));
+          const input = {specVersion: '1.0', app: {name: 'fastify-crud-smoke'}, database: {type: 'mongodb'}, entities: {Todo: {fields: {title: {type: 'string', required: true}}}}};
           input.app.framework = 'fastify';
           input.app.port = 3499;
           input.app.health = {enabled: true, path: '/health', response: {status: 'ok'}};
@@ -357,4 +357,29 @@ jobs:
           done
           grep -q '"status":"ok"' /tmp/fastify-health.json || { cat fastify.log; exit 1; }
           curl -fsSi http://127.0.0.1:3499/health | grep -qi 'x-content-type-options: nosniff'
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const base = 'http://127.0.0.1:3499/api/todos';
+          (async () => {
+            const create = await fetch(base, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({title:'Native Fastify'})});
+            assert.equal(create.status, 201);
+            const item = await create.json();
+            assert.ok(item._id);
+            const get = await fetch(base + '/' + item._id);
+            assert.equal(get.status, 200);
+            assert.equal((await get.json()).title, 'Native Fastify');
+            const list = await fetch(base);
+            assert.equal(list.status, 200);
+            assert.ok((await list.json()).some(row => row.title === 'Native Fastify'));
+            const update = await fetch(base + '/' + item._id, {method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({title:'Updated Native'})});
+            assert.equal(update.status, 200);
+            assert.equal((await update.json()).title, 'Updated Native');
+            const invalid = await fetch(base + '/invalid-id');
+            assert.equal(invalid.status, 400);
+            const remove = await fetch(base + '/' + item._id, {method:'DELETE'});
+            assert.equal(remove.status, 204);
+            const missing = await fetch(base + '/' + item._id);
+            assert.equal(missing.status, 404);
+          })().catch(error => {console.error(error); process.exitCode = 1;});
+          NODE
           kill $(cat fastify.pid)

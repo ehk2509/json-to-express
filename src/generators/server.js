@@ -11,7 +11,7 @@ function serverSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.server, paths.observability)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(paths.server, paths.cache)) + ');'] : []),
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
-    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');", 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');'] : []),
+    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');", 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');', 'const registerNativeCrud = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js'))) + ');'] : []),
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['const outboxWorker = require(' + js(relativeRequire(paths.server, paths.worker)) + ');'] : []), '',
     'validateEnvironment();',
@@ -28,8 +28,13 @@ function serverSource(spec) {
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
-      '  fastify.use(app);',
+      '  fastify.use((req, res, next) => {',
+      '    const pathname = String(req.url).split("?")[0];',
+      '    if (registerNativeRoutes.matches(req.method, pathname) || registerNativeCrud.matches(req.method, pathname)) return next();',
+      '    app(req, res, next);',
+      '  });',
       '  registerNativeRoutes(fastify);',
+      '  registerNativeCrud(fastify);',
       '  await fastify.listen({port, host});',
       '  server = fastify;',
       '  ' + (spec.observability.enabled

@@ -29,7 +29,8 @@ test('Fastify opt-in generates adapter dependencies, startup and shutdown', () =
   assert.ok(pkg.dependencies.fastify);
   assert.ok(pkg.dependencies['@fastify/express']);
   assert.match(files.get('src/server.js'), /fastify.register\(fastifyExpress\)/);
-  assert.match(files.get('src/server.js'), /fastify.use\(app\)/);
+  assert.match(files.get('src/server.js'), /registerNativeCrud.matches/);
+  assert.match(files.get('src/server.js'), /app\(req, res, next\)/);
   assert.match(files.get('src/server.js'), /await fastify.listen/);
   assert.match(files.get('src/server.js'), /await server.close/);
   new vm.Script(files.get('src/server.js'));

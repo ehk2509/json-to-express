@@ -54,6 +54,12 @@ module.exports = function fastifyNativeSource(spec) {
       '  });'
     );
   }
-  lines.push('};', '');
+  const nativeGetPaths = [
+    ...(spec.app.health.enabled ? [spec.app.health.path] : []),
+    ...(spec.observability.health.liveness.enabled ? [spec.observability.health.liveness.path] : []),
+    ...(spec.observability.health.readiness.enabled ? [spec.observability.health.readiness.path] : []),
+    ...(spec.observability.metrics.enabled ? [spec.observability.metrics.path] : [])
+  ];
+  lines.push('};', 'module.exports.matches = (method, pathname) => method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname);', '');
   return lines.join('\n');
 };
