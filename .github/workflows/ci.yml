@@ -598,8 +598,8 @@ jobs:
             assert.equal(body.message, 'hello');
             const query = await fetch('http://127.0.0.1:3496/graphql', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:'{ _service }'})});
             assert.equal(query.status, 200);
-            const result = await query.json();
-            assert.equal(typeof result.data._service, 'string');
+            const graphqlResult = await query.json();
+            assert.equal(typeof graphqlResult.data._service, 'string');
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
       - name: Print logs on failure
