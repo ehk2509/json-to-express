@@ -28,6 +28,8 @@ function serverSource(spec) {
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
+      ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
+      ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
       '  fastify.use((req, res, next) => {',
       '    const pathname = String(req.url).split("?")[0];',
       '    if (registerNativeRoutes.matches(req.method, pathname) || registerNativeCrud.matches(req.method, pathname) || registerNativeEndpoints.matches(req.method, pathname)) return next();',
