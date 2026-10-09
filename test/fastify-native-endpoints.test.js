@@ -30,3 +30,18 @@ test('Express generation does not create native workflow endpoints', () => {
   }));
   assert.equal(source.has('src/fastify-endpoints.js'), false);
 });
+
+test('GraphQL uses a Fastify route and generated native executor', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'native-graphql', framework: 'fastify'},
+    database: {type: 'mongodb'},
+    api: {graphql: {enabled: true}},
+    entities: {Todo: {fields: {name: {type: 'string'}}}}
+  });
+  const files = buildFiles(spec);
+  assert.match(files.get('src/fastify-native.js'), /graphqlApi.fastifyHandler/);
+  assert.match(files.get('src/graphql.js'), /async function fastifyHandler/);
+  assert.match(files.get('src/graphql.js'), /contextValue: \{req, \.\.\.loaders\}/);
+  new vm.Script(files.get('src/graphql.js'));
+});
