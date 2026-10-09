@@ -314,3 +314,19 @@ test('advanced Fastify native runtime retains observability, embedded jobs and p
   new vm.Script(files.get('src/app.js'));
   new vm.Script(files.get('src/server.js'));
 });
+
+test('explicit native-only custom lifecycle modules do not require Express', () => {
+  const input=spec();
+  input.app.middlewareModules=['src/middleware/tenant.js'];
+  input.app.fastifyMiddlewareOnly=true;
+  const files=buildFiles(normalizeSpec(input));
+  assert.equal(JSON.parse(files.get('package.json')).dependencies.express,undefined);
+  const app=files.get('src/app.js');
+  assert.match(app,/fastifyOnRequest/);
+  assert.match(app,/fastifyPreHandler/);
+  assert.match(app,/fastifyOnResponse/);
+  assert.match(app,/Native Fastify middleware exports are required/);
+  new vm.Script(app);
+  input.app.fastifyMiddlewareOnly=false;
+  assert.match(buildFiles(normalizeSpec(input)).get('src/server.js'),/fastifyExpress/);
+});
