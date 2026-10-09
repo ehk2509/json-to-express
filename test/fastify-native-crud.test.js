@@ -119,3 +119,19 @@ test('native Prisma delete is gated for inbound many-to-many relations', () => {
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.doesNotMatch(source, /"name":"User"/);
 });
+
+test('native Fastify local storage routes use multipart parser and cleanup', () => {
+  const input = spec('mongodb');
+  input.entities.Todo.fields.photo = {type: 'file', upload: {mimeTypes: ['image/png'], maxBytes: 1024}};
+  input.storage = {enabled: true, provider: 'local'};
+  const files = buildFiles(normalizeSpec(input));
+  const native = files.get('src/fastify-crud.js');
+  assert.match(native, /storage.parseFastifyMultipart/);
+  assert.match(native, /storage.cleanupReplaced/);
+  assert.match(native, /storage.cleanupEntity/);
+  assert.match(files.get('src/server.js'), /@fastify\/multipart/);
+  assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/multipart']);
+  assert.match(files.get('src/storage.js'), /async function parseFastifyMultipart/);
+  new vm.Script(native);
+  new vm.Script(files.get('src/storage.js'));
+});
