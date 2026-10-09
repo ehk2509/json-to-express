@@ -9,19 +9,33 @@ module.exports = function fastifyAuthSource(spec) {
     ...(spec.auth.jwt.refresh.enabled ? [{url:spec.auth.jwt.refresh.path,kind:'refresh'}] : []),
     ...(spec.auth.local.enabled || spec.auth.session.enabled || spec.auth.jwt.refresh.enabled ? [{url:spec.auth.local.logoutPath,kind:'logout'}] : [])
   ] : [];
+  const oidcRoutes = spec.auth.routesEnabled && spec.auth.oidc.enabled ? {login: spec.auth.oidc.loginPath, callback: spec.auth.oidc.callbackPath} : null;
   return [
     "'use strict';",
-    ...(routes.length ? [
+    ...(routes.length || oidcRoutes ? [
       'const auth = require(' + js(relativeRequire(target,paths.auth)) + ');',
       ...(spec.auth.local.enabled ? ['const store = require(' + js(relativeRequire(target,paths.authStore)) + ');'] : [])
     ] : []),
     'const routes = ' + js(routes) + ';',
+    'const oidcRoutes = ' + js(oidcRoutes) + ';',
     'function responseBridge(reply) {',
     '  return {getHeader(key) {return reply.getHeader(key);}, setHeader(key, value) {reply.header(key, value);}};',
     '}',
     'function identity(user) { return {userId: String(user.id !== undefined ? user.id : user._id), email: user.email, roles: Array.isArray(user.roles) ? user.roles : []}; }',
     'function validEmail(value) {return typeof value === "string" && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(value);}',
     'module.exports = function registerNativeAuth(fastify) {',
+    '  if (oidcRoutes) {',
+    '    const adapter = (request) => ({headers: request.headers, query: request.query, protocol: request.protocol, get: name => request.headers[name.toLowerCase()]});',
+    '    fastify.get(oidcRoutes.login, async (request, reply) => {',
+    '      const redirect = await auth.beginOidc(adapter(request), responseBridge(reply));',
+    '      return reply.redirect(redirect);',
+    '    });',
+    '    fastify.get(oidcRoutes.callback, async (request, reply) => {',
+    '      const result = await auth.completeOidc(adapter(request), responseBridge(reply));',
+    '      if (auth.config.oidc.successRedirect) return reply.redirect(auth.config.oidc.successRedirect);',
+    '      return reply.code(200).send(result);',
+    '    });',
+    '  }',
     '  for (const route of routes) fastify.post(route.url, async (request, reply) => {',
     '    const body = request.body || {};',
     '    if (route.kind === "refresh") {',
@@ -80,7 +94,7 @@ module.exports = function fastifyAuthSource(spec) {
     '    return reply.code(200).send(await auth.issueCredentials(identity(user), responseBridge(reply)));',
     '  });',
     '};',
-    'module.exports.matches = (method, pathname) => method === "POST" && routes.some(route => route.url === pathname);',
+    'module.exports.matches = (method, pathname) => (method === "POST" && routes.some(route => route.url === pathname)) || (method === "GET" && oidcRoutes && (pathname === oidcRoutes.login || pathname === oidcRoutes.callback));',
     ''
   ].join('\n');
 };
