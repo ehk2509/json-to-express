@@ -62,3 +62,19 @@ test('Fastify rate limit and compression use native plugins when enabled', () =>
   assert.match(files.get('src/server.js'), /@fastify\/rate-limit/);
   assert.match(files.get('src/server.js'), /@fastify\/compress/);
 });
+
+test('native Fastify local auth register and login emit Fastify handlers', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name:'fastify-local-auth',framework:'fastify'},
+    database: {type:'mongodb'},
+    auth: {enabled:true, strategies:['jwt'], jwt:{secretEnv:'TEST_JWT_SECRET'}, local:{enabled:true,allowRegistration:true}},
+    entities: {Todo:{fields:{name:{type:'string'}}}}
+  });
+  const files = buildFiles(spec);
+  const source = files.get('src/fastify-auth.js');
+  assert.match(source,/fastify.post/);
+  assert.match(source,/auth.issueCredentials/);
+  assert.match(source,/auth.verifyPassword/);
+  assert.match(files.get('src/server.js'),/registerNativeAuth.matches/);
+  new vm.Script(source);
+});
