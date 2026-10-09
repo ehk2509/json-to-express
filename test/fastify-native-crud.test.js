@@ -299,7 +299,8 @@ test('advanced Fastify native runtime retains observability, embedded jobs and p
     }},
     database:{type:'mongodb'},
     observability:{enabled:true,metrics:{enabled:true}},
-    outbox:{enabled:true,worker:'embedded'},
+    events:{'ci.event':{webhooks:[]}},
+    outbox:{worker:'embedded'},
     entities:{Todo:{fields:{title:{type:'string'}}}}
   });
   const files=buildFiles(spec);
