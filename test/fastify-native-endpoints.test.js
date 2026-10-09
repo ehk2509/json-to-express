@@ -212,8 +212,9 @@ test('PostgreSQL soft-delete entities stay native and filter tombstones', () => 
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /model.findFirst\(\{where: liveFilter\(entry, \{id\}\)/);
   assert.match(source, /rows = await model.findMany\(\{where: conditions/);
-  assert.match(source, /entry.softDelete.enabled \? delegate.update/);
-  assert.match(source, /\[entry.softDelete.field\]: new Date\(\)/);
+  const planner = buildFiles(spec).get('src/fastify-postgres-delete.js');
+  assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
+  assert.match(planner, /meta.softDelete.enabled && !forceHard/);
   new vm.Script(source);
 });
 
@@ -233,7 +234,7 @@ test('PostgreSQL transactional writes use Prisma interactive transactions', () =
   assert.match(source, /op.transaction && !await delegate.findFirst/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.create/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, async delegate =>/);
-  assert.match(source, /return entry.softDelete.enabled \? delegate.update/);
+  assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
   new vm.Script(source);
 });
 
@@ -246,7 +247,7 @@ test('PostgreSQL update and soft-delete writes are guarded against concurrent to
   });
   const source = buildFiles(spec).get('src/fastify-crud.js');
   assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: writeData/);
-  assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: \{\[entry.softDelete.field\]: new Date\(\)\}\}/);
+  assert.match(buildFiles(spec).get('src/fastify-postgres-delete.js'), /meta.softDelete.enabled && !forceHard/);
   new vm.Script(source);
 });
 
@@ -277,12 +278,13 @@ test('PostgreSQL soft-delete parent applies inbound policies in one Prisma trans
     });
     const source = buildFiles(spec).get('src/fastify-crud.js');
     assert.match(source, /"name":"User"/);
-    assert.match(source, /entry.softDelete.enabled && entry.inbound.length/);
-    assert.match(source, /const child = tx/);
+    const planner = buildFiles(spec).get('src/fastify-postgres-delete.js');
+    assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
     assert.match(source, /isolationLevel: "Serializable"/);
-    assert.match(source, /related.count/);
-    assert.match(source, /related.updateMany/);
-    assert.match(source, /related.deleteMany/);
+    assert.match(planner, /relation.onDelete === "restrict"/);
+    assert.match(planner, /relation.onDelete === "nullify"/);
+    assert.match(planner, /relation.onDelete === "cascade"/);
+    new vm.Script(planner);
     new vm.Script(source);
   }
 });
@@ -319,4 +321,25 @@ test('PostgreSQL native hooks are loaded alongside transactional and soft-delete
   assert.match(source, /callHook\(entry, "before", action/);
   assert.match(source, /callHook\(entry, "after", action/);
   new vm.Script(source);
+});
+
+test('PostgreSQL recursive relation deletion planner includes multi-hop and many-to-many policies', () => {
+  const spec = normalizeSpec({
+    specVersion:'1.0',app:{name:'pg-recursive',framework:'fastify'},database:{type:'postgresql'},
+    entities:{
+      Account:{fields:{name:{type:'string'}},softDelete:{enabled:true}},
+      Project:{fields:{account:{type:'reference',ref:'Account',onDelete:'cascade'}},softDelete:{enabled:true}},
+      Task:{fields:{project:{type:'reference',ref:'Project',onDelete:'cascade'}}},
+      Label:{fields:{accounts:{type:'reference',ref:'Account',many:true,onDelete:'nullify'}}}
+    }
+  });
+  const files=buildFiles(spec);
+  const planner=files.get('src/fastify-postgres-delete.js');
+  assert.match(planner, /"model":"Project"/);
+  assert.match(planner, /"model":"Task"/);
+  assert.match(planner, /"many":true/);
+  assert.match(planner, /await remove\(db, relation.model, item.id/);
+  assert.match(planner, /disconnect: \[\{id\}\]/);
+  assert.match(planner, /Cyclic relationship cascade/);
+  new vm.Script(planner);
 });
