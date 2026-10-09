@@ -161,3 +161,18 @@ test('native signed local downloads use authenticated token path', () => {
   assert.match(files.get('src/config/storage.js'), /verifyLocalToken\(request.params.token\)/);
   new vm.Script(files.get('src/fastify-native.js'));
 });
+
+test('MongoDB native Fastify supports transactional create, update and soft delete with audit fields', () => {
+  const input = spec('mongodb');
+  input.entities.Todo.softDelete = {enabled: true, field: 'deletedAt'};
+  input.entities.Todo.audit = {enabled: true, createdBy: 'createdBy', updatedBy: 'updatedBy'};
+  input.entities.Todo.operations = {create: {transaction: true}, update: {transaction: true}, delete: {transaction: true}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /mongoose.startSession/);
+  assert.match(source, /session.withTransaction/);
+  assert.match(source, /liveFilter\(entry/);
+  assert.match(source, /entry.audit.createdBy/);
+  assert.match(source, /entry.audit.updatedBy/);
+  assert.match(source, /entry.softDelete.field/);
+  new vm.Script(source);
+});
