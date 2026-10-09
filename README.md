@@ -899,12 +899,21 @@ npm run storage:reconcile      # read-only inventory, default age >= 24h
 npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25
 ```
 
-Reconciliation checks actual object references across all configured file fields in MongoDB/PostgreSQL, lists only known storage prefixes and rejects traversal. It is **dry-run by default**; deletion requires explicit `--execute`, a minimum 24-hour age, and a maximum of 100 deletions per invocation. Scans are bounded (`--max-scan 5000` by default) and the output reports whether a scan was truncated. Always inspect the dry-run report, especially in multi-replica environments, before running deletion. The CLI scans records, so schedule it during low write activity to reduce race windows.
+Reconciliation checks actual object references across all configured file fields in MongoDB/PostgreSQL, lists only known storage prefixes and rejects traversal. It is **dry-run by default**; deletion requires explicit `--execute`, a minimum 24-hour age, and a maximum of 100 deletions per invocation. Scans are bounded (`--max-scan 5000` by default) and the output reports whether a scan was truncated. Always inspect the dry-run report, especially in multi-replica environments, before running deletion. The CLI now rechecks references **for each individual deletion candidate**, uses cursor pagination for PostgreSQL reference scans, and revalidates the candidate object's modification time, size, and local inode or S3 ETag via HEAD before deletion. The JSON report includes `skippedReferenced` and `skippedModified` counters.
+
+These checks narrow common concurrent-writer races, but **do not form a distributed lock or atomic compare-and-delete with the database**. A reference can still appear between the final check and physical deletion, especially if objects/keys are manually reused. Generated upload keys are intended to be immutable; never reuse keys, and schedule destructive reconciliation during a maintenance window or low write activity. For multi-replica deployments, coordinate reconciliation to avoid overlapping maintenance runs.
 
 When observability metrics are enabled, `j2e_storage_cleanup_pending` and `j2e_storage_cleanup_dead` expose the backlog (using the configured metric prefix). The generator also creates `deploy/prometheus/storage-cleanup-alerts.yml` with editable rules for persistent dead letters and growing backlogs. Import those rules into your Prometheus/Prometheus Operator configuration and configure your own notification routing.
 
 **Consistency boundary:** PostgreSQL and MongoDB replica-set mutations write storage-deletion intents **inside the same database transaction** as the corresponding mutation, including nested cascades in native Fastify routes. The physical local/S3 deletion runs only after commit; a worker can resume the persisted intent after a crash. Mongoose on a standalone MongoDB server cannot perform multi-document transactions, so cleanup there remains best-effort and reconciliation is recommended. Newly uploaded files can still be orphaned by a crash before their database record commits, and local/S3 deletion can never be part of the database ACID transaction. Durable retry is at-least-once; reconciliation remains age-gated and operator-reviewed rather than claiming a globally atomic snapshot of active uploads.
 
+
+
+### Chaos recovery validation
+
+The CI matrix runs separate worker-process recoveries and actual OS-level `SIGKILL` immediately before and after MongoDB replica-set and PostgreSQL transaction commits. It verifies that uncommitted deletion intents roll back with their record mutations, that committed intents survive process death, and that the restarted worker eventually removes the object. Further tests cover two competing orphan-reconciliation runs, a writer that attaches a reference mid-scan, files replaced after inventory, three consecutive S3 connection failures followed by recovery, idempotent retries, and an unavailable outbox enqueue in standalone MongoDB.
+
+**Standalone MongoDB:** Because a transaction-capable replica set is unavailable, a failed enqueue may leave an untracked orphan even though a record mutation succeeded. The generated reconciler intentionally waits at least 24 hours before considering an unreferenced object for deletion. For stronger correctness guarantees, migrate the deployment to a MongoDB replica set.
 
 ## Declarative caching
 
