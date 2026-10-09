@@ -192,3 +192,18 @@ test('native Mongo deletion generates transactional inbound restrict, nullify an
   assert.match(source, /entry.inbound.length > 0/);
   new vm.Script(source);
 });
+
+test('Mongo native Fastify generates lifecycle hooks alongside audit, soft-delete and transactions', () => {
+  const input = spec('mongodb');
+  input.entities.Todo.audit = {enabled:true};
+  input.entities.Todo.softDelete = {enabled:true};
+  input.entities.Todo.hooks = {module:'./hooks/todo.js', before:{create:'onCreate'}, after:{delete:'onDelete'}};
+  input.entities.Todo.operations = {delete:{transaction:true}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source,/hookModules/);
+  assert.match(source,/callHook\(entry, "before"/);
+  assert.match(source,/callHook\(entry, "after"/);
+  assert.match(source,/session.withTransaction/);
+  assert.match(source,/liveFilter/);
+  new vm.Script(source);
+});
