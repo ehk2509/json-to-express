@@ -1302,7 +1302,7 @@ jobs:
                 operations:{create:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},update:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},delete:{transaction:true}}},
               Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}},operations:{create:{transaction:true,populate:['owner']},update:{transaction:true,populate:['owner']}}},
               Link:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'nullify'}}},
-              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}},
+              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'},attachment:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}}}},
               CascadeChild:{route:'cascade-children',fields:{cascade:{type:'reference',ref:'Cascade',onDelete:'cascade'}}},
               Watchlist:{fields:{owners:{type:'reference',ref:'Owner',many:true,onDelete:'nullify'}}}
             }
@@ -1394,9 +1394,14 @@ jobs:
             const linkResponse=await send('/links','POST',{owner:owner._id});
             assert.equal(linkResponse.status,201);
             const link=await linkResponse.json();
-            const cascadeResponse=await send('/cascades','POST',{owner:owner._id});
+            const cascadeForm=new FormData();
+            cascadeForm.set('owner',owner._id);
+            cascadeForm.set('attachment',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'nested.png');
+            const cascadeResponse=await fetch(root+'/cascades',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:cascadeForm});
             assert.equal(cascadeResponse.status,201);
             const cascade=await cascadeResponse.json();
+            const cascadePath=path.join('uploads',cascade.attachment.key);
+            assert.ok(fs.existsSync(cascadePath));
             const nestedResponse=await send('/cascade-children','POST',{cascade:cascade._id});
             assert.equal(nestedResponse.status,201);
             const nested=await nestedResponse.json();
@@ -1423,6 +1428,7 @@ jobs:
             assert.equal((await linked.json()).owner,null);
             assert.equal((await fetch(root+'/cascades/'+cascade._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
             assert.equal((await fetch(root+'/cascade-children/'+nested._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            assert.equal(fs.existsSync(cascadePath),false,'cascade deletion must clean child file inside root transaction');
             const afterWatchlist=await fetch(root+'/watchlists/'+watchlist._id,{headers:{'x-api-key':'test-audit-key'}});
             assert.equal(afterWatchlist.status,200);
             assert.deepEqual((await afterWatchlist.json()).owners,[]);
