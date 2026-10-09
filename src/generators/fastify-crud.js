@@ -2,15 +2,15 @@
 
 const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 
-// A generated route is native only when its supported read/write semantics are complete.
+// Every supported MongoDB/PostgreSQL CRUD operation uses native Fastify routes.
+// Unknown populate paths are rejected before generation to avoid silent data loss.
 function eligible(entity, spec) {
-  return spec.app.framework === 'fastify' && spec.api.rest &&
+  return spec.app.framework === 'fastify' &&
     (spec.database.type === 'mongodb' || spec.database.type === 'postgresql') &&
-    (!entity.fields.some(field => field.type === 'file') ||
-      (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
-    !Object.entries(entity.operations).some(([action, op]) => op.enabled &&
-      (op.populate.length && (!['list', 'get'].includes(action) ||
-        op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))));
+    (!entity.fields.some(field => field.type === 'file') || spec.storage.enabled) &&
+    !Object.values(entity.operations).some(op => op.enabled &&
+      (op.populate || []).some(name => !entity.fields.some(field =>
+        field.type === 'reference' && field.name === name)));
 }
 
 module.exports = function nativeCrudSource(spec) {
@@ -79,6 +79,11 @@ module.exports = function nativeCrudSource(spec) {
     '    if (field.enum && !field.enum.includes(value)) errors.push(name + " has an invalid value");',
     '  }',
     '  return errors;',
+    '}',
+    'async function populateRecord(entry, record, fields) {',
+    '  if (!record || !fields || !fields.length) return record;',
+    '  if (postgres) return models[entry.modelIndex].findUnique({where: {id: record.id}, include: Object.fromEntries(fields.map(name => [name, true]))});',
+    '  return models[entry.modelIndex].findById(record._id).populate(fields);',
     '}',
     'function writeData(entry, body, mode) {',
     '  const data = {...body};',
@@ -195,7 +200,8 @@ module.exports = function nativeCrudSource(spec) {
     '          if (entry.audit.enabled) {delete data[entry.audit.createdBy]; delete data[entry.audit.updatedBy];}',
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) {data[entry.audit.createdBy] = request.raw.auth.userId; data[entry.audit.updatedBy] = request.raw.auth.userId;}',
     '          const record = postgres ? await postgresTransaction(entry, op.transaction, delegate => delegate.create({data: writeData(entry, data, "create")})) : await transactional(op.transaction, async session => (await model.create([data], session ? {session} : {}))[0]);',
-    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
+    '          const expanded = await populateRecord(entry, record, op.populate);',
+    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, expanded, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : expanded;',
     '          storedUploads = [];',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
@@ -209,7 +215,8 @@ module.exports = function nativeCrudSource(spec) {
     '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) data[entry.audit.updatedBy] = request.raw.auth.userId;',
     '          const record = postgres ? await postgresTransaction(entry, op.transaction, async delegate => {if (op.transaction && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} return delegate.update({where: liveFilter(entry, {id}), data: writeData(entry, data, "update")});}) : await transactional(op.transaction, async session => model.findOneAndUpdate(liveFilter(entry, {_id: id}), data, {new: true, runValidators: op.runValidators, ...(session ? {session} : {})}));',
     '          if (entry.hasFiles) await storage.cleanupReplaced(entry.name, existing, request.body);',
-    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
+    '          const expanded = await populateRecord(entry, record, op.populate);',
+    '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, expanded, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : expanded;',
     '          storedUploads = [];',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
@@ -218,6 +225,7 @@ module.exports = function nativeCrudSource(spec) {
     '        if (action === "delete") {',
     '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
+    '          const deleteResponse = op.status === 204 ? null : (op.populate && op.populate.length ? await populateRecord(entry, record, op.populate) : record);',
     '          if (postgres) {',
     '            try {await postgresTransaction(entry, true, async (delegate, tx) => postgresDelete(tx, entry.name, id));}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
@@ -225,7 +233,7 @@ module.exports = function nativeCrudSource(spec) {
     '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          if (await callHook(entry, "after", action, request, reply, model, record)) return;',
-    '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
+    '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(deleteResponse);',
     '        }',
     '        } catch (error) {',
     '          if (storedUploads.length) await storage.cleanup(storedUploads).catch(() => {});',
