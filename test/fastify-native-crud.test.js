@@ -227,9 +227,9 @@ test('simple Fastify generators run without Express runtime dependencies', () =>
   }
 });
 
-test('advanced Fastify generators retain compatibility until parity is complete', () => {
-  const input = spec();
-  input.entities.Todo.fields.owner = {type:'reference', ref:'User'};
+test('unsupported PostgreSQL many-to-many deletes retain compatibility', () => {
+  const input = spec('postgresql');
+  input.entities.Todo.fields.owner = {type:'reference', ref:'User', many:true};
   input.entities.User = {fields:{name:{type:'string'}}};
   const files = buildFiles(normalizeSpec(input));
   assert.match(files.get('src/server.js'), /fastifyExpress/);
@@ -274,4 +274,17 @@ test('native auth endpoints and GraphQL workflows can run without Express adapte
   assert.match(files.get('src/fastify-native.js'), /graphqlApi.fastifyHandler/);
   assert.match(files.get('src/fastify-endpoints.js'), /workflows.execute/);
   new vm.Script(files.get('src/app.js'));
+});
+
+test('native supported relations and hooks can be adapter-free', () => {
+  const input=spec('mongodb');
+  input.entities.Todo.fields.owner={type:'reference',ref:'User',onDelete:'nullify'};
+  input.entities.Todo.softDelete={enabled:true};
+  input.entities.Todo.audit={enabled:true};
+  input.entities.Todo.hooks={module:'src/hooks/todo.js',before:{create:'preCreate'}};
+  input.entities.User={fields:{name:{type:'string'}}};
+  const files=buildFiles(normalizeSpec(input));
+  assert.equal(JSON.parse(files.get('package.json')).dependencies.express,undefined);
+  assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress/);
+  assert.match(files.get('src/fastify-crud.js'),/hookModules/);
 });
