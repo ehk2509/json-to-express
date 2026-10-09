@@ -254,3 +254,24 @@ test('stateless API-key authorization and Redis caching remain adapter-free', ()
   assert.match(files.get('src/fastify-crud.js'), /cache.nativeRead/);
   assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
 });
+
+test('native auth endpoints and GraphQL workflows can run without Express adapter', () => {
+  const input = spec();
+  input.auth = {
+    enabled:true,strategies:['jwt'],
+    jwt:{secretEnv:'TEST_NATIVE_JWT'},
+    local:{enabled:true,allowRegistration:true}
+  };
+  input.api = {graphql:{enabled:true}};
+  input.workflows = {ping:{steps:[{name:'response',action:'respond',body:{ok:true}}]}};
+  input.endpoints = {ping:{method:'post',path:'/ping',workflow:'ping'}};
+  const files=buildFiles(normalizeSpec(input));
+  const pkg=JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.match(files.get('src/app.js'), /register3\(fastify\)/);
+  assert.match(files.get('src/fastify-auth.js'), /fastify.post/);
+  assert.match(files.get('src/fastify-native.js'), /graphqlApi.fastifyHandler/);
+  assert.match(files.get('src/fastify-endpoints.js'), /workflows.execute/);
+  new vm.Script(files.get('src/app.js'));
+});
