@@ -185,11 +185,18 @@ jobs:
       - name: Install generated application
         working-directory: .tmp/e2e-postgres
         run: npm install --no-audit --no-fund
-      - name: Push Prisma schema
+      - name: Generate and deploy initial Prisma migration
         working-directory: .tmp/e2e-postgres
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres
-        run: npm run db:push
+        run: |
+          npm run db:migrate:init
+          test -s prisma/migrations/00000000000000_init/migration.sql
+          grep -q 'provider = "postgresql"' prisma/migrations/migration_lock.toml
+          if npm run db:migrate:init; then echo "Initial migration overwrote history"; exit 1; fi
+          npm run db:migrate:deploy
+          npm run db:migrate:deploy
+          npm run db:migrate:status
       - name: Test generated PostgreSQL contracts
         working-directory: .tmp/e2e-postgres
         run: npm test
