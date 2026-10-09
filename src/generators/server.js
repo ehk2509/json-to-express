@@ -28,6 +28,13 @@ function serverSource(spec) {
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
+      ...(spec.observability.enabled ? [
+        '  fastify.addHook("onRequest", (request, reply, done) => {',
+        '    const pathname = String(request.raw.url).split("?")[0];',
+        '    if (!(registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname))) return done();',
+        '    return observability.requestMiddleware(request.raw, reply.raw, done);',
+        '  });'
+      ] : []),
       ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
       ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
       ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
