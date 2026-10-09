@@ -1,9 +1,11 @@
 'use strict';
 
 const {filePaths, js, relativeRequire} = require('./utils');
+const isDirectFastify = require('./fastify-direct');
 
 function serverSource(spec) {
   const paths = filePaths(spec);
+  const directFastify = isDirectFastify(spec);
   return [
     "'use strict';", '',
     "require('dotenv').config();",
@@ -11,7 +13,7 @@ function serverSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.server, paths.observability)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(paths.server, paths.cache)) + ');'] : []),
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
-    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false" + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});', "const fastifyExpress = require('@fastify/express');", 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');', 'const registerNativeCrud = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js'))) + ');', 'const registerNativeEndpoints = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-endpoints.js'))) + ');', 'const registerNativeAuth = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-auth.js'))) + ');'] : []),
+    ...(spec.app.framework === 'fastify' ? [directFastify ? 'const fastify = app;' : "const fastify = require('fastify')({logger: false" + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});', ...(!directFastify ? ["const fastifyExpress = require('@fastify/express');"] : []), 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');', 'const registerNativeCrud = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js'))) + ');', 'const registerNativeEndpoints = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-endpoints.js'))) + ');', 'const registerNativeAuth = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-auth.js'))) + ');'] : []),
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['const outboxWorker = require(' + js(relativeRequire(paths.server, paths.worker)) + ');'] : []), '',
     'validateEnvironment();',
@@ -27,6 +29,7 @@ function serverSource(spec) {
         : '  outboxWorker.startWorker().catch(error => console.error("Outbox worker failed:", error));'
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
+      ...(directFastify ? [] : [
       '  await fastify.register(fastifyExpress);',
       ...(spec.observability.enabled ? [
         '  fastify.addHook("onRequest", (request, reply, done) => {',
@@ -66,6 +69,7 @@ function serverSource(spec) {
       '  registerNativeCrud(fastify);',
       '  registerNativeEndpoints(fastify);',
       '  registerNativeAuth(fastify);',
+      ]),
       '  await fastify.listen({port, host});',
       '  server = fastify;',
       '  ' + (spec.observability.enabled
