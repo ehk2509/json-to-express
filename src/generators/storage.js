@@ -313,6 +313,7 @@ module.exports = function storageSource(spec) {
     '    normalizeBody(entityName, req);',
     '    return {body: req.body, stored};',
     '  } catch (error) {',
+    '    if (error.statusCode === 413 || error.code === "FST_REQ_FILE_TOO_LARGE") error.statusCode = 400;',
     '    await cleanup(stored).catch(() => {});',
     '    throw error;',
     '  }',
