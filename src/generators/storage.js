@@ -148,7 +148,7 @@ module.exports = function storageSource(spec) {
     '  const record = await enqueueCleanupIntent(values);',
     '  return finishCleanupIntent(record);',
     '}',
-    ''
+    '',
     'function parseText(definition, value) {',
     '  if (value === undefined) return value;',
     '  if (definition.type === "number") { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : value; }',
