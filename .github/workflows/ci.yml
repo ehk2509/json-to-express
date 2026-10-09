@@ -507,6 +507,39 @@ jobs:
             } finally {await prisma.$disconnect();}
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
+      - name: Verify PostgreSQL transactional rollback on dependent changes
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const {PrismaClient} = require('@prisma/client');
+          const prisma = new PrismaClient();
+          (async () => {
+            const owner = await prisma.user.create({data:{name:'Rollback owner'}});
+            const note = await prisma.note.create({data:{title:'Rollback note', owner:{connect:{id:owner.id}}}});
+            try {
+              await assert.rejects(
+                prisma.$transaction(async tx => {
+                  await tx.note.update({where:{id:note.id},data:{owner:{disconnect:true}}});
+                  await tx.user.update({where:{id:owner.id},data:{deletedAt:new Date()}});
+                  throw new Error('injected rollback');
+                }, {isolationLevel:'Serializable'}),
+                /injected rollback/
+              );
+              const [unchangedOwner, unchangedNote] = await Promise.all([
+                prisma.user.findUnique({where:{id:owner.id}}),
+                prisma.note.findUnique({where:{id:note.id}})
+              ]);
+              assert.equal(unchangedOwner.deletedAt, null, 'parent tombstone must roll back');
+              assert.equal(unchangedNote.ownerId, owner.id, 'relation nullification must roll back');
+            } finally {
+              await prisma.note.delete({where:{id:note.id}});
+              await prisma.user.delete({where:{id:owner.id}});
+            }
+          })().catch(error => {console.error(error);process.exitCode=1;}).finally(() => prisma.$disconnect());
+          NODE
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
