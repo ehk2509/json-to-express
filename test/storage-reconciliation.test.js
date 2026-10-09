@@ -162,3 +162,23 @@ test('atomic cleanup planner only schedules unreferenced old fields', () => {
   assert.equal(module.exports.planReplaced('Asset',{file:a},{name:'unchanged'}).length,0);
   assert.deepEqual(Array.from(module.exports.planEntity('Asset',{file:b})).map(x=>x.key),[b.key]);
 });
+
+test('Express PostgreSQL and MongoDB controllers use transactional cleanup intents', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const raw = {
+      specVersion:'1.0',app:{name:'legacy-atomic',framework:'express'},database:{type:database},
+      storage:{enabled:true,provider:'local'},
+      entities:{Asset:{
+        fields:{name:{type:'string'},file:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}}},
+        operations:{update:{transaction:true},delete:{transaction:true}}
+      }}
+    };
+    const files=buildFiles(normalizeSpec(raw));
+    const source=files.get('src/controllers/AssetController.js');
+    assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
+    assert.match(source,/storage.enqueueCleanupIntent\(storage.planEntity/);
+    assert.match(source,/storage.finishCleanupIntent/);
+    assert.match(source,/withTransaction\(true, async /);
+    new vm.Script(source);
+  }
+});
