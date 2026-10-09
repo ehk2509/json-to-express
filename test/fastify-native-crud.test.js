@@ -99,3 +99,23 @@ test('native Prisma create and update transform single relation IDs safely', () 
   assert.match(source, /connect: \{id: reference\}/);
   new vm.Script(source);
 });
+
+test('native Prisma delete respects FK restriction handling', () => {
+  const input = spec('postgresql');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /"name":"User"/);
+  assert.match(source, /P2003/);
+  assert.match(source, /Delete restricted by related records/);
+  new vm.Script(source);
+});
+
+test('native Prisma delete is gated for inbound many-to-many relations', () => {
+  const input = spec('postgresql');
+  input.entities.User = {fields: {name: {type: 'string'}}};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User', many: true};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.doesNotMatch(source, /"name":"User"/);
+});
