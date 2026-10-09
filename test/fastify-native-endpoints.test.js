@@ -102,3 +102,19 @@ test('native Fastify observability intercepts native routes only to avoid duplic
   assert.match(server,/registerNativeCrud.matches/);
   new vm.Script(server);
 });
+
+test('custom middleware can supply a native Fastify onRequest hook without touching fallback routes', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'native-middleware', framework: 'fastify', middlewareModules: ['src/middleware/tenant.js']},
+    database: {type: 'mongodb'},
+    entities: {Todo: {fields: {title: {type: 'string'}}}}
+  });
+  const files = buildFiles(spec);
+  const server = files.get('src/server.js');
+  assert.match(server, /middleware\.fastifyOnRequest/);
+  assert.match(server, /fastify\.addHook\("onRequest"/);
+  assert.match(server, /registerNativeCrud\.matches\(request\.raw\.method, pathname\)/);
+  assert.match(server, /await middleware\.fastifyOnRequest\(request, reply\)/);
+  new vm.Script(server);
+});
