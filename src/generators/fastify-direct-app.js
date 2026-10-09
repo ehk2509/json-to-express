@@ -23,7 +23,7 @@ module.exports = function directFastifyAppSource(spec) {
     ...spec.app.middlewareModules.flatMap(modulePath => [
       '  { const middleware = require(' + js(relativeRequire(appPath, modulePath)) + ');',
       '    const nativeHooks = ["fastifyOnRequest", "fastifyPreValidation", "fastifyPreHandler", "fastifyPreSerialization", "fastifyOnSend", "fastifyOnError", "fastifyOnResponse"];',
-      '    if (!middleware || !nativeHooks.some(name => typeof middleware[name] === "function")) throw new Error("Native Fastify middleware exports are required: ' + modulePath.replace(/"/g, '') + '");',
+      '    if (!middleware || !nativeHooks.some(name => typeof middleware[name] === "function")) throw new Error("Native Fastify middleware exports are required; migrate Express (req, res, next) modules to fastifyOnRequest / fastifyPreHandler etc.: ' + modulePath.replace(/"/g, '') + '");',
       ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
         '    if (typeof middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
       ),
