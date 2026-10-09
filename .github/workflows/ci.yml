@@ -558,7 +558,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}, Project: {fields:{title:{type:'string'}, owner:{type:'reference',ref:'User',onDelete:'cascade'}},softDelete:{enabled:true}}, ProjectEntry:{route:'project-entries',fields:{title:{type:'string'},project:{type:'reference',ref:'Project',onDelete:'cascade'}}}, Label:{fields:{title:{type:'string'},owners:{type:'reference',ref:'User',many:true,onDelete:'nullify'}}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}, operations: {create: {transaction: true, populate: ['owner']}, update: {transaction: true, populate: ['owner']}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}, Project: {fields:{title:{type:'string'}, owner:{type:'reference',ref:'User',onDelete:'cascade'}},softDelete:{enabled:true}}, ProjectEntry:{route:'project-entries',fields:{title:{type:'string'},project:{type:'reference',ref:'Project',onDelete:'cascade'}}}, Label:{fields:{title:{type:'string'},owners:{type:'reference',ref:'User',many:true,onDelete:'nullify'}}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
@@ -638,6 +638,10 @@ jobs:
             assert.equal(noteResponse.status,201);
             assert.equal(logResponse.status,201);
             const note = await noteResponse.json();
+            assert.equal(note.owner.id,owner.id,'created native Prisma response must populate owner');
+            const noteUpdated=await fetch(notes+'/'+note.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({title:'populated update'})});
+            assert.equal(noteUpdated.status,200);
+            assert.equal((await noteUpdated.json()).owner.id,owner.id,'native Prisma update must populate owner');
             const log = await logResponse.json();
             const post = (url,body) => fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
             const projectResponse=await post('http://127.0.0.1:3498/api/projects',{title:'Cascade project',owner:owner.id});
