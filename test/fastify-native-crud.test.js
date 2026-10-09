@@ -135,3 +135,19 @@ test('native Fastify local storage routes use multipart parser and cleanup', () 
   new vm.Script(native);
   new vm.Script(files.get('src/config/storage.js'));
 });
+
+test('native Fastify cache reuses shared key/version engine and invalidates mutations', () => {
+  const input = spec('mongodb');
+  input.cache = {enabled: true, provider: 'memory'};
+  input.entities.Todo.operations = {list: {cache: {enabled: true, ttlSeconds: 120}}, get: {cache: {enabled: true, ttlSeconds: 120}}};
+  const files = buildFiles(normalizeSpec(input));
+  const native = files.get('src/fastify-crud.js');
+  const cacheSource = files.get('src/config/cache.js');
+  assert.match(native, /cache.nativeRead/);
+  assert.match(native, /cache.nativeWrite/);
+  assert.match(native, /cache.invalidateEntity/);
+  assert.match(cacheSource, /async function nativeRead/);
+  assert.match(cacheSource, /async function nativeWrite/);
+  new vm.Script(native);
+  new vm.Script(cacheSource);
+});
