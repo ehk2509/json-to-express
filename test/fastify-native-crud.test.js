@@ -37,7 +37,7 @@ test('advanced relational entities stay on compatibility path', () => {
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   input.entities.User = {fields: {name: {type: 'string'}}};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"Todo"/);
+  assert.match(source, /"name":"Todo"/);
 });
 
 test('native Fastify CRUD honors API key authentication and RBAC without Express controller middleware', () => {
@@ -78,7 +78,7 @@ test('mutating relational entity remains on Express compatibility path', () => {
   assert.doesNotMatch(source, /"name":"Todo"/);
 });
 
-test('relational entity with populate stays on compatibility path even when read-only', () => {
+test('relational entity with populate uses native Fastify when read-only', () => {
   const input = spec('mongodb');
   input.entities.User = {fields: {name: {type: 'string'}}};
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
