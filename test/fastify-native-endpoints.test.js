@@ -100,7 +100,7 @@ test('native Fastify observability intercepts native routes only to avoid duplic
   const native=files.get('src/app.js');
   assert.match(native,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
   assert.match(native,/register1\(fastify\)/);
-  new vm.Script(server);
+  new vm.Script(native);
 });
 
 test('custom middleware can supply a native Fastify onRequest hook without touching fallback routes', () => {
