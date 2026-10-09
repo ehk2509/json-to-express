@@ -1038,6 +1038,15 @@ jobs:
             .catch(error=>{console.error(error);process.exitCode=1;})
             .finally(()=>client.destroy());
           NODE
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const audit=require('./scripts/storage-reconcile');
+          (async()=>{
+            const listed=await audit.inventory(['assets/files/'],new Date(Date.now()+60000),1000);
+            assert.ok(listed.items.some(item=>item.key==='assets/files/recover-after-outage.txt'),
+              'S3 inventory must list configured upload prefix');
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
           S3_ENDPOINT=http://127.0.0.1:9091 node - <<'NODE'
           const assert=require('node:assert/strict');
           const db=require('./src/config/database');
