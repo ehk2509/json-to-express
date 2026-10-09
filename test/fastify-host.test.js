@@ -23,8 +23,10 @@ test('Express remains the default and keeps existing server startup', () => {
   new vm.Script(files.get('src/server.js'));
 });
 
-test('Fastify opt-in generates adapter dependencies, startup and shutdown', () => {
-  const files = buildFiles(normalizeSpec(spec('fastify')));
+test('Fastify compatibility mode preserves adapter startup and shutdown', () => {
+  const input = spec('fastify');
+  input.app.middlewareModules = ['src/middleware/legacy.js'];
+  const files = buildFiles(normalizeSpec(input));
   const pkg = JSON.parse(files.get('package.json'));
   assert.ok(pkg.dependencies.fastify);
   assert.ok(pkg.dependencies['@fastify/express']);

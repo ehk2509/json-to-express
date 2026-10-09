@@ -1,9 +1,11 @@
 'use strict';
 
 const {filePaths, js, relativeRequire} = require('./utils');
+const isDirectFastify = require('./fastify-direct');
 
 function serverSource(spec) {
   const paths = filePaths(spec);
+  const directFastify = isDirectFastify(spec);
   return [
     "'use strict';", '',
     "require('dotenv').config();",
@@ -11,7 +13,7 @@ function serverSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.server, paths.observability)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(paths.server, paths.cache)) + ');'] : []),
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
-    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');", 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');', 'const registerNativeCrud = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js'))) + ');'] : []),
+    ...(spec.app.framework === 'fastify' ? [directFastify ? 'const fastify = app;' : "const fastify = require('fastify')({logger: false" + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});', ...(!directFastify ? ["const fastifyExpress = require('@fastify/express');"] : []), 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');', 'const registerNativeCrud = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-crud.js'))) + ');', 'const registerNativeEndpoints = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-endpoints.js'))) + ');', 'const registerNativeAuth = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-auth.js'))) + ');'] : []),
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['const outboxWorker = require(' + js(relativeRequire(paths.server, paths.worker)) + ');'] : []), '',
     'validateEnvironment();',
@@ -27,14 +29,47 @@ function serverSource(spec) {
         : '  outboxWorker.startWorker().catch(error => console.error("Outbox worker failed:", error));'
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
+      ...(directFastify ? [] : [
       '  await fastify.register(fastifyExpress);',
+      ...(spec.observability.enabled ? [
+        '  fastify.addHook("onRequest", (request, reply, done) => {',
+        '    const pathname = String(request.raw.url).split("?")[0];',
+        '    if (!(registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname))) return done();',
+        '    return observability.requestMiddleware(request.raw, reply.raw, done);',
+        '  });'
+      ] : []),
+      // Explicit Fastify lifecycle exports preserve middleware ordering without double-running Express fallbacks.
+      ...spec.app.middlewareModules.flatMap(modulePath => {
+        const moduleRequire = js(relativeRequire(paths.server, modulePath));
+        return [
+          '  { const middleware = require(' + moduleRequire + ');',
+          '    const isNativeRequest = request => {',
+          '      const pathname = String(request.raw.url).split("?")[0];',
+          '      return registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname);',
+          '    };',
+          ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
+            '    if (typeof middleware.' + 'fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
+          ),
+          '    if (typeof middleware.fastifyPreSerialization === "function") fastify.addHook("preSerialization", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyPreSerialization(request, reply, payload) : payload);',
+          '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyOnSend(request, reply, payload) : payload);',
+          '    if (typeof middleware.fastifyOnError === "function") fastify.addHook("onError", async (request, reply, error) => { if (isNativeRequest(request)) await middleware.fastifyOnError(request, reply, error); });',
+          '    if (typeof middleware.fastifyOnResponse === "function") fastify.addHook("onResponse", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastifyOnResponse(request, reply); });',
+          '  }'
+        ];
+      }),
+      ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
+      ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
+      ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
       '  fastify.use((req, res, next) => {',
       '    const pathname = String(req.url).split("?")[0];',
-      '    if (registerNativeRoutes.matches(req.method, pathname) || registerNativeCrud.matches(req.method, pathname)) return next();',
+      '    if (registerNativeRoutes.matches(req.method, pathname) || registerNativeCrud.matches(req.method, pathname) || registerNativeEndpoints.matches(req.method, pathname) || registerNativeAuth.matches(req.method, pathname)) return next();',
       '    app(req, res, next);',
       '  });',
       '  registerNativeRoutes(fastify);',
       '  registerNativeCrud(fastify);',
+      '  registerNativeEndpoints(fastify);',
+      '  registerNativeAuth(fastify);',
+      ]),
       '  await fastify.listen({port, host});',
       '  server = fastify;',
       '  ' + (spec.observability.enabled

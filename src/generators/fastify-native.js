@@ -9,6 +9,8 @@ module.exports = function fastifyNativeSource(spec) {
     '',
     ...(spec.app.production.requestId ? ["const crypto = require('node:crypto');"] : []),
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(nativePath, filePaths(spec).observability)) + ');'] : []),
+    ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(nativePath, filePaths(spec).graphql)) + ');'] : []),
+    ...(spec.storage.enabled && spec.storage.signedUrls.enabled ? ['const storage = require(' + js(relativeRequire(nativePath, filePaths(spec).storage)) + ');'] : []),
     '',
     'module.exports = function registerNativeRoutes(fastify) {'
   ];
@@ -20,7 +22,7 @@ module.exports = function fastifyNativeSource(spec) {
       '    reply.header("Referrer-Policy", "no-referrer");'
     );
     if (spec.app.production.requestId) lines.push(
-      '    request.raw.id = String(request.headers["x-request-id"] || crypto.randomUUID());',
+      '    request.raw.id = String(request.raw.id || request.headers["x-request-id"] || crypto.randomUUID());',
       '    reply.header("X-Request-Id", request.raw.id);'
     );
     if (spec.app.production.cors.enabled) lines.push(
@@ -66,6 +68,8 @@ module.exports = function fastifyNativeSource(spec) {
       '  });'
     );
   }
+  if (spec.storage.enabled && spec.storage.signedUrls.enabled) lines.push('  fastify.get(' + js(spec.storage.signedUrls.path) + ', storage.fastifyDownload);');
+  if (spec.api.graphql.enabled) lines.push('  fastify.route({method: ["GET", "POST"], url: ' + js(spec.api.graphql.path) + ', handler: graphqlApi.fastifyHandler});');
   const nativeGetPaths = [
     ...(spec.app.health.enabled ? [spec.app.health.path] : []),
     ...(spec.observability.health.liveness.enabled ? [spec.observability.health.liveness.path] : []),
@@ -78,6 +82,6 @@ module.exports = function fastifyNativeSource(spec) {
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
     '  });'
   );
-  lines.push('};', 'module.exports.matches = (method, pathname) => method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname);', '');
+  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.storage.enabled && spec.storage.signedUrls.enabled ? ' || (method === "GET" && pathname.startsWith(' + js(spec.storage.signedUrls.path.split(':token')[0]) + ') && pathname.length > ' + spec.storage.signedUrls.path.split(':token')[0].length + ' && !pathname.slice(' + spec.storage.signedUrls.path.split(':token')[0].length + ').includes("/"))' : '') + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
   return lines.join('\n');
 };

@@ -9,7 +9,7 @@ async function request(route, options = {}) {
   const response = await fetch(base + route, {
     ...options,
     headers: {
-      ...(!isForm ? {'content-type': 'application/json'} : {}),
+      ...(!isForm && options.body !== undefined ? {'content-type': 'application/json'} : {}),
       ...(options.headers || {})
     }
   });
@@ -93,7 +93,7 @@ async function main() {
   assert.equal(await downloadedSecond.text(), 'second-object');
 
   const removed = await request('/api/assets/' + created.body._id, {method: 'DELETE'});
-  assert.equal(removed.response.status, 204);
+  assert.equal(removed.response.status, 204, JSON.stringify(removed.body));
 
   await assertMissing(secondUrl);
 

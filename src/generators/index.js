@@ -7,6 +7,8 @@ const prismaSchemaSource = require('./prisma-schema');
 const prismaControllerSource = require('./prisma-controller');
 const routesSource = require('./routes');
 const appSource = require('./app');
+const directFastifyAppSource = require('./fastify-direct-app');
+const isDirectFastify = require('./fastify-direct');
 const serverSource = require('./server');
 const databaseSource = require('./database');
 const errorHandlerSource = require('./error-handler');
@@ -37,6 +39,8 @@ const storageSource = require('./storage');
 const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
+const fastifyEndpointSource = require('./fastify-endpoints');
+const fastifyAuthSource = require('./fastify-auth');
 const migrationInitSource = require('./migration-init');
 const {filePaths} = require('./utils');
 
@@ -92,15 +96,18 @@ function envExample(spec) {
 function buildFiles(spec) {
   const files = new Map();
   const paths = filePaths(spec);
+  const directFastify = isDirectFastify(spec);
 
   files.set('package.json', packageSource(spec));
   files.set('.env.example', envExample(spec));
   files.set('README.md', readmeSource(spec));
-  files.set(paths.app, appSource(spec));
+  files.set(paths.app, directFastify ? directFastifyAppSource(spec) : appSource(spec));
   files.set(paths.server, serverSource(spec));
   if (spec.app.framework === 'fastify') {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-native.js'), fastifyNativeSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-crud.js'), fastifyCrudSource(spec));
+    files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
+    files.set(path.posix.join(spec.generation.paths.source, 'fastify-auth.js'), fastifyAuthSource(spec));
   }
   files.set(paths.database, databaseSource(spec));
   files.set(paths.errorHandler, errorHandlerSource(spec));
@@ -120,14 +127,14 @@ function buildFiles(spec) {
     files.set(paths.outbox, outboxSource(spec));
   }
   if (spec.outbox.enabled) files.set(paths.worker, workerSource(spec));
-  if (spec.endpoints.length) files.set(paths.endpointRoutes, customRoutesSource(spec));
+  if (spec.endpoints.length && !directFastify) files.set(paths.endpointRoutes, customRoutesSource(spec));
 
   const auth = authSource(spec);
   if (auth) files.set(paths.auth, auth);
   const authStore = authStoreSource(spec);
   if (authStore) files.set(paths.authStore, authStore);
   const authRoutes = authRoutesSource(spec);
-  if (authRoutes) files.set(paths.authRoutes, authRoutes);
+  if (authRoutes && !directFastify) files.set(paths.authRoutes, authRoutes);
 
   if (spec.app.health.enabled) files.set(paths.test, healthTestSource(spec));
   files.set(path.posix.join(spec.generation.paths.tests, 'contract.test.js'), contractTestSource(spec));
@@ -162,7 +169,7 @@ function buildFiles(spec) {
       entityPaths.controller,
       spec.database.type === 'postgresql' ? prismaControllerSource(entity, spec) : controllerSource(entity, spec)
     );
-    files.set(entityPaths.route, routesSource(entity, spec));
+    if (!directFastify) files.set(entityPaths.route, routesSource(entity, spec));
   }
 
   return files;
