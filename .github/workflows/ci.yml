@@ -1387,8 +1387,7 @@ jobs:
             assert.equal(persisted.portrait.key,prior.portrait.key,'MongoDB file reference rolled back');
             assert.equal((await outbox.storageStats()).pending,beforePending.pending,'no phantom cleanup intent');
             assert.equal(fs.existsSync(path.join('uploads',prior.portrait.key)),true,'rollback preserves file');
-            await nativeApp.close();
-            await connectDB.disconnect();
+
             assert.equal((await fetch(root+'/owners/'+storedOwner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}})).status,204);
             assert.equal(fs.existsSync(path.join('uploads',storedOwner.portrait.key)),false,'deleted entity cleans referenced storage');
             const linkResponse=await send('/links','POST',{owner:owner._id});
@@ -1401,6 +1400,21 @@ jobs:
             assert.equal(cascadeResponse.status,201);
             const cascade=await cascadeResponse.json();
             const cascadePath=path.join('uploads',cascade.attachment.key);
+            assert.ok(fs.existsSync(cascadePath));
+            // Even with transaction:false, a Mongo replica set must use a session.
+            const beforeCascade=await (require('./src/models/Cascade')).findById(cascade._id).lean();
+            const originalAtomicEnqueue=storage.enqueueCleanupIntent;
+            try {
+              storage.enqueueCleanupIntent=async()=>{throw new Error('injected cascade update enqueue error');};
+              const aborted=await nativeApp.inject({
+                method:'PATCH',url:'/api/cascades/'+cascade._id,
+                headers:{'x-api-key':'test-audit-key','content-type':'application/json'},
+                payload:JSON.stringify({attachment:null})
+              });
+              assert.equal(aborted.statusCode,500);
+            } finally {storage.enqueueCleanupIntent=originalAtomicEnqueue;}
+            const cascadeAfter=await (require('./src/models/Cascade')).findById(cascade._id).lean();
+            assert.equal(cascadeAfter.attachment.key,beforeCascade.attachment.key,'auto-session rolls back non-transaction flag');
             assert.ok(fs.existsSync(cascadePath));
             const nestedResponse=await send('/cascade-children','POST',{cascade:cascade._id});
             assert.equal(nestedResponse.status,201);
@@ -1432,6 +1446,8 @@ jobs:
             const afterWatchlist=await fetch(root+'/watchlists/'+watchlist._id,{headers:{'x-api-key':'test-audit-key'}});
             assert.equal(afterWatchlist.status,200);
             assert.deepEqual((await afterWatchlist.json()).owners,[]);
+            await nativeApp.close();
+            await connectDB.disconnect();
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
       - name: Print logs on failure
