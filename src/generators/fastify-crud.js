@@ -2,38 +2,15 @@
 
 const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 
-// Native CRUD supports scalar entities; relationship reads are safe when mutation routes are disabled.
-// Advanced mutations continue through the compatibility router until their invariants are implemented.
-function safePrismaDelete(entity, spec) {
-  return spec.database.type === 'postgresql' &&
-    !spec.entities.some(source => source.fields.some(field =>
-      field.type === 'reference' && field.ref === entity.name && field.many));
-}
-
-// Soft-deleting a parent does not trigger PostgreSQL ON DELETE actions.
-// Keep these entities on the compatibility implementation until native
-// restrict/nullify/cascade handling executes in the same transaction.
-function unsafePrismaSoftDelete(entity, spec) {
-  return spec.database.type === 'postgresql' && entity.softDelete.enabled &&
-    spec.entities.some(source => source.fields.some(field =>
-      field.type === 'reference' && field.ref === entity.name && (field.many || !['restrict', 'nullify', 'cascade'].includes(field.onDelete))));
-}
-
+// A generated route is native only when its supported read/write semantics are complete.
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
     (spec.database.type === 'mongodb' || spec.database.type === 'postgresql') &&
-    !unsafePrismaSoftDelete(entity, spec) &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
-    (!entity.fields.some(field => field.type === 'reference') ||
-      spec.database.type === 'mongodb' ||
-      ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
-      (spec.database.type === 'postgresql' &&
-        (!entity.operations.delete.enabled || safePrismaDelete(entity, spec)) &&
-        !entity.fields.some(field => field.type === 'reference' && field.many))) &&
-    (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
-    !Object.values(entity.operations).some(op => op.enabled &&
-      ((op.transaction && !['mongodb', 'postgresql'].includes(spec.database.type)) || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name))))));
+    !Object.entries(entity.operations).some(([action, op]) => op.enabled &&
+      (op.populate.length && (!['list', 'get'].includes(action) ||
+        op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))));
 }
 
 module.exports = function nativeCrudSource(spec) {
@@ -69,6 +46,9 @@ module.exports = function nativeCrudSource(spec) {
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
+    ...(spec.database.type === 'postgresql' ? [
+      'const postgresDelete = require(' + js(relativeRequire(nativePath, require('node:path').posix.join(spec.generation.paths.source, 'fastify-postgres-delete.js'))) + ');'
+    ] : []),
     ...imports,
     ...entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => 'const hooks' + entity.name + ' = require(' + js(relativeRequire(nativePath, entity.hooks.module)) + ');'),
     'const hookModules = {' + entities.filter(entity => entity.hooks && entity.hooks.module).map(entity => js(entity.name) + ': hooks' + entity.name).join(',') + '};',
@@ -236,7 +216,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const record = postgres ? await model.findFirst({where: liveFilter(entry, {id})}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          if (postgres) {',
-    '            try {await postgresTransaction(entry, op.transaction || (entry.softDelete.enabled && entry.inbound.length > 0), async (delegate, tx) => {if ((op.transaction || entry.inbound.length) && !await delegate.findFirst({where: liveFilter(entry, {id})})) {const error = new Error("Not found"); error.statusCode = op.notFoundStatus; throw error;} if (entry.softDelete.enabled && entry.inbound.length) {for (const relation of entry.inbound) {const child = tx; const related = child[relation.model[0].toLowerCase() + relation.model.slice(1)]; const condition = {[relation.field + "Id"]: id, ...(relation.softDelete.enabled ? {[relation.softDelete.field]: null} : {})}; if (relation.onDelete === "restrict") {if (await related.count({where: condition})) {const error = new Error("Delete restricted by related records"); error.statusCode = 409; throw error;}} else if (relation.onDelete === "nullify") await related.updateMany({where: condition, data: {[relation.field + "Id"]: null}}); else if (relation.onDelete === "cascade") {if (relation.softDelete.enabled) await related.updateMany({where: condition, data: {[relation.softDelete.field]: new Date()}}); else await related.deleteMany({where: condition});}}} return entry.softDelete.enabled ? delegate.update({where: liveFilter(entry, {id}), data: {[entry.softDelete.field]: new Date()}}) : delegate.delete({where: {id}});});}',
+    '            try {await postgresTransaction(entry, true, async (delegate, tx) => postgresDelete(tx, entry.name, id));}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
     '          } else await transactional(op.transaction || entry.inbound.length > 0, async session => {',
     '            for (const relation of entry.inbound) {',
