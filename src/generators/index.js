@@ -99,10 +99,8 @@ function buildFiles(spec) {
   const files = new Map();
   const paths = filePaths(spec);
   const directFastify = isDirectFastify(spec);
-  if (spec.app.framework === 'fastify' && spec.app.middlewareModules.length && !directFastify) {
-    throw new Error('Fastify custom middleware requires native CRUD support for every entity. ' +
-      'Migrate legacy (req, res, next) modules to fastifyOnRequest / fastifyPreHandler / ' +
-      'fastifyOnSend hooks and resolve unsupported CRUD operations before generating.');
+  if (spec.app.framework === 'fastify' && !directFastify) {
+    throw new Error('Native Fastify requires supported MongoDB or PostgreSQL CRUD and valid reference population paths. No Express compatibility fallback is generated.');
   }
 
   files.set('package.json', packageSource(spec));
