@@ -331,7 +331,7 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
-          const input = JSON.parse(fs.readFileSync('examples/shop.json', 'utf8'));
+          const input = {specVersion: '1.0', app: {name: 'fastify-crud-smoke'}, database: {type: 'mongodb'}, entities: {Todo: {fields: {title: {type: 'string', required: true}}}}};
           input.app.framework = 'fastify';
           input.app.port = 3499;
           input.app.health = {enabled: true, path: '/health', response: {status: 'ok'}};
@@ -357,4 +357,7 @@ jobs:
           done
           grep -q '"status":"ok"' /tmp/fastify-health.json || { cat fastify.log; exit 1; }
           curl -fsSi http://127.0.0.1:3499/health | grep -qi 'x-content-type-options: nosniff'
+          curl -fsS -X POST http://127.0.0.1:3499/api/todos -H 'content-type: application/json' -d '{"title":"Native Fastify"}' >/tmp/fastify-created.json
+          grep -q 'Native Fastify' /tmp/fastify-created.json
+          curl -fsS http://127.0.0.1:3499/api/todos | grep -q 'Native Fastify'
           kill $(cat fastify.pid)
