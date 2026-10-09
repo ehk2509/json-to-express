@@ -200,3 +200,19 @@ test('audited PostgreSQL entities use native CRUD and protect audit attribution'
   assert.match(native, /data\[entry.audit.updatedBy\] = request.raw.auth.userId/);
   new vm.Script(native);
 });
+
+test('PostgreSQL soft-delete entities stay native and filter tombstones', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'postgres-soft-native', framework:'fastify'},
+    database: {type:'postgresql'},
+    entities: {Todo: {fields: {title: {type:'string'}}, softDelete:{enabled:true}}}
+  });
+  const source = buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /model.findFirst\(\{where: liveFilter\(entry, \{id\}\)/);
+  assert.match(source, /rows = await model.findMany\(\{where: conditions/);
+  assert.match(source, /if \(entry.softDelete.enabled\) await model.update/);
+  assert.match(source, /\[entry.softDelete.field\]: new Date\(\)/);
+  new vm.Script(source);
+});
