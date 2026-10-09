@@ -1386,6 +1386,48 @@ jobs:
             } finally {await db.disconnect();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: Standalone MongoDB enqueue outage recovers through age-gated reconciliation
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const db=require('./src/config/database');
+          const storage=require('./src/config/storage');
+          const audit=require('./scripts/storage-reconcile');
+          const app=require('./src/app');
+          const Asset=require('./src/models/Asset');
+          (async()=>{
+            await db();
+            const form=new FormData();
+            form.set('name','Unavailable outbox store');
+            form.set('file',new Blob(['reconcile after outage'],{type:'text/plain'}),'outage.txt');
+            const created=await fetch('http://127.0.0.1:3494/api/assets',{method:'POST',body:form});
+            assert.equal(created.status,201);
+            const item=await created.json();
+            const file=path.join('uploaded-files',item.file.key);
+            assert.ok(fs.existsSync(file));
+            const real=storage.enqueueCleanupIntent;
+            try {
+              storage.enqueueCleanupIntent=async()=>{throw new Error('simulated unavailable enqueue database');};
+              const failed=await app.inject({method:'DELETE',url:'/api/assets/'+item._id});
+              assert.equal(failed.statusCode,500);
+            } finally {storage.enqueueCleanupIntent=real;}
+            assert.equal(await Asset.findById(item._id),null,'standalone operation committed before failed outbox enqueue');
+            assert.ok(fs.existsSync(file),'no unsafe rollback/physical deletion after enqueue outage');
+            const age=new Date(Date.now()-49*3600000);
+            fs.utimesSync(file,age,age);
+            const report=await audit.reconcile(audit.args(['--execute']));
+            assert.ok(report.removed>=1,'reconciler must reclaim orphan after safe minimum age');
+            assert.equal(fs.existsSync(file),false);
+            await app.close();
+            await db.disconnect();
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
