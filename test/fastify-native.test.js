@@ -18,7 +18,7 @@ test('Fastify produces a native configurable health route and register call', as
   const routes = [];
   const module = {exports: null};
   vm.runInNewContext(native, {module, require});
-  module.exports({addHook: () => {}, get: (path, handler) => routes.push({path, handler})});
+  module.exports({addHook: () => {}, setErrorHandler: () => {}, get: (path, handler) => routes.push({path, handler})});
   assert.equal(routes.length, 1);
   assert.equal(routes[0].path, '/probe');
   const reply = {code(status) {this.status = status; return this;}, send(value) {this.payload = value; return this;}};
@@ -49,4 +49,30 @@ test('Fastify generates native operational routes and correlation hooks', async 
   assert.match(generated, /X-Request-Id/);
   assert.match(generated, /X-Content-Type-Options/);
   new vm.Script(generated);
+});
+
+test('Fastify CORS preflight enforces configured origin and sends empty 204', async () => {
+  const input = spec();
+  input.app.production = {cors: {enabled: true, origin: 'https://allowed.example'}};
+  const generated = buildFiles(normalizeSpec(input)).get('src/fastify-native.js');
+  const module = {exports: null};
+  vm.runInNewContext(generated, {module, require});
+  let onRequest;
+  let errorHandler;
+  module.exports({addHook: (name, fn) => {if (name === 'onRequest') onRequest = fn;}, setErrorHandler: fn => {errorHandler = fn;}, get() {}});
+  assert.ok(onRequest);
+  assert.ok(errorHandler);
+  function reply() { return {headers: {}, codeValue: 200, header(k,v) {this.headers[k]=v; return this;}, code(c) {this.codeValue=c; return this;}, send(body) {this.payload=body; return this;}}; }
+  const ok = reply();
+  await onRequest({method:'OPTIONS', headers:{origin:'https://allowed.example', 'access-control-request-method':'POST', 'access-control-request-headers':'X-API-Key'}}, ok);
+  assert.equal(ok.codeValue, 204);
+  assert.equal(ok.headers['Access-Control-Allow-Origin'], 'https://allowed.example');
+  assert.equal(ok.headers['Access-Control-Allow-Headers'], 'X-API-Key');
+  const denied = reply();
+  await onRequest({method:'OPTIONS', headers:{origin:'https://evil.example', 'access-control-request-method':'POST'}}, denied);
+  assert.equal(denied.codeValue, 403);
+  const internal = reply();
+  errorHandler(new Error('secret internal details'), {}, internal);
+  assert.equal(internal.codeValue, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify(internal.payload)), {error:'Internal server error'});
 });
