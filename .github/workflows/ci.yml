@@ -636,3 +636,66 @@ jobs:
       - name: Print logs on failure
         if: failure()
         run: cat .tmp/fastify-workflow-smoke/server.log || true
+
+  generated-fastify-s3-e2e:
+    runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: j2e-e2e
+      AWS_REGION: us-east-1
+      S3_ENDPOINT: http://127.0.0.1:9090
+      S3_ACCESS_KEY: test
+      S3_SECRET_KEY: test
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start S3-compatible S3Mock
+        run: |
+          docker run -d --name j2e-s3mock \
+            -p 9090:9090 \
+            -e COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS=j2e-e2e \
+            adobe/s3mock:5.2.2
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:9090/favicon.ico > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:9090/favicon.ico
+      - name: Generate S3 application
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync('examples/e2e-s3.json','utf8'));
+          input.app.framework = 'fastify';
+          input.app.port = 3495;
+          input.generation.outputDir = '.tmp/fastify-s3';
+          fs.writeFileSync('/tmp/fastify-s3-spec.json',JSON.stringify(input));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-s3-spec.json
+      - name: Install generated S3 application
+        working-directory: .tmp/fastify-s3
+        run: npm install --no-audit --no-fund
+      - name: Test generated S3 contracts
+        working-directory: .tmp/fastify-s3
+        run: npm test
+      - name: Start generated S3 application
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          PORT: 3495
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          echo $! > server.pid
+      - name: Exercise generated S3 storage
+        run: E2E_S3_BASE_URL=http://127.0.0.1:3495 node scripts/e2e-generated-s3.js
+      - name: Print generated S3 logs on failure
+        if: failure()
+        run: |
+          cat .tmp/fastify-s3/server.log || true
+          docker logs j2e-s3mock || true
