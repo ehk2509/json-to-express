@@ -18,6 +18,7 @@ const respond = (res, status, body) => {
   const jwk = {...await jose.exportJWK(publicKey), kid:'ci-oidc-key', use:'sig', alg:'RS256'};
   let challenge;
   let exchanges = 0;
+  let signedToken;
   const provider = http.createServer(async (req, res) => {
     const url = new URL(req.url, issuer);
     if (url.pathname === '/.well-known/openid-configuration') return respond(res, 200, {
@@ -36,6 +37,7 @@ const respond = (res, status, body) => {
       const token = await new jose.SignJWT({sub:'ci-oidc-user',email:'oidc@example.com',roles:['member']})
         .setProtectedHeader({alg:'RS256',kid:jwk.kid}).setIssuer(issuer)
         .setAudience('ci-oidc-client').setIssuedAt().setExpirationTime('5m').sign(privateKey);
+      signedToken = token;
       return respond(res, 200, {access_token:token,id_token:token,token_type:'Bearer',expires_in:300});
     }
     return respond(res, 404, {error:'not_found'});
@@ -67,6 +69,8 @@ const respond = (res, status, body) => {
     const replay=await fetch(callback,{headers:{cookie}});
     assert.equal(replay.status,401,'OIDC state cannot be replayed');
     assert.equal(exchanges,1);
+    const validBearer = await fetch(app+'/api/todos',{headers:{authorization:'Bearer '+signedToken}});
+    assert.equal(validBearer.status,200,'valid provider-issued JWT must authorize native CRUD');
     const malformedBearer=await fetch(app+'/api/todos',{headers:{authorization:'Bearer not-a-jwt'}});
     assert.equal(malformedBearer.status,401);
     console.log('OIDC provider exchange, PKCE verification, token validation and state replay checks passed');
