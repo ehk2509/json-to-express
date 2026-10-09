@@ -94,8 +94,8 @@ test('native Prisma create and update transform single relation IDs safely', () 
   input.entities.Todo.operations = {delete: false};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.match(source, /"name":"Todo"/);
-  assert.match(source, /writeData\(entry, request.body, "create"\)/);
-  assert.match(source, /writeData\(entry, request.body, "update"\)/);
+  assert.match(source, /writeData\(entry, data, "create"\)/);
+  assert.match(source, /writeData\(entry, data, "update"\)/);
   assert.match(source, /connect: \{id: reference\}/);
   new vm.Script(source);
 });
