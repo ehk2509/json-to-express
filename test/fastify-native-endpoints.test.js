@@ -45,3 +45,20 @@ test('GraphQL uses a Fastify route and generated native executor', () => {
   assert.match(files.get('src/graphql/index.js'), /contextValue: \{req, \.\.\.loaders\}/);
   new vm.Script(files.get('src/graphql/index.js'));
 });
+
+test('Fastify rate limit and compression use native plugins when enabled', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'native-plugins', framework: 'fastify', production: {
+      rateLimit: {enabled:true,max:15,windowMs:60000}, compression:true
+    }},
+    database: {type:'mongodb'},
+    entities: {Todo:{fields:{name:{type:'string'}}}}
+  });
+  const files = buildFiles(spec);
+  const pkg = JSON.parse(files.get('package.json'));
+  assert.ok(pkg.dependencies['@fastify/rate-limit']);
+  assert.ok(pkg.dependencies['@fastify/compress']);
+  assert.match(files.get('src/server.js'), /@fastify\/rate-limit/);
+  assert.match(files.get('src/server.js'), /@fastify\/compress/);
+});
