@@ -553,7 +553,7 @@ jobs:
             const owner = await prisma.user.create({data:{name:'HTTP rollback owner'}});
             const note = await prisma.note.create({data:{title:'HTTP rollback note', owner:{connect:{id:owner.id}}}});
             try {
-              await prisma.$executeRawUnsafe('CREATE FUNCTION j2e_force_delete_failure() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION \'injected HTTP delete failure\'; END; $');
+              await prisma.$executeRawUnsafe("CREATE FUNCTION j2e_force_delete_failure() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''injected HTTP delete failure''; END;'");
               await prisma.$executeRawUnsafe('CREATE TRIGGER j2e_force_delete_failure BEFORE UPDATE ON "User" FOR EACH ROW WHEN (NEW."deletedAt" IS NOT NULL) EXECUTE FUNCTION j2e_force_delete_failure()');
               const response = await fetch('http://127.0.0.1:3498/api/users/'+owner.id,{method:'DELETE'});
               assert.equal(response.status,500,'injected database error must fail the HTTP operation');
