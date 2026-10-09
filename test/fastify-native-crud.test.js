@@ -331,8 +331,9 @@ test('explicit native-only custom lifecycle modules do not require Express', () 
   assert.match(app,/Native Fastify middleware exports are required/);
   new vm.Script(app);
   input.api = {rest:false, graphql:{enabled:true}};
-  assert.throws(() => buildFiles(normalizeSpec(input)),
-    /Fastify custom middleware requires native CRUD support/);
+  const graphqlOnly=buildFiles(normalizeSpec(input));
+  assert.equal(JSON.parse(graphqlOnly.get('package.json')).dependencies['@fastify/express'],undefined);
+  assert.match(graphqlOnly.get('src/app.js'),/fastifyOnRequest/);
 });
 
 test('Mongo recursive delete planner includes nested cascades and many-to-many unlinking', () => {
@@ -389,5 +390,5 @@ test('transactional Fastify multipart mutations no longer require compatibility 
 test('invalid relation population fails native Fastify generation instead of falling back', () => {
   const input=spec('postgresql');
   input.entities.Todo.operations={create:{populate:['not_a_reference']}};
-  assert.throws(()=>buildFiles(normalizeSpec(input)),/No Express compatibility fallback is generated/);
+  assert.throws(()=>buildFiles(normalizeSpec(input)),/populate references non-reference field/);
 });
