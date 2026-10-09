@@ -118,3 +118,21 @@ test('custom middleware can supply a native Fastify onRequest hook without touch
   assert.match(server, /await middleware\.fastifyOnRequest\(request, reply\)/);
   new vm.Script(server);
 });
+
+test('native custom middleware supports preValidation, preHandler and onSend in module order', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'native-lifecycle',framework:'fastify',middlewareModules:['src/middleware/first.js','src/middleware/second.js']},
+    database: {type:'mongodb'},
+    entities: {Todo:{fields:{title:{type:'string'}}}}
+  });
+  const server = buildFiles(spec).get('src/server.js');
+  for (const stage of ['onRequest','preValidation','preHandler','onSend']) {
+    assert.match(server, new RegExp('fastify\\.addHook\\("' + stage + '"'));
+    assert.match(server, new RegExp('middleware\\.fastify' + stage[0].toUpperCase() + stage.slice(1)));
+  }
+  assert.ok(server.indexOf('first') < server.indexOf('second'));
+  assert.match(server, /isNativeRequest\\(request\\)/);
+  assert.match(server, /: payload\\)/);
+  new vm.Script(server);
+});
