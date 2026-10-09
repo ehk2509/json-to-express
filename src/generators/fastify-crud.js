@@ -121,6 +121,17 @@ module.exports = function nativeCrudSource(spec) {
     '      }});',
     '    }',
     '  }',
+    '};',
+    'module.exports.matches = function matches(method, url) {',
+    '  const pathname = String(url).split("?")[0];',
+    '  for (const entry of config) for (const op of Object.values(entry.operations)) {',
+    '    if (!op.enabled || op.method.toUpperCase() !== String(method).toUpperCase()) continue;',
+    '    const pattern = entry.base + (op.path === "/" ? "" : op.path);',
+    '    const expected = pattern.split("/").filter(Boolean);',
+    '    const actual = pathname.split("/").filter(Boolean);',
+    '    if (expected.length === actual.length && expected.every((part, i) => part.startsWith(":") ? actual[i].length > 0 : part === actual[i])) return true;',
+    '  }',
+    '  return false;',
     '};', ''
   ].join('\n');
 };
