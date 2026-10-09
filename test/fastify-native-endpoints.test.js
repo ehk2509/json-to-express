@@ -18,7 +18,7 @@ test('Fastify generated workflow endpoints are native and preserve auth and resp
   const source = files.get('src/fastify-endpoints.js');
   assert.match(source, /fastify.route/);
   assert.match(source, /workflows.execute/);
-  assert.match(files.get('src/server.js'), /registerNativeEndpoints.matches/);
+  assert.match(files.get('src/app.js'), /register2\(fastify\)/);
   new vm.Script(source);
 });
 
@@ -75,7 +75,7 @@ test('native Fastify local auth register and login emit Fastify handlers', () =>
   assert.match(source,/fastify.post/);
   assert.match(source,/auth.issueCredentials/);
   assert.match(source,/auth.verifyPassword/);
-  assert.match(files.get('src/server.js'),/registerNativeAuth.matches/);
+  assert.match(files.get('src/app.js'),/register3\(fastify\)/);
   new vm.Script(source);
 });
 
