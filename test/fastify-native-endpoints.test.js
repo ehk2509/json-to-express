@@ -214,9 +214,9 @@ test('PostgreSQL transactional writes use Prisma interactive transactions', () =
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /connectDatabase.client.\$transaction\(async tx => work/);
   assert.match(source, /isolationLevel: "Serializable"/);
-  assert.match(source, /op.transaction && !await delegate.findFirst/);
+  assert.match(source, /op.transaction \|\| entry.hasFiles/);
   assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.create/);
-  assert.match(source, /postgresTransaction\(entry, op.transaction, async delegate =>/);
+  assert.match(source, /postgresTransaction\(entry, op.transaction \|\| entry.hasFiles, async \(delegate, tx\) =>/);
   assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
   new vm.Script(source);
 });
