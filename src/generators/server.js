@@ -35,16 +35,22 @@ function serverSource(spec) {
         '    return observability.requestMiddleware(request.raw, reply.raw, done);',
         '  });'
       ] : []),
-      // Run native middleware on native routes only. Express middleware remains attached to fallback routes.
-      ...spec.app.middlewareModules.map(modulePath =>
-        '  { const middleware = require(' + js(relativeRequire(paths.server, modulePath)) + ');' +
-        ' if (typeof middleware.fastifyOnRequest === "function") {' +
-        ' fastify.addHook("onRequest", async (request, reply) => {' +
-        ' const pathname = String(request.raw.url).split("?")[0];' +
-        ' if (registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname)) await middleware.fastifyOnRequest(request, reply);' +
-        ' });' +
-        ' } }'
-      ),
+      // Explicit Fastify lifecycle exports preserve middleware ordering without double-running Express fallbacks.
+      ...spec.app.middlewareModules.flatMap(modulePath => {
+        const moduleRequire = js(relativeRequire(paths.server, modulePath));
+        return [
+          '  { const middleware = require(' + moduleRequire + ');',
+          '    const isNativeRequest = request => {',
+          '      const pathname = String(request.raw.url).split("?")[0];',
+          '      return registerNativeRoutes.matches(request.raw.method, pathname) || registerNativeCrud.matches(request.raw.method, pathname) || registerNativeEndpoints.matches(request.raw.method, pathname) || registerNativeAuth.matches(request.raw.method, pathname);',
+          '    };',
+          ...['onRequest', 'preParsing', 'preValidation', 'preHandler'].filter(stage => stage !== 'preParsing').map(stage =>
+            '    if (typeof middleware.' + 'fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { if (isNativeRequest(request)) await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
+          ),
+          '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", async (request, reply, payload) => isNativeRequest(request) ? middleware.fastifyOnSend(request, reply, payload) : payload);',
+          '  }'
+        ];
+      }),
       ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
       ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
       ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
