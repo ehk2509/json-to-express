@@ -397,6 +397,10 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -411,7 +415,9 @@ jobs:
             generation:{outputDir:'.tmp/fastify-direct-smoke'},
             app:{name:'fastify-direct-smoke', framework:'fastify', host:'127.0.0.1', port:3499},
             database:{type:'mongodb'},
-            entities:{Todo:{fields:{title:{type:'string',required:true},done:{type:'boolean',default:false}}}}
+            cache:{enabled:true,provider:'redis',redis:{urlEnv:'REDIS_URL'}},
+            auth:{enabled:true,strategies:['apiKey'],apiKey:{keys:[{env:'TEST_API_KEY',userId:'reader',roles:['reader']}]}},
+            entities:{Todo:{fields:{title:{type:'string',required:true},done:{type:'boolean',default:false}},operations:{get:{auth:{required:true,strategies:['apiKey']},cache:{enabled:true,ttlSeconds:30}}}}}
           }));
           NODE
           node bin/json-to-express.js generate /tmp/fastify-direct-spec.json
@@ -425,6 +431,7 @@ jobs:
           assert.ok(pkg.dependencies.fastify);
           assert.equal(pkg.dependencies.express,undefined);
           assert.equal(pkg.dependencies['@fastify/express'],undefined);
+          assert.ok(pkg.dependencies.redis);
           assert.doesNotMatch(fs.readFileSync('src/server.js','utf8'), /fastifyExpress|fastify\.use\(/);
           assert.doesNotMatch(fs.readFileSync('src/app.js','utf8'), /require\(['"]express['"]\)/);
           NODE
@@ -439,6 +446,8 @@ jobs:
           MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_direct
           PORT: 3499
           HOST: 127.0.0.1
+          TEST_API_KEY: ci-native-key
+          REDIS_URL: redis://127.0.0.1:6379
         run: |
           npm start > server.log 2>&1 &
           for attempt in {1..45}; do
@@ -456,12 +465,18 @@ jobs:
             assert.equal(response.status,201);
             const record = await response.json();
             assert.ok(record._id);
-            assert.equal((await fetch(base+'/'+record._id)).status,200);
+            assert.equal((await fetch(base+'/'+record._id)).status,401);
+            const authorized = {'x-api-key':'ci-native-key'};
+            const fetched = await fetch(base+'/'+record._id,{headers:authorized});
+            assert.equal(fetched.status,200);
+            const cached = await fetch(base+'/'+record._id,{headers:authorized});
+            assert.equal(cached.status,200);
+            assert.equal(cached.headers.get('x-cache'),'HIT');
             const update = await fetch(base+'/'+record._id,{method:'PATCH',headers,body:JSON.stringify({done:true})});
             assert.equal(update.status,200);
             assert.equal((await update.json()).done,true);
             assert.equal((await fetch(base+'/'+record._id,{method:'DELETE'})).status,204);
-            assert.equal((await fetch(base+'/'+record._id)).status,404);
+            assert.equal((await fetch(base+'/'+record._id,{headers:authorized})).status,404);
           })().catch(error => {console.error(error); process.exitCode=1;});
           NODE
       - name: Print adapter-free Fastify logs
