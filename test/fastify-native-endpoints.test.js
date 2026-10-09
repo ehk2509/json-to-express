@@ -234,3 +234,16 @@ test('PostgreSQL transactional writes use Prisma interactive transactions', () =
   assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => entry.softDelete.enabled/);
   new vm.Script(source);
 });
+
+test('PostgreSQL update and soft-delete writes are guarded against concurrent tombstones', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'postgres-concurrent-soft-delete',framework:'fastify'},
+    database: {type:'postgresql'},
+    entities: {Todo: {fields: {title: {type:'string'}}, softDelete:{enabled:true}}}
+  });
+  const source = buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: writeData/);
+  assert.match(source, /delegate.update\(\{where: liveFilter\(entry, \{id\}\), data: \{\[entry.softDelete.field\]: new Date\(\)\}\}/);
+  new vm.Script(source);
+});
