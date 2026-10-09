@@ -216,3 +216,21 @@ test('PostgreSQL soft-delete entities stay native and filter tombstones', () => 
   assert.match(source, /\[entry.softDelete.field\]: new Date\(\)/);
   new vm.Script(source);
 });
+
+test('PostgreSQL transactional writes use Prisma interactive transactions', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name:'postgres-native-transaction', framework:'fastify'},
+    database: {type:'postgresql'},
+    entities: {Todo: {fields: {title: {type:'string'}}, operations: {
+      create: {transaction:true}, update: {transaction:true}, delete: {transaction:true}
+    }}}
+  });
+  const source = buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /connectDatabase.client.\$transaction\(async tx => work/);
+  assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.create/);
+  assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => delegate.update/);
+  assert.match(source, /postgresTransaction\(entry, op.transaction, delegate => entry.softDelete.enabled/);
+  new vm.Script(source);
+});
