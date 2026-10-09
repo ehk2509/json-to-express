@@ -564,6 +564,7 @@ jobs:
             specVersion: '1.0',
             generation: {outputDir: '.tmp/fastify-workflow-smoke'},
             app: {name: 'fastify-workflow-smoke', framework: 'fastify', port: 3496, host: '127.0.0.1'},
+            api: {graphql: {enabled: true}},
             database: {type: 'mongodb'},
             entities: {Todo: {fields: {name: {type: 'string'}}}},
             workflows: {echo: {steps: [{name:'response',action:'respond',status:202,body:{source:'native-fastify',message:'$body.message'}}]}},
@@ -595,6 +596,10 @@ jobs:
             const body = await result.json();
             assert.equal(body.source, 'native-fastify');
             assert.equal(body.message, 'hello');
+            const query = await fetch('http://127.0.0.1:3496/graphql', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({query:'{ _service }'})});
+            assert.equal(query.status, 200);
+            const result = await query.json();
+            assert.equal(typeof result.data._service, 'string');
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
       - name: Print logs on failure
