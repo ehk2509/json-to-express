@@ -392,3 +392,21 @@ test('invalid relation population fails native Fastify generation instead of fal
   input.entities.Todo.operations={create:{populate:['not_a_reference']}};
   assert.throws(()=>buildFiles(normalizeSpec(input)),/populate references non-reference field/);
 });
+
+test('native Fastify storage only compensates uploads before commit and retries cleanup afterward', () => {
+  const input=spec('mongodb');
+  input.storage={enabled:true,provider:'local'};
+  input.entities.Todo.fields.photo={type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}};
+  input.entities.Todo.operations={create:{transaction:true},update:{transaction:true},delete:{transaction:true}};
+  const files=buildFiles(normalizeSpec(input));
+  const source=files.get('src/fastify-crud.js');
+  const storage=files.get('src/config/storage.js');
+  assert.match(source,/storedUploads = \[\]; \/\/ Database has committed/);
+  assert.match(source,/storedUploads = \[\]; \/\/ Never compensate a committed database write/);
+  assert.match(source,/storage.cleanupAfterCommit\(\(\) => storage.cleanupReplaced/);
+  assert.match(source,/storage.cleanupAfterCommit\(\(\) => storage.cleanupEntity/);
+  assert.match(storage,/async function cleanupAfterCommit/);
+  assert.match(storage,/attempt < 3/);
+  new vm.Script(source);
+  new vm.Script(storage);
+});
