@@ -202,7 +202,7 @@ function postgresSource(spec) {
     '    }',
     '  });',
     '}', '',
-    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, stats};', ''
+    'module.exports = {claimNext, enqueueEvent, enqueueJob, markDone, markFailed, recoverStale, retryDead, retryDeadStorage, storageDead, stats, storageStats};', ''
   ].join('\n');
 }
 
