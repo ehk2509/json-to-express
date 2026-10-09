@@ -37,6 +37,7 @@ const observabilitySource = require('./observability');
 const cacheSource = require('./cache');
 const storageSource = require('./storage');
 const storageReconcileSource = require('./storage-reconcile');
+const storageAlertsSource = require('./storage-alerts');
 const seedSource = require('./seed');
 const fastifyNativeSource = require('./fastify-native');
 const fastifyCrudSource = require('./fastify-crud');
@@ -128,6 +129,7 @@ function buildFiles(spec) {
   const storage = storageSource(spec);
   if (storage) files.set(paths.storage, storage);
   if (spec.storage.enabled) files.set('scripts/storage-reconcile.js', storageReconcileSource(spec));
+  if (spec.storage.enabled && spec.observability.metrics.enabled) files.set('deploy/prometheus/storage-cleanup-alerts.yml', storageAlertsSource(spec));
   if (spec.api.graphql.enabled) files.set(paths.graphql, graphqlSource(spec));
 
   if (spec.workflows.length || spec.outbox.enabled) {
