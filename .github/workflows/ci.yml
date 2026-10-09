@@ -815,7 +815,7 @@ jobs:
             app:{name:'fastify-mongo-transaction',framework:'fastify',port:3493,host:'127.0.0.1'},
             database:{type:'mongodb',uriEnv:'MONGODB_URI'},
             entities:{
-              Owner:{fields:{name:{type:'string',required:true}},softDelete:{enabled:true},audit:{enabled:true},
+              Owner:{fields:{name:{type:'string',required:true}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
                 operations:{create:{transaction:true},update:{transaction:true},delete:{transaction:true}}},
               Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}}}
             }
@@ -823,6 +823,13 @@ jobs:
           fs.writeFileSync('/tmp/fastify-mongo-transaction.json',JSON.stringify(spec));
           NODE
           node bin/json-to-express.js generate /tmp/fastify-mongo-transaction.json
+          mkdir -p .tmp/fastify-mongo-transaction/src/hooks
+          cat > .tmp/fastify-mongo-transaction/src/hooks/owner.js <<'HOOK'
+          module.exports = {
+            preCreate({req}) {req.body.name = 'hooked-' + req.body.name;},
+            postCreate({result}) {if (!result.name.startsWith('hooked-')) throw new Error('Hook did not execute');}
+          };
+          HOOK
       - name: Install generated MongoDB app
         working-directory: .tmp/fastify-mongo-transaction
         run: npm install --no-audit --no-fund
@@ -847,6 +854,7 @@ jobs:
             assert.equal(ownerResponse.status,201);
             const owner=await ownerResponse.json();
             assert.ok(owner._id);
+            assert.equal(owner.name,'hooked-Target');
             const dependentResponse=await send('/dependents','POST',{title:'Dependent',owner:owner._id});
             assert.equal(dependentResponse.status,201);
             const restricted=await fetch(root+'/owners/'+owner._id,{method:'DELETE'});
