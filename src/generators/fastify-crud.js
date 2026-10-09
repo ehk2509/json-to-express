@@ -4,6 +4,12 @@ const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 
 // Native CRUD supports scalar entities; relationship reads are safe when mutation routes are disabled.
 // Advanced mutations continue through the compatibility router until their invariants are implemented.
+function safePrismaDelete(entity, spec) {
+  return spec.database.type === 'postgresql' &&
+    !spec.entities.some(source => source.fields.some(field =>
+      field.type === 'reference' && field.ref === entity.name && field.many));
+}
+
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
     !spec.cache.enabled && !spec.storage.enabled &&
@@ -11,8 +17,10 @@ function eligible(entity, spec) {
     !entity.fields.some(field => field.type === 'file') &&
     (!entity.fields.some(field => field.type === 'reference') ||
       ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
-      (spec.database.type === 'postgresql' && !entity.operations.delete.enabled &&
+      (spec.database.type === 'postgresql' &&
+        (!entity.operations.delete.enabled || safePrismaDelete(entity, spec)) &&
         !entity.fields.some(field => field.type === 'reference' && field.many))) &&
+    (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       (op.transaction || op.cache.enabled || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
@@ -140,7 +148,10 @@ module.exports = function nativeCrudSource(spec) {
     '        if (action === "delete") {',
     '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
-    '          if (postgres) await model.delete({where: {id}}); else await model.findByIdAndDelete(id);',
+    '          if (postgres) {',
+    '            try {await model.delete({where: {id}});}',
+    '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
+    '          } else await model.findByIdAndDelete(id);',
     '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
     '        }',
     '      }});',
