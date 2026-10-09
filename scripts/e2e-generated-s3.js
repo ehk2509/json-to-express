@@ -9,7 +9,7 @@ async function request(route, options = {}) {
   const response = await fetch(base + route, {
     ...options,
     headers: {
-      ...(!isForm ? {'content-type': 'application/json'} : {}),
+      ...(!isForm && options.body !== undefined ? {'content-type': 'application/json'} : {}),
       ...(options.headers || {})
     }
   });
