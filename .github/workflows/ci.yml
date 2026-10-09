@@ -450,6 +450,25 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm test
+      - name: Reject legacy Express middleware in native Fastify app
+        working-directory: .tmp/fastify-direct-smoke
+        run: |
+          cp src/middleware/tenant.js src/middleware/tenant.js.original
+          cat > src/middleware/tenant.js <<'LEGACY'
+          module.exports = (req, res, next) => next();
+          LEGACY
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const app = require('./src/app');
+          app.ready().then(() => {
+            console.error('Express middleware unexpectedly accepted by native Fastify');
+            process.exitCode = 1;
+          }).catch(error => {
+            assert.match(error.message, /Native Fastify middleware exports are required/);
+            assert.match(error.message, /migrate Express/);
+          });
+          NODE
+          mv src/middleware/tenant.js.original src/middleware/tenant.js
       - name: Exercise adapter-free Fastify server
         working-directory: .tmp/fastify-direct-smoke
         env:
