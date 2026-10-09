@@ -403,8 +403,11 @@ test('native Fastify storage only compensates uploads before commit and retries 
   const storage=files.get('src/config/storage.js');
   assert.match(source,/storedUploads = \[\]; \/\/ Database has committed/);
   assert.match(source,/storedUploads = \[\]; \/\/ Never compensate a committed database write/);
-  assert.match(source,/storage.cleanupReplaced/);
-  assert.match(source,/storage.cleanupEntity/);
+  assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
+  assert.match(source,/storage.enqueueCleanupIntent\(storage.planEntity/);
+  assert.match(source,/storage.finishCleanupIntent\(cleanupIntent\)/);
+  assert.match(source,/storage.finishCleanupIntent\(deleteCleanupIntent\)/);
+  assert.match(storage,/async function enqueueCleanupIntent\(values, tx = null\)/);
   assert.match(storage,/async function cleanupAfterCommit/);
   assert.match(storage,/attempt < 3/);
   new vm.Script(source);
