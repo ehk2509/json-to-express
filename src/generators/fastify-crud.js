@@ -12,7 +12,7 @@ function safePrismaDelete(entity, spec) {
 
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
-    !entity.audit.enabled && !entity.softDelete.enabled &&
+    (spec.database.type === 'mongodb' || (!entity.audit.enabled && !entity.softDelete.enabled)) &&
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
@@ -22,7 +22,7 @@ function eligible(entity, spec) {
         !entity.fields.some(field => field.type === 'reference' && field.many))) &&
     (!entity.operations.delete.enabled || spec.database.type !== 'postgresql' || safePrismaDelete(entity, spec)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
-      (op.transaction || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
+      ((op.transaction && spec.database.type !== 'mongodb') || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
     !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
@@ -42,6 +42,8 @@ module.exports = function nativeCrudSource(spec) {
     idParam: entity.idParam,
     references: entity.fields.filter(field => field.type === 'reference').map(field => ({name:field.name, many:field.many, required:field.required})),
     hasFiles: entity.fields.some(field => field.type === 'file'),
+    softDelete: entity.softDelete,
+    audit: entity.audit,
     base: joinUrl(spec.app.apiPrefix, entity.route),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
       type: field.type, required: field.required, enum: field.enum || null
@@ -52,6 +54,7 @@ module.exports = function nativeCrudSource(spec) {
     ...(spec.auth.enabled ? ['const auth = require(' + js(relativeRequire(nativePath, filePaths(spec).auth)) + ');'] : []),
     ...(spec.storage.enabled ? ['const storage = require(' + js(relativeRequire(nativePath, filePaths(spec).storage)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(nativePath, filePaths(spec).cache)) + ');'] : []),
+    ...(spec.database.type === 'mongodb' ? ['const mongoose = require("mongoose");'] : []),
     ...(spec.database.type === 'postgresql'
       ? ['const connectDatabase = require(' + js(relativeRequire(nativePath, filePaths(spec).database)) + ');']
       : []),
@@ -90,6 +93,13 @@ module.exports = function nativeCrudSource(spec) {
     '  }',
     '  return data;',
     '}',
+    'async function transactional(enabled, work) {',
+    '  if (!enabled || postgres) return work(null);',
+    '  const session = await mongoose.startSession();',
+    '  try {let result; await session.withTransaction(async () => {result = await work(session);}); return result;}',
+    '  finally {await session.endSession();}',
+    '}',
+    'function liveFilter(entry, filter = {}) {return entry.softDelete.enabled ? {...filter, [entry.softDelete.field]: null} : filter;}',
     'module.exports = function registerCrud(fastify) {',
     '  for (const entry of config) {',
     '    const model = models[entry.modelIndex];',
@@ -126,7 +136,7 @@ module.exports = function nativeCrudSource(spec) {
     '        if (action === "list") {',
     '          const q = op.query;',
     '          const populate = op.populate || [];',
-    '          const conditions = {};',
+    '          const conditions = liveFilter(entry);',
     '          for (const field of q.filters || []) {',
     '            if (request.query[field] !== undefined) conditions[field] = request.query[field];',
     '          }',
@@ -153,23 +163,27 @@ module.exports = function nativeCrudSource(spec) {
     '        }',
     '        if (action === "get") {',
     '          const populate = op.populate || [];',
-    '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findById(id).populate(populate) : model.findById(id));',
+    '          const record = postgres ? await model.findUnique({where: {id}, ...(populate.length ? {include: Object.fromEntries(populate.map(name => [name, true]))} : {})}) : await (populate.length ? model.findOne(liveFilter(entry, {_id: id})).populate(populate) : model.findOne(liveFilter(entry, {_id: id})));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          const result = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          if (cacheEntry) await cache.nativeWrite(cacheEntry.key, result, op.status, cachePolicy.ttlSeconds);',
     '          return reply.code(op.status).send(result);',
     '        }',
     '        if (action === "create") {',
-    '          const record = postgres ? await model.create({data: writeData(entry, request.body, "create")}) : await model.create(request.body);',
+    '          const data = {...request.body};',
+    '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) {data[entry.audit.createdBy] = request.raw.auth.userId; data[entry.audit.updatedBy] = request.raw.auth.userId;}',
+    '          const record = postgres ? await model.create({data: writeData(entry, data, "create")}) : await transactional(op.transaction, async session => (await model.create([data], session ? {session} : {}))[0]);',
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          storedUploads = [];',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "update") {',
-    '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
+    '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!existing) return reply.code(op.notFoundStatus).send({error: "Not found"});',
-    '          const record = postgres ? await model.update({where: {id}, data: writeData(entry, request.body, "update")}) : await model.findByIdAndUpdate(id, request.body, {new: true, runValidators: true});',
+    '          const data = {...request.body};',
+    '          if (entry.audit.enabled && request.raw.auth && request.raw.auth.userId) data[entry.audit.updatedBy] = request.raw.auth.userId;',
+    '          const record = postgres ? await model.update({where: {id}, data: writeData(entry, data, "update")}) : await transactional(op.transaction, async session => model.findOneAndUpdate(liveFilter(entry, {_id: id}), data, {new: true, runValidators: op.runValidators, ...(session ? {session} : {})}));',
     '          if (entry.hasFiles) await storage.cleanupReplaced(entry.name, existing, request.body);',
     '          const responseRecord = entry.hasFiles ? await storage.enrich(entry.name, record, {protocol: request.protocol, get: name => request.headers[name.toLowerCase()]}) : record;',
     '          storedUploads = [];',
@@ -177,12 +191,15 @@ module.exports = function nativeCrudSource(spec) {
     '          return reply.code(op.status).send(responseRecord);',
     '        }',
     '        if (action === "delete") {',
-    '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
+    '          const record = postgres ? await model.findUnique({where: {id}}) : await model.findOne(liveFilter(entry, {_id: id}));',
     '          if (!record) return reply.code(op.notFoundStatus).send({error: "Not found"});',
     '          if (postgres) {',
     '            try {await model.delete({where: {id}});}',
     '            catch (error) {if (error.code === "P2003") return reply.code(409).send({error: "Delete restricted by related records"}); throw error;}',
-    '          } else await model.findByIdAndDelete(id);',
+    '          } else await transactional(op.transaction, async session => {',
+    '            const filter = liveFilter(entry, {_id: id});',
+    '            return entry.softDelete.enabled ? model.findOneAndUpdate(filter, {$set: {[entry.softDelete.field]: new Date()}}, {new: true, ...(session ? {session} : {})}) : model.findOneAndDelete(filter, session ? {session} : {});',
+    '          });',
     '          if (entry.hasFiles) await storage.cleanupEntity(entry.name, record);',
     '          if (cacheEnabled) await cache.invalidateEntity(entry.name);',
     '          return op.status === 204 ? reply.code(204).send() : reply.code(op.status).send(record);',
