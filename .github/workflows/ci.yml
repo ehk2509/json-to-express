@@ -420,7 +420,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User'}}, operations: {delete: false}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
@@ -484,7 +484,27 @@ jobs:
             const moved = await fetch(tasks+'/'+task.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({owner:null})});
             assert.equal(moved.status,200);
             assert.equal((await moved.json()).ownerId,null);
+            const notes = 'http://127.0.0.1:3498/api/notes';
+            const logs = 'http://127.0.0.1:3498/api/logs';
+            const makeChild = (url, title) => fetch(url, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title,owner:owner.id})});
+            const noteResponse = await makeChild(notes, 'Nullified');
+            const logResponse = await makeChild(logs, 'Cascaded');
+            assert.equal(noteResponse.status,201);
+            assert.equal(logResponse.status,201);
+            const note = await noteResponse.json();
+            const log = await logResponse.json();
             assert.equal((await fetch(users+'/'+owner.id,{method:'DELETE'})).status,204);
+            assert.equal((await fetch(users+'/'+owner.id)).status,404);
+            const noteAfter = await fetch(notes+'/'+note.id);
+            assert.equal(noteAfter.status,200);
+            assert.equal((await noteAfter.json()).ownerId,null);
+            assert.equal((await fetch(logs+'/'+log.id)).status,404);
+            const {PrismaClient} = require('@prisma/client');
+            const prisma = new PrismaClient();
+            try {
+              assert.ok((await prisma.user.findUnique({where:{id:owner.id}})).deletedAt);
+              assert.ok((await prisma.log.findUnique({where:{id:log.id}})).deletedAt);
+            } finally {await prisma.$disconnect();}
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
       - name: Print Fastify PostgreSQL logs on failure
