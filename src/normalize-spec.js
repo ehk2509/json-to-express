@@ -535,6 +535,7 @@ function normalizeSpec(inputSpec) {
           ...(isPostgres ? {
             'prisma:generate': 'prisma generate --schema ' + prismaSchemaPath,
             'db:push': 'prisma db push --schema ' + prismaSchemaPath,
+            'db:migrate:init': 'node scripts/create-initial-migration.js',
             'db:migrate:dev': 'prisma migrate dev --schema ' + prismaSchemaPath,
             'db:migrate:deploy': 'prisma migrate deploy --schema ' + prismaSchemaPath,
             'db:migrate:status': 'prisma migrate status --schema ' + prismaSchemaPath,

@@ -253,7 +253,7 @@ npm run db:push
 npm start
 ~~~
 
-For versioned production migrations, create SQL using `npm run db:migrate:dev -- --name init` against a development database and commit the generated `prisma/migrations` directory. Deploy only reviewed migrations with `npm run db:migrate:deploy`; inspect status using `npm run db:migrate:status`. Never use `db:push` as a production migration replacement.
+For versioned production migrations, run `npm run db:migrate:init` to generate a reviewed, versioned initial SQL migration with Prisma `migrate diff` without a running database. The command refuses to overwrite existing migration history. For later changes, use `npm run db:migrate:dev -- --name change_name` against a disposable development database. Commit the generated `prisma/migrations` directory. Deploy only reviewed migrations with `npm run db:migrate:deploy`; inspect status using `npm run db:migrate:status`. Never use `db:push` as a production migration replacement.
 
 Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by entity name. A `factories` map can additionally generate bounded deterministic fixtures, e.g. `"factories": {"Category": {"count": 3, "template": {"name": "Category {{index}}"}}}`. The placeholder is replaced by 1-based row numbers. For example:
 
