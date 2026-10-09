@@ -178,7 +178,8 @@ test('Express PostgreSQL and MongoDB controllers use transactional cleanup inten
     assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
     assert.match(source,/storage.enqueueCleanupIntent\(storage.planEntity/);
     assert.match(source,/storage.finishCleanupIntent/);
-    assert.match(source,/withTransaction\(true, async /);
+    assert.match(source,/withTransaction\(/);
+    if (database === 'mongodb') assert.match(source,/mongoCanTransact\(\)/);
     new vm.Script(source);
   }
 });
