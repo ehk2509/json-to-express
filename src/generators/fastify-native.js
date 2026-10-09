@@ -22,7 +22,7 @@ module.exports = function fastifyNativeSource(spec) {
       '    reply.header("Referrer-Policy", "no-referrer");'
     );
     if (spec.app.production.requestId) lines.push(
-      '    request.raw.id = String(request.headers["x-request-id"] || crypto.randomUUID());',
+      '    request.raw.id = String(request.raw.id || request.headers["x-request-id"] || crypto.randomUUID());',
       '    reply.header("X-Request-Id", request.raw.id);'
     );
     if (spec.app.production.cors.enabled) lines.push(
