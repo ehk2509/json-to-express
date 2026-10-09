@@ -182,3 +182,20 @@ test('native middleware lifecycle hooks register and execute on native routes', 
   await hooks.onResponse[0](fallback, reply);
   assert.deepEqual(calls, ['request', 'validation', 'handler', 'error', 'response']);
 });
+
+test('audited PostgreSQL entities use native CRUD and protect audit attribution', () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'native-postgres-audit', framework: 'fastify'},
+    database: {type: 'postgresql'},
+    entities: {Todo: {fields: {title: {type: 'string'}}, audit: {enabled: true}}}
+  });
+  const files = buildFiles(spec);
+  const native = files.get('src/fastify-crud.js');
+  assert.match(native, /name: "Todo"/);
+  assert.match(native, /delete data\[entry.audit.createdBy\]/);
+  assert.match(native, /delete data\[entry.audit.updatedBy\]/);
+  assert.match(native, /data\[entry.audit.createdBy\] = request.raw.auth.userId/);
+  assert.match(native, /data\[entry.audit.updatedBy\] = request.raw.auth.userId/);
+  new vm.Script(native);
+});
