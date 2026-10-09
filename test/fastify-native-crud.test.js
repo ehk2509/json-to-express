@@ -410,3 +410,23 @@ test('native Fastify storage only compensates uploads before commit and retries 
   new vm.Script(source);
   new vm.Script(storage);
 });
+
+test('full native Fastify spec retains generated deployment, SDK, admin and OpenAPI artifacts', () => {
+  const fs=require('node:fs');
+  const path=require('node:path');
+  const input=JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/e2e.json'),'utf8'));
+  input.app.framework='fastify';
+  const files=buildFiles(normalizeSpec(input));
+  const keys=[...files.keys()];
+  const pkg=JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.ok(keys.some(key=>/Dockerfile$/i.test(key)));
+  assert.ok(keys.some(key=>/compose.*\.ya?ml$/.test(key)));
+  assert.ok(keys.some(key=>key.startsWith('deploy/k8s/')));
+  assert.ok(keys.some(key=>key.startsWith('sdk/') && key.endsWith('.ts')));
+  assert.ok(keys.some(key=>key.startsWith('admin/') && key.endsWith('.vue')));
+  assert.ok(keys.some(key=>key.endsWith('openapi.json')));
+  assert.match(files.get('src/server.js'),/server.close\(\)/);
+  assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress|fastify.use/);
+});
