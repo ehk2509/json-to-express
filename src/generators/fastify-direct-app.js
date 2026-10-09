@@ -19,6 +19,19 @@ module.exports = function directFastifyAppSource(spec) {
       '  observability.requestMiddleware(request.raw, reply.raw, done);',
       '});'
     ] : []),
+    ...spec.app.middlewareModules.flatMap(modulePath => [
+      '  { const middleware = require(' + js(relativeRequire(appPath, modulePath)) + ');',
+      '    const nativeHooks = ["fastifyOnRequest", "fastifyPreValidation", "fastifyPreHandler", "fastifyPreSerialization", "fastifyOnSend", "fastifyOnError", "fastifyOnResponse"];',
+      '    if (!middleware || !nativeHooks.some(name => typeof middleware[name] === "function")) throw new Error("Native Fastify middleware exports are required: ' + modulePath.replace(/"/g, '') + '");',
+      ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
+        '    if (typeof middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", (request, reply) => middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply));'
+      ),
+      '    if (typeof middleware.fastifyPreSerialization === "function") fastify.addHook("preSerialization", (request, reply, payload) => middleware.fastifyPreSerialization(request, reply, payload));',
+      '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", (request, reply, payload) => middleware.fastifyOnSend(request, reply, payload));',
+      '    if (typeof middleware.fastifyOnError === "function") fastify.addHook("onError", (request, reply, error) => middleware.fastifyOnError(request, reply, error));',
+      '    if (typeof middleware.fastifyOnResponse === "function") fastify.addHook("onResponse", (request, reply) => middleware.fastifyOnResponse(request, reply));',
+      '  }'
+    ]),
     ...nativeModules.map((name, i) =>
       'const register' + i + ' = require(' + js(relativeRequire(appPath, require('node:path').posix.join(root, name + '.js'))) + ');'),
     ...nativeModules.map((name, i) => 'register' + i + '(fastify);'),
