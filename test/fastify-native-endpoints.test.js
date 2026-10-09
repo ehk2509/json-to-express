@@ -11,8 +11,8 @@ test('Fastify generated workflow endpoints are native and preserve auth and resp
     app: {name: 'native-workflows', framework: 'fastify'},
     database: {type: 'mongodb'},
     entities: {Todo: {fields: {name: {type: 'string'}}}},
-    workflows: [{name:'doWork',steps:[{type:'respond',status:202,body:{ok:true}}]}],
-    endpoints: [{method:'post',path:'/work',workflow:'doWork',status:202}]
+    workflows: {doWork: {steps:[{name:'reply',action:'respond',status:202,body:{ok:true}}]}},
+    endpoints: {work: {method:'post',path:'/work',workflow:'doWork',status:202}}
   };
   const files = buildFiles(normalizeSpec(base));
   const source = files.get('src/fastify-endpoints.js');
