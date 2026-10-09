@@ -513,7 +513,7 @@ jobs:
             generation: {outputDir: '.tmp/fastify-postgres-smoke'},
             app: {name: 'fastify-postgres-smoke', framework: 'fastify', port: 3498, host: '127.0.0.1'},
             database: {type: 'postgresql', uriEnv: 'DATABASE_URL'},
-            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}}
+            entities: {Todo: {fields: {title: {type: 'string', required: true}, done: {type: 'boolean', default: false}}}, User: {fields: {name: {type: 'string', required: true}}, softDelete: {enabled: true}, hooks:{module:'src/hooks/user.js', before:{create:'preCreate'}, after:{create:'postCreate'}}}, Task: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'restrict'}}, operations: {delete: false}}, Note: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'nullify'}}}, Log: {fields: {title: {type: 'string', required: true}, owner: {type: 'reference', ref: 'User', onDelete: 'cascade'}}, softDelete: {enabled: true}}, Project: {fields:{title:{type:'string'}, owner:{type:'reference',ref:'User',onDelete:'cascade'}},softDelete:{enabled:true}}, ProjectEntry:{route:'project-entries',fields:{title:{type:'string'},project:{type:'reference',ref:'Project',onDelete:'cascade'}}}, Label:{fields:{title:{type:'string'},owners:{type:'reference',ref:'User',many:true,onDelete:'nullify'}}}}
           };
           fs.writeFileSync('/tmp/fastify-postgres-spec.json', JSON.stringify(input));
           NODE
@@ -594,6 +594,16 @@ jobs:
             assert.equal(logResponse.status,201);
             const note = await noteResponse.json();
             const log = await logResponse.json();
+            const post = (url,body) => fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+            const projectResponse=await post('http://127.0.0.1:3498/api/projects',{title:'Cascade project',owner:owner.id});
+            assert.equal(projectResponse.status,201);
+            const project=await projectResponse.json();
+            const childResponse=await post('http://127.0.0.1:3498/api/project-entries',{title:'Nested descendant',project:project.id});
+            assert.equal(childResponse.status,201);
+            const descendant=await childResponse.json();
+            const labelResponse=await post('http://127.0.0.1:3498/api/labels',{title:'Shared label',owners:[owner.id]});
+            assert.equal(labelResponse.status,201);
+            const label=await labelResponse.json();
             assert.equal((await fetch(users+'/'+owner.id,{method:'DELETE'})).status,204);
             assert.equal((await fetch(users+'/'+owner.id)).status,404);
             const noteAfter = await fetch(notes+'/'+note.id);
@@ -605,6 +615,9 @@ jobs:
             try {
               assert.ok((await prisma.user.findUnique({where:{id:owner.id}})).deletedAt);
               assert.ok((await prisma.log.findUnique({where:{id:log.id}})).deletedAt);
+              assert.ok((await prisma.project.findUnique({where:{id:project.id}})).deletedAt, 'multilevel cascade must soft-delete project');
+              assert.equal(await prisma.projectEntry.findUnique({where:{id:descendant.id}}),null,'multilevel cascade must physically delete child');
+              assert.deepEqual((await prisma.label.findUnique({where:{id:label.id},include:{owners:true}})).owners,[],'many-to-many nullify must detach join row');
             } finally {await prisma.$disconnect();}
           })().catch(error => {console.error(error); process.exitCode = 1;});
           NODE
