@@ -289,3 +289,27 @@ test('native supported relations and hooks can be adapter-free', () => {
   assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress/);
   assert.match(files.get('src/fastify-crud.js'),/hookModules/);
 });
+
+test('advanced Fastify native runtime retains observability, embedded jobs and production plugins', () => {
+  const spec = normalizeSpec({
+    specVersion:'1.0',
+    app:{name:'advanced-fastify-direct',framework:'fastify',production:{
+      rateLimit:{enabled:true,max:10,windowMs:60000},compression:true
+    }},
+    database:{type:'mongodb'},
+    observability:{enabled:true,metrics:{enabled:true}},
+    outbox:{enabled:true,worker:'embedded'},
+    entities:{Todo:{fields:{title:{type:'string'}}}}
+  });
+  const files=buildFiles(spec);
+  const pkg=JSON.parse(files.get('package.json'));
+  assert.equal(pkg.dependencies.express,undefined);
+  assert.equal(pkg.dependencies['@fastify/express'],undefined);
+  assert.match(files.get('src/app.js'), /@fastify\\/rate-limit/);
+  assert.match(files.get('src/app.js'), /@fastify\\/compress/);
+  assert.match(files.get('src/app.js'), /observability.requestMiddleware/);
+  assert.match(files.get('src/server.js'), /outboxWorker.startWorker/);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
+  new vm.Script(files.get('src/app.js'));
+  new vm.Script(files.get('src/server.js'));
+});
