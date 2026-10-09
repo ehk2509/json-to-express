@@ -108,3 +108,57 @@ test('storage observability includes queue backlog metrics and Prometheus alerts
   assert.match(metrics,/storage_cleanup_dead/);
   assert.match(metrics,/storage_cleanup_pending/);
 });
+
+test('transactional storage cleanup inserts job through Prisma tx and Mongo session', async () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const source = buildFiles(makeSpec(database)).get('src/config/storage.js');
+    const queued = [];
+    const outbox = {
+      enqueueJob: async (name, payload, options) => {
+        queued.push({name, payload, options});
+        return {payload, id:'intent', attempts:0, maxAttempts:8};
+      },
+      markDone:async () => {},
+      markFailed:async () => {}
+    };
+    const dependencies = name => {
+      if (name === 'node:crypto') return require('node:crypto');
+      if (name === 'node:path') return path;
+      if (name === 'node:fs') return require('node:fs');
+      if (name === 'node:fs/promises') return require('node:fs/promises');
+      if (name === 'multer') return Object.assign(() => ({}), {memoryStorage:() => ({})});
+      if (name.endsWith('/outbox')) return outbox;
+      throw new Error('Unexpected require ' + name);
+    };
+    const module={exports:{}};
+    vm.runInNewContext(source,{module,require:dependencies,process,console,Buffer,setTimeout});
+    const tx={transactionId:'active'};
+    const pending=await module.exports.enqueueCleanupIntent([{key:'asset/file/old.txt',provider:'local'}],tx);
+    assert.equal(queued.length,1);
+    assert.equal(queued[0].name,'__j2e_storage_cleanup__');
+    assert.equal(queued[0].options.config.queue,'storage');
+    assert.equal(queued[0].options[database==='postgresql'?'db':'session'],tx);
+    assert.equal(pending.payload.values[0].key,'asset/file/old.txt');
+    assert.equal(await module.exports.enqueueCleanupIntent([],tx),null);
+    assert.equal(queued.length,1);
+  }
+});
+
+test('atomic cleanup planner only schedules unreferenced old fields', () => {
+  const source=buildFiles(makeSpec()).get('src/config/storage.js');
+  const module={exports:{}};
+  const dependencies=name=>{
+    if (name === 'node:crypto') return require('node:crypto');
+    if (name === 'node:path') return path;
+    if (name === 'node:fs') return require('node:fs');
+    if (name === 'node:fs/promises') return require('node:fs/promises');
+    if (name === 'multer') return Object.assign(() => ({}), {memoryStorage:() => ({})});
+    if (name.endsWith('/outbox')) return {};
+    throw new Error('Unexpected require '+name);
+  };
+  vm.runInNewContext(source,{module,require:dependencies,process,console,Buffer,setTimeout});
+  const a={key:'asset/file/previous.txt',provider:'local'},b={key:'asset/file/current.txt',provider:'local'};
+  assert.deepEqual(Array.from(module.exports.planReplaced('Asset',{file:a},{file:b})).map(x=>x.key),[a.key]);
+  assert.equal(module.exports.planReplaced('Asset',{file:a},{name:'unchanged'}).length,0);
+  assert.deepEqual(Array.from(module.exports.planEntity('Asset',{file:b})).map(x=>x.key),[b.key]);
+});
