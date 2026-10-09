@@ -199,7 +199,16 @@ module.exports = function cacheSource(spec) {
       : ['  memoryEntries.clear();']),
     '}',
     '',
-    'module.exports = {cacheController, invalidateController, invalidateEntity, invalidateMany, disconnect};',
+    'async function nativeRead(entity, operation, policy, req) {',
+    '  const version = await getVersion(entity);',
+    '  const key = entryKey(entity, operation, version, req, policy);',
+    '  const cached = await read(key);',
+    '  return {key, cached};',
+    '}',
+    'async function nativeWrite(key, body, status, ttlSeconds) {',
+    '  if (status >= 200 && status < 300) await write(key, {status, body}, ttlSeconds);',
+    '}',
+    'module.exports = {cacheController, invalidateController, invalidateEntity, invalidateMany, nativeRead, nativeWrite, disconnect};',
     ''
   ].join('\n');
 };
