@@ -11,7 +11,7 @@ function serverSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.server, paths.observability)) + ');'] : []),
     ...(spec.cache.enabled ? ['const cache = require(' + js(relativeRequire(paths.server, paths.cache)) + ');'] : []),
     'const app = require(' + js(relativeRequire(paths.server, paths.app)) + ');',
-    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');"] : []),
+    ...(spec.app.framework === 'fastify' ? ["const fastify = require('fastify')({logger: false});", "const fastifyExpress = require('@fastify/express');", 'const registerNativeRoutes = require(' + js(relativeRequire(paths.server, require('node:path').posix.join(spec.generation.paths.source, 'fastify-native.js'))) + ');'] : []),
     'const connectDatabase = require(' + js(relativeRequire(paths.server, paths.database)) + ');',
     ...(spec.outbox.enabled && spec.outbox.worker === 'embedded' ? ['const outboxWorker = require(' + js(relativeRequire(paths.server, paths.worker)) + ');'] : []), '',
     'validateEnvironment();',
@@ -29,6 +29,7 @@ function serverSource(spec) {
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
       '  fastify.use(app);',
+      '  registerNativeRoutes(fastify);',
       '  await fastify.listen({port, host});',
       '  server = fastify;',
       '  ' + (spec.observability.enabled
