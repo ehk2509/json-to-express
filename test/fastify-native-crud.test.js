@@ -113,12 +113,12 @@ test('native Prisma delete respects FK restriction handling', () => {
   new vm.Script(source);
 });
 
-test('native Prisma delete is gated for inbound many-to-many relations', () => {
+test('native Prisma delete supports inbound many-to-many relations', () => {
   const input = spec('postgresql');
   input.entities.User = {fields: {name: {type: 'string'}}};
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User', many: true};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"User"/);
+  assert.match(source, /"name":"User"/);
 });
 
 test('native Fastify local storage routes use multipart parser and cleanup', () => {
@@ -228,13 +228,14 @@ test('simple Fastify generators run without Express runtime dependencies', () =>
   }
 });
 
-test('unsupported PostgreSQL many-to-many deletes retain compatibility', () => {
+test('PostgreSQL many-to-many deletes can use native Fastify', () => {
   const input = spec('postgresql');
   input.entities.Todo.fields.owner = {type:'reference', ref:'User', many:true};
   input.entities.User = {fields:{name:{type:'string'}}};
   const files = buildFiles(normalizeSpec(input));
-  assert.match(files.get('src/server.js'), /fastifyExpress/);
-  assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/express']);
+  assert.doesNotMatch(files.get('src/server.js'), /fastifyExpress/);
+  assert.equal(JSON.parse(files.get('package.json')).dependencies['@fastify/express'],undefined);
+  assert.match(files.get('src/fastify-postgres-delete.js'), /relation.many/);
 });
 
 test('stateless API-key authorization and Redis caching remain adapter-free', () => {
