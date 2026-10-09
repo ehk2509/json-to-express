@@ -10,7 +10,9 @@ function eligible(entity, spec) {
     !entity.audit.enabled && !entity.softDelete.enabled &&
     !entity.fields.some(field => field.type === 'file') &&
     (!entity.fields.some(field => field.type === 'reference') ||
-      ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled)) &&
+      ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
+      (spec.database.type === 'postgresql' && !entity.operations.delete.enabled &&
+        !entity.fields.some(field => field.type === 'reference' && field.many))) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       (op.transaction || op.cache.enabled || (op.populate.length && (!['list','get'].includes(Object.keys(entity.operations).find(key => entity.operations[key] === op)) || op.populate.some(name => !entity.fields.some(field => field.type === 'reference' && field.name === name)))))) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
@@ -30,7 +32,7 @@ module.exports = function nativeCrudSource(spec) {
     name: entity.name,
     operations: entity.operations,
     idParam: entity.idParam,
-    referenceNames: entity.fields.filter(field => field.type === 'reference').map(field => field.name),
+    references: entity.fields.filter(field => field.type === 'reference').map(field => ({name:field.name, many:field.many, required:field.required})),
     base: joinUrl(spec.app.apiPrefix, entity.route),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
       type: field.type, required: field.required, enum: field.enum || null
@@ -64,6 +66,17 @@ module.exports = function nativeCrudSource(spec) {
     '    if (field.enum && !field.enum.includes(value)) errors.push(name + " has an invalid value");',
     '  }',
     '  return errors;',
+    '}',
+    'function writeData(entry, body, mode) {',
+    '  const data = {...body};',
+    '  for (const field of entry.references) {',
+    '    if (!Object.prototype.hasOwnProperty.call(data, field.name)) continue;',
+    '    const reference = data[field.name];',
+    '    if (field.many) data[field.name] = { [mode === "create" ? "connect" : "set"]: (Array.isArray(reference) ? reference : []).map(id => ({id})) };',
+    '    else if (reference === null) {if (mode === "create") delete data[field.name]; else data[field.name] = {disconnect: true};}',
+    '    else data[field.name] = {connect: {id: reference}};',
+    '  }',
+    '  return data;',
     '}',
     'module.exports = function registerCrud(fastify) {',
     '  for (const entry of config) {',
@@ -115,13 +128,13 @@ module.exports = function nativeCrudSource(spec) {
     '          return record ? reply.code(op.status).send(record) : reply.code(op.notFoundStatus).send({error: "Not found"});',
     '        }',
     '        if (action === "create") {',
-    '          const record = postgres ? await model.create({data: request.body}) : await model.create(request.body);',
+    '          const record = postgres ? await model.create({data: writeData(entry, request.body, "create")}) : await model.create(request.body);',
     '          return reply.code(op.status).send(record);',
     '        }',
     '        if (action === "update") {',
     '          const existing = postgres ? await model.findUnique({where: {id}}) : await model.findById(id);',
     '          if (!existing) return reply.code(op.notFoundStatus).send({error: "Not found"});',
-    '          const record = postgres ? await model.update({where: {id}, data: request.body}) : await model.findByIdAndUpdate(id, request.body, {new: true, runValidators: true});',
+    '          const record = postgres ? await model.update({where: {id}, data: writeData(entry, request.body, "update")}) : await model.findByIdAndUpdate(id, request.body, {new: true, runValidators: true});',
     '          return reply.code(op.status).send(record);',
     '        }',
     '        if (action === "delete") {',
