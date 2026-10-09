@@ -11,8 +11,8 @@ function eligible(entity, spec) {
     !entity.fields.some(field => ['reference', 'file'].includes(field.type)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       (op.transaction || op.auth.required || op.populate.length || op.cache.enabled)) &&
-    !Object.values(entity.hooks.before || {}).some(Boolean) &&
-    !Object.values(entity.hooks.after || {}).some(Boolean);
+    !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
+    !Object.values((entity.hooks && entity.hooks.after) || {}).some(Boolean);
 }
 
 module.exports = function nativeCrudSource(spec) {
@@ -66,7 +66,7 @@ module.exports = function nativeCrudSource(spec) {
     '    for (const [action, op] of Object.entries(entry.operations)) {',
     '      if (!op.enabled) continue;',
     '      const fullPath = entry.base + (op.path === "/" ? "" : op.path);',
-    '      const url = fullPath.replace(/:([A-Za-z0-9_]+)/g, ":$1");',
+    '      const url = fullPath;',
     '      fastify.route({method: op.method.toUpperCase(), url, handler: async (request, reply) => {',
     '        const id = request.params && request.params[entry.idParam];',
     '        if (["get", "update", "delete"].includes(action) && !validId(id)) return reply.code(400).send({error: "Invalid identifier"});',
