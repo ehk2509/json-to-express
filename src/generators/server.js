@@ -28,6 +28,7 @@ function serverSource(spec) {
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
+      ...(spec.storage.enabled ? ['  await fastify.register(require("@fastify/multipart"));'] : []),
       ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),
       ...(spec.app.production.compression ? ['  await fastify.register(require("@fastify/compress"));'] : []),
       '  fastify.use((req, res, next) => {',
