@@ -24,7 +24,7 @@ module.exports = function directFastifyAppSource(spec) {
       '    const nativeHooks = ["fastifyOnRequest", "fastifyPreValidation", "fastifyPreHandler", "fastifyPreSerialization", "fastifyOnSend", "fastifyOnError", "fastifyOnResponse"];',
       '    if (!middleware || !nativeHooks.some(name => typeof middleware[name] === "function")) throw new Error("Native Fastify middleware exports are required: ' + modulePath.replace(/"/g, '') + '");',
       ...['onRequest', 'preValidation', 'preHandler'].map(stage =>
-        '    if (typeof middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", (request, reply) => middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply));'
+        '    if (typeof middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + ' === "function") fastify.addHook("' + stage + '", async (request, reply) => { await middleware.fastify' + stage[0].toUpperCase() + stage.slice(1) + '(request, reply); });'
       ),
       '    if (typeof middleware.fastifyPreSerialization === "function") fastify.addHook("preSerialization", (request, reply, payload) => middleware.fastifyPreSerialization(request, reply, payload));',
       '    if (typeof middleware.fastifyOnSend === "function") fastify.addHook("onSend", (request, reply, payload) => middleware.fastifyOnSend(request, reply, payload));',
