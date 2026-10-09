@@ -1104,7 +1104,9 @@ jobs:
                 operations:{create:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},update:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},delete:{transaction:true}}},
               Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}}},
               Link:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'nullify'}}},
-              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}}
+              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}},
+              CascadeChild:{route:'cascade-children',fields:{cascade:{type:'reference',ref:'Cascade',onDelete:'cascade'}}},
+              Watchlist:{fields:{owners:{type:'reference',ref:'Owner',many:true,onDelete:'nullify'}}}
             }
           };
           fs.writeFileSync('/tmp/fastify-mongo-transaction.json',JSON.stringify(spec));
@@ -1153,6 +1155,12 @@ jobs:
             const cascadeResponse=await send('/cascades','POST',{owner:owner._id});
             assert.equal(cascadeResponse.status,201);
             const cascade=await cascadeResponse.json();
+            const nestedResponse=await send('/cascade-children','POST',{cascade:cascade._id});
+            assert.equal(nestedResponse.status,201);
+            const nested=await nestedResponse.json();
+            const watchlistResponse=await send('/watchlists','POST',{owners:[owner._id]});
+            assert.equal(watchlistResponse.status,201);
+            const watchlist=await watchlistResponse.json();
             const dependentResponse=await send('/dependents','POST',{title:'Dependent',owner:owner._id});
             assert.equal(dependentResponse.status,201);
             const restricted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
@@ -1167,6 +1175,10 @@ jobs:
             assert.equal(linked.status,200);
             assert.equal((await linked.json()).owner,null);
             assert.equal((await fetch(root+'/cascades/'+cascade._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            assert.equal((await fetch(root+'/cascade-children/'+nested._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            const afterWatchlist=await fetch(root+'/watchlists/'+watchlist._id,{headers:{'x-api-key':'test-audit-key'}});
+            assert.equal(afterWatchlist.status,200);
+            assert.deepEqual((await afterWatchlist.json()).owners,[]);
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
       - name: Print logs on failure
