@@ -2,13 +2,15 @@
 
 const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
 
-// Native Fastify CRUD is deliberately enabled only for plain scalar entities.
-// Advanced entities continue to use the compatibility router until feature parity.
+// Native CRUD supports scalar entities; relationship reads are safe when mutation routes are disabled.
+// Advanced mutations continue through the compatibility router until their invariants are implemented.
 function eligible(entity, spec) {
   return spec.app.framework === 'fastify' && spec.api.rest &&
     !spec.cache.enabled && !spec.storage.enabled &&
     !entity.audit.enabled && !entity.softDelete.enabled &&
-    !entity.fields.some(field => ['reference', 'file'].includes(field.type)) &&
+    !entity.fields.some(field => field.type === 'file') &&
+    (!entity.fields.some(field => field.type === 'reference') ||
+      ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled)) &&
     !Object.values(entity.operations).some(op => op.enabled &&
       (op.transaction || op.populate.length || op.cache.enabled)) &&
     !Object.values((entity.hooks && entity.hooks.before) || {}).some(Boolean) &&
