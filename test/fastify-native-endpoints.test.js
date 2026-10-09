@@ -299,3 +299,24 @@ test('PostgreSQL serializable transactions retry P2034 at most twice', () => {
   assert.match(source, /isolationLevel: "Serializable"/);
   new vm.Script(source);
 });
+
+test('PostgreSQL native hooks are loaded alongside transactional and soft-delete routes', () => {
+  const spec = normalizeSpec({
+    specVersion:'1.0',
+    app:{name:'postgres-hook-parity',framework:'fastify'},
+    database:{type:'postgresql'},
+    entities:{Todo:{
+      fields:{title:{type:'string'}},
+      hooks:{module:'src/hooks/todo.js',before:{create:'beforeCreate'},after:{create:'afterCreate'}},
+      softDelete:{enabled:true},
+      operations:{create:{transaction:true},update:{transaction:true},delete:{transaction:true}}
+    }}
+  });
+  const source=buildFiles(spec).get('src/fastify-crud.js');
+  assert.match(source, /"name":"Todo"/);
+  assert.match(source, /const hooksTodo = require/);
+  assert.match(source, /"Todo": hooksTodo/);
+  assert.match(source, /callHook\(entry, "before", action/);
+  assert.match(source, /callHook\(entry, "after", action/);
+  new vm.Script(source);
+});
