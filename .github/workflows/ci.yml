@@ -1194,7 +1194,7 @@ jobs:
             const restricted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
             assert.equal(restricted.status,409);
             assert.equal((await fetch(root+'/owners/'+owner._id,{headers:{'x-api-key':'test-audit-key'}})).status,200);
-            const dependent=await dependentResponse.json();
+            const dependent=populatedDependent;
             assert.equal((await fetch(root+'/dependents/'+dependent._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}})).status,204);
             const deleted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
             assert.equal(deleted.status,204);
