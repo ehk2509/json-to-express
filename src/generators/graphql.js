@@ -518,7 +518,27 @@ module.exports = function graphqlSource(spec) {
     '  }',
     '}',
     '',
-    'module.exports = {handler, schema, typeDefs};',
+    'async function fastifyHandler(request, reply) {',
+    '  const input = request.method === "GET" ? request.query : request.body;',
+    '  const source = input && input.query;',
+    '  if (!source) return reply.code(400).send({errors: [{message: "GraphQL query is required"}]});',
+    '  try {',
+    '    const loaders = createLoaders();',
+    '    const req = {headers: request.headers, body: request.body, query: request.query, params: request.params, method: request.method, auth: request.raw.auth, id: request.raw.id};',
+    '    let operationType = "unknown";',
+    '    try { const operation = getOperationAST(parse(source), input.operationName); if (operation && operation.operation) operationType = operation.operation; } catch {}',
+    '    const executeGraphql = () => graphql({schema, source, variableValues: input.variables, operationName: input.operationName, contextValue: {req, ...loaders}});',
+    ...(spec.observability.enabled ? [
+      '    const result = await observability.withSpan("graphql " + operationType, {"graphql.operation.type": operationType}, executeGraphql);',
+      '    observability.recordGraphql(operationType, result.errors && result.errors.length ? "error" : "ok");'
+    ] : ['    const result = await executeGraphql();']),
+    '    return reply.code(200).send(result);',
+    '  } catch (error) {',
+    ...(spec.observability.enabled ? ['    observability.recordGraphql("unknown", "error");'] : []),
+    '    return reply.code(500).send({errors: [{message: "GraphQL execution failed"}]});',
+    '  }',
+    '}',
+    'module.exports = {handler, fastifyHandler, schema, typeDefs};',
     ''
   ];
 
