@@ -802,6 +802,13 @@ jobs:
             }
           })().catch(error => {console.error(error);process.exitCode=1;});
           NODE
+      - name: SIGKILL Prisma transaction before and after commit; restart cleanup worker
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          cp ../../test/fixtures/storage-chaos-postgres-kill.js ./storage-chaos-postgres-kill.js
+          node storage-chaos-postgres-kill.js
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
