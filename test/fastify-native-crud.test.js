@@ -349,3 +349,45 @@ test('Mongo recursive delete planner includes nested cascades and many-to-many u
   assert.match(planner, /Cyclic relationship cascade/);
   new vm.Script(planner);
 });
+
+test('native Fastify supports mutation population on both persistence targets', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const input=spec(database);
+    input.entities.User={fields:{name:{type:'string'}}};
+    input.entities.Todo.fields.owner={type:'reference',ref:'User'};
+    input.entities.Todo.operations={
+      create:{populate:['owner'],transaction:true},
+      update:{populate:['owner'],transaction:true},
+      delete:{populate:['owner'],status:200}
+    };
+    const files=buildFiles(normalizeSpec(input));
+    const generated=files.get('src/fastify-crud.js');
+    const pkg=JSON.parse(files.get('package.json'));
+    assert.equal(pkg.dependencies.express,undefined);
+    assert.equal(pkg.dependencies['@fastify/express'],undefined);
+    assert.match(generated,/populateRecord\(entry, record, op.populate\)/);
+    assert.match(generated,/deleteResponse/);
+    assert.match(generated,/include: Object.fromEntries\(fields.map/);
+    new vm.Script(generated);
+  }
+});
+
+test('transactional Fastify multipart mutations no longer require compatibility adapter', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const input=spec(database);
+    input.storage={enabled:true,provider:'local'};
+    input.entities.Todo.fields.photo={type:'file',upload:{mimeTypes:['image/png'],maxBytes:2048}};
+    input.entities.Todo.operations={create:{transaction:true},update:{transaction:true}};
+    const files=buildFiles(normalizeSpec(input));
+    assert.equal(JSON.parse(files.get('package.json')).dependencies['@fastify/express'],undefined);
+    assert.match(files.get('src/fastify-crud.js'),/storage.parseFastifyMultipart/);
+    assert.match(files.get('src/fastify-crud.js'),/storage.cleanup\(storedUploads\)/);
+    new vm.Script(files.get('src/server.js'));
+  }
+});
+
+test('invalid relation population fails native Fastify generation instead of falling back', () => {
+  const input=spec('postgresql');
+  input.entities.Todo.operations={create:{populate:['not_a_reference']}};
+  assert.throws(()=>buildFiles(normalizeSpec(input)),/No Express compatibility fallback is generated/);
+});
