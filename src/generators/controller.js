@@ -159,16 +159,22 @@ function controllerSource(entity, spec) {
       lines.push('    const existingUploadRecord = await ' + entity.name + '.findOne({_id: ' + id + '}).lean();');
     }
     if(entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) input['+js(entity.audit.updatedBy)+'] = req.auth.userId;');
-    lines.push('    let item = await withTransaction('+update.transaction+', async session => {',
+    lines.push('    const outcome = await withTransaction('+update.transaction+', async session => {',
       '      const filter = {_id: '+id+'};');
     if(entity.softDelete.enabled) lines.push('      filter['+js(entity.softDelete.field)+'] = null;');
+    if (hasFiles && update.transaction) lines.push('      const previous = await '+entity.name+'.findOne(filter).session(session);');
     lines.push('      let query = '+entity.name+'.findOneAndUpdate(filter, input, {new: true, runValidators: '+update.runValidators+'});',
-      '      if (session) query = query.session(session);','      return query;','    });',
+      '      if (session) query = query.session(session);',
+      '      const item = await query;');
+    if (hasFiles && update.transaction) lines.push('      const intent = item ? await storage.enqueueCleanupIntent(storage.planReplaced('+js(entity.name)+', previous, req.body), session) : null;','      return {item,intent};');
+    else lines.push('      return {item};');
+    lines.push('    });','    let item = outcome.item;',
       '    if (!item) return res.status('+update.notFoundStatus+').json('+payload(entity.notFoundResponse)+');');
     if(update.populate.length) lines.push('    item = await item.populate('+js(update.populate)+');');
     if (hasFiles) {
-      lines.push('    await storage.cleanupReplaced(' + js(entity.name) + ', existingUploadRecord, input);');
       lines.push('    storage.commitUploads(req);');
+      if (update.transaction) lines.push('    await storage.finishCleanupIntent(outcome.intent);');
+      else lines.push('    await storage.cleanupReplaced(' + js(entity.name) + ', existingUploadRecord, input);');
     }
     lines.push(...hookLines(entity,'after','update','item'));
     if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
@@ -179,7 +185,7 @@ function controllerSource(entity, spec) {
   const remove=entity.operations.delete;
   if(remove.enabled){
     const lines=['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete'),
-      '    const targetId = '+id+';','    const item = await withTransaction('+remove.transaction+', async session => {',
+      '    const targetId = '+id+';','    const outcome = await withTransaction('+remove.transaction+', async session => {',
       ...relationDeleteLines(entity,spec),'      const filter = {_id: targetId};'];
     if(entity.softDelete.enabled){
       lines.push('      filter['+js(entity.softDelete.field)+'] = null;',
@@ -187,9 +193,16 @@ function controllerSource(entity, spec) {
     } else {
       lines.push('      let query = '+entity.name+'.findOneAndDelete(filter);');
     }
-    lines.push('      if (session) query = query.session(session);','      return query;','    });',
+    lines.push('      if (session) query = query.session(session);','      const item = await query;');
+    if (hasFiles && remove.transaction) lines.push('      const intent = item ? await storage.enqueueCleanupIntent(storage.planEntity('+js(entity.name)+', item), session) : null;','      return {item,intent};');
+    else lines.push('      return {item};');
+    lines.push('    });',
+      '    const item = outcome.item;',
       '    if (!item) return res.status('+remove.notFoundStatus+').json('+payload(entity.notFoundResponse)+');');
-    if (hasFiles) lines.push('    await storage.cleanupEntity(' + js(entity.name) + ', item);');
+    if (hasFiles) {
+      if (remove.transaction) lines.push('    await storage.finishCleanupIntent(outcome.intent);');
+      else lines.push('    await storage.cleanupEntity(' + js(entity.name) + ', item);');
+    }
     lines.push(...hookLines(entity,'after','delete','item'));
     if(remove.status===204) lines.push('    res.status(204).end();'); else {
       if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
