@@ -893,6 +893,7 @@ Storage-enabled generated apps now provision an outbox automatically, even when 
 npm run worker                 # long-running retry processor (if separate mode)
 npm run worker:once            # one batch, useful for scheduled jobs
 npm run storage:stats          # pending/processing/dead for storage-only queue
+npm run storage:dead           # up to 20 dead jobs with errors and attempt counts
 npm run storage:retry-dead     # retry only dead storage-cleanup jobs
 npm run storage:reconcile      # read-only inventory, default age >= 24h
 npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25
