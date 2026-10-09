@@ -238,6 +238,25 @@ jobs:
         run: node scripts/e2e-generated-admin.js .tmp/e2e-postgres http://127.0.0.1:3457 id
       - name: Exercise generated PostgreSQL API
         run: node scripts/e2e-generated-postgres.js
+      - name: Verify idempotent relational Prisma fixtures
+        working-directory: .tmp/e2e-postgres
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres
+        run: |
+          npm run db:seed
+          npm run db:seed
+          node - <<'NODE'
+          const {PrismaClient} = require('@prisma/client');
+          const assert = require('node:assert/strict');
+          const prisma = new PrismaClient();
+          (async () => {
+            const categories = await prisma.category.findMany({where: {name: 'Fixture Category'}});
+            const products = await prisma.product.findMany({where: {fixtureKey: 'fixture-prod-1'}, include: {category: true}});
+            assert.equal(categories.length, 1);
+            assert.equal(products.length, 1);
+            assert.equal(products[0].category.name, 'Fixture Category');
+          })().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => prisma.$disconnect());
+          NODE
       - name: Print PostgreSQL generated server log on failure
         if: failure()
         run: cat .tmp/e2e-postgres/server.log || true
