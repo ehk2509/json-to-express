@@ -319,7 +319,17 @@ module.exports = function storageSource(spec) {
     '  }',
     '}',
     '',
-    'module.exports = {uploadMiddleware, parseFastifyMultipart, commitUploads, cleanup, cleanupReplaced, cleanupEntity, enrich, signedUrl, downloadHandler};',
+    'async function fastifyDownload(request, reply) {',
+    ...(spec.storage.provider === 'local' ? [
+      '  const metadata = verifyLocalToken(request.params.token);',
+      '  const target = localPath(metadata.key);',
+      '  try {await fsp.access(target);} catch (error) {if (error.code === "ENOENT") return reply.code(404).send({error: "File not found"}); throw error;}',
+      '  reply.header("Content-Type", metadata.mimeType || "application/octet-stream");',
+      '  reply.header("Content-Disposition", "inline; filename*=UTF-8\\'\\'" + encodeURIComponent(metadata.originalName || path.basename(metadata.key)));',
+      '  return reply.send(fs.createReadStream(target));'
+    ] : ['  return reply.code(404).send({error: "Signed S3 URLs are returned directly"});']),
+    '}',
+    'module.exports = {uploadMiddleware, parseFastifyMultipart, commitUploads, cleanup, cleanupReplaced, cleanupEntity, enrich, signedUrl, downloadHandler, fastifyDownload};',
     ''
   ];
   return lines.join('\n');
