@@ -196,10 +196,19 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    const existing = await ' + delegate + '.findFirst({where: lookup});');
     lines.push('    if (!existing) return res.status(' + update.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     lines.push(...selectionExpression(update));
-    lines.push('    const item = await withTransaction(' + update.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection}));');
     if (hasFiles) {
-      lines.push('    await storage.cleanupReplaced(' + js(entity.name) + ', existing, data);');
+      lines.push('    const committed = await withTransaction(true, async db => {');
+      lines.push('      const current = await db.' + delegateName + '.findFirst({where: lookup});');
+      lines.push('      if (!current) {const error = new Error("Not found");error.statusCode = ' + update.notFoundStatus + ';throw error;}');
+      lines.push('      const updated = await db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection});');
+      lines.push('      const intent = await storage.enqueueCleanupIntent(storage.planReplaced(' + js(entity.name) + ', current, req.body), db);');
+      lines.push('      return {updated, intent};');
+      lines.push('    });');
+      lines.push('    const item = committed.updated;');
       lines.push('    storage.commitUploads(req);');
+      lines.push('    await storage.finishCleanupIntent(committed.intent);');
+    } else {
+      lines.push('    const item = await withTransaction(' + update.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection}));');
     }
     lines.push(...hookLines(entity,'after','update','item',delegate));
     if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
@@ -211,20 +220,25 @@ module.exports = function prismaControllerSource(entity, spec) {
   if (remove.enabled) {
     const requiresRelationTransaction = inboundManyRelations(entity, spec).length > 0;
     const lines = ['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete',null,delegate),'    const targetId = ' + id + ';'];
-    lines.push('    const item = await withTransaction(' + (remove.transaction || requiresRelationTransaction) + ', async db => {');
+    lines.push('    const outcome = await withTransaction(' + (remove.transaction || requiresRelationTransaction || hasFiles) + ', async db => {');
     lines.push('      const lookup = {id: targetId};');
     if (entity.softDelete.enabled) lines.push('      lookup[' + js(entity.softDelete.field) + '] = null;');
     lines.push('      const existing = await db.' + delegateName + '.findFirst({where: lookup});');
     lines.push('      if (!existing) return null;');
     lines.push(...relationDeleteLines(entity, spec));
     if (entity.softDelete.enabled) {
-      lines.push('      return db.' + delegateName + '.update({where: {id: targetId}, data: {' + js(entity.softDelete.field) + ': new Date()}});');
+      lines.push('      const removed = await db.' + delegateName + '.update({where: {id: targetId}, data: {' + js(entity.softDelete.field) + ': new Date()}});');
     } else {
-      lines.push('      return db.' + delegateName + '.delete({where: {id: targetId}});');
+      lines.push('      const removed = await db.' + delegateName + '.delete({where: {id: targetId}});');
     }
+    if (hasFiles) {
+      lines.push('      const intent = await storage.enqueueCleanupIntent(storage.planEntity(' + js(entity.name) + ', existing), db);');
+      lines.push('      return {removed, intent};');
+    } else lines.push('      return {removed};');
     lines.push('    });');
+    lines.push('    const item = outcome && outcome.removed;');
     lines.push('    if (!item) return res.status(' + remove.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
-    if (hasFiles) lines.push('    await storage.cleanupEntity(' + js(entity.name) + ', item);');
+    if (hasFiles) lines.push('    await storage.finishCleanupIntent(outcome.intent);');
     lines.push(...hookLines(entity,'after','delete','item',delegate));
     if (remove.status === 204) lines.push('    res.status(204).end();'); else {
       if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
