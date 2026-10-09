@@ -1088,6 +1088,63 @@ jobs:
             assert.equal(missing.status,404);
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
+      - name: Verify durable Mongo cleanup retry and safe orphan reconciliation
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const cp=require('node:child_process');
+          const connectDatabase=require('./src/config/database');
+          const outbox=require('./src/workflows/outbox');
+          const root=path.resolve('uploaded-files');
+          const dir=path.join(root,'asset','file');
+          const exec=(args) => cp.execFileSync(process.execPath,args,{encoding:'utf8',env:process.env});
+          (async()=>{
+            await connectDatabase();
+            try {
+              fs.mkdirSync(dir,{recursive:true});
+              const old=path.join(dir,'old-orphan.txt');
+              const fresh=path.join(dir,'fresh-orphan.txt');
+              fs.writeFileSync(old,'old');
+              fs.writeFileSync(fresh,'fresh');
+              const oldDate=new Date(Date.now()-49*3600000);
+              fs.utimesSync(old,oldDate,oldDate);
+              let report=JSON.parse(exec(['scripts/storage-reconcile.js']));
+              assert.equal(report.mode,'dry-run');
+              assert.ok(report.keys.includes('asset/file/old-orphan.txt'));
+              assert.ok(!report.keys.includes('asset/file/fresh-orphan.txt'));
+              assert.ok(fs.existsSync(old),'dry run must never delete');
+              assert.throws(()=>exec(['scripts/storage-reconcile.js','--execute','--older-than-hours','1']));
+              report=JSON.parse(exec(['scripts/storage-reconcile.js','--execute']));
+              assert.equal(report.removed,1);
+              assert.equal(fs.existsSync(old),false);
+              assert.ok(fs.existsSync(fresh));
+              // Force a recoverable physical deletion failure, then restart worker.
+              const recoverable=path.join(dir,'recoverable');
+              fs.mkdirSync(recoverable,{recursive:true});
+              fs.writeFileSync(path.join(recoverable,'keep.txt'),'blocked');
+              const intent=await outbox.enqueueJob('__j2e_storage_cleanup__',{
+                values:[{key:'asset/file/recoverable',provider:'local'}]
+              },{config:{queue:'storage',maxAttempts:4,backoffMs:1}});
+              assert.equal((await outbox.storageStats()).pending,1);
+              exec(['src/workflows/worker.js','--once']);
+              assert.equal((await outbox.storageStats()).pending,1);
+              fs.rmSync(recoverable,{recursive:true});
+              fs.writeFileSync(recoverable,'restored');
+              await new Promise(resolve=>setTimeout(resolve,80));
+              exec(['src/workflows/worker.js','--once']);
+              const row=await outbox.Outbox.findById(intent._id);
+              assert.equal(row.status,'done');
+              assert.equal(fs.existsSync(recoverable),false);
+              assert.equal((await outbox.storageStats()).pending,0);
+            } finally {await connectDatabase.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
