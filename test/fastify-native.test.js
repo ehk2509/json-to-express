@@ -37,3 +37,16 @@ test('Express remains unchanged without native file', () => {
   assert.equal(files.has('src/fastify-native.js'), false);
   assert.doesNotMatch(files.get('src/server.js'), /registerNativeRoutes/);
 });
+
+test('Fastify generates native operational routes and correlation hooks', async () => {
+  const input = spec();
+  input.observability = {enabled: true, health: {liveness: {enabled: true, path: '/live'}, readiness: {enabled: true, path: '/ready'}}, metrics: {enabled: true, path: '/metrics'}};
+  const files = buildFiles(normalizeSpec(input));
+  const generated = files.get('src/fastify-native.js');
+  assert.match(generated, /fastify.get\("/live"/);
+  assert.match(generated, /fastify.get\("/ready"/);
+  assert.match(generated, /fastify.get\("/metrics"/);
+  assert.match(generated, /X-Request-Id/);
+  assert.match(generated, /X-Content-Type-Options/);
+  new vm.Script(generated);
+});
