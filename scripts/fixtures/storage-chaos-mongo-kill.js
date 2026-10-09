@@ -65,7 +65,9 @@ async function main() {
         await storage.cleanup([{key:meta.key,provider:'local'}]);
         assert.equal(fs.existsSync(meta.file),false,'repeated physical delete is idempotent');
       }
-      await Owner.deleteOne({_id:owner._id});
+      // The killed pre-commit session may keep its document lock until
+      // MongoDB expires the orphaned transaction. Avoid blocking the next case.
+      if(stage==='after-commit') await Owner.deleteOne({_id:owner._id});
     }
   } finally {await connect.disconnect();}
 }
