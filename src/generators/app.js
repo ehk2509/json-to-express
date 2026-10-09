@@ -10,7 +10,7 @@ function appSource(spec) {
   });
   if (spec.endpoints.length) imports.push('const CustomRoutes = require(' + js(relativeRequire(appPath, filePaths(spec).endpointRoutes)) + ');');
   if (spec.auth.routesEnabled) imports.push('const AuthRoutes = require(' + js(relativeRequire(appPath, filePaths(spec).authRoutes)) + ');');
-  const middlewareImports = spec.app.middlewareModules.map((modulePath, index) =>
+  const middlewareImports = (spec.app.framework === 'fastify' ? [] : spec.app.middlewareModules).map((modulePath, index) =>
     'const customMiddleware' + index + ' = require(' + js(relativeRequire(appPath, modulePath)) + ');'
   );
   const prodImports = [];
@@ -38,7 +38,7 @@ function appSource(spec) {
   if (spec.app.production.compression) middleware.push('app.use(compression());');
   if (spec.app.express.json.enabled) middleware.push('app.use(express.json({limit: ' + js(spec.app.express.json.limit) + '}));');
   if (spec.app.express.urlencoded.enabled) middleware.push('app.use(express.urlencoded({extended: ' + spec.app.express.urlencoded.extended + ', limit: ' + js(spec.app.express.urlencoded.limit) + '}));');
-  spec.app.middlewareModules.forEach((unused, index) => middleware.push('app.use(customMiddleware' + index + ');'));
+  if (spec.app.framework !== 'fastify') spec.app.middlewareModules.forEach((unused, index) => middleware.push('app.use(customMiddleware' + index + ');'));
 
   const health = spec.app.health.enabled
     ? ['app.get(' + js(spec.app.health.path) + ', (req, res) => res.status(' + spec.app.health.status + ').json(' + js(spec.app.health.response) + '));']
