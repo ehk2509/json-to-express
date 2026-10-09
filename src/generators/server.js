@@ -28,7 +28,11 @@ function serverSource(spec) {
     ] : []),
     ...(spec.app.framework === 'fastify' ? [
       '  await fastify.register(fastifyExpress);',
-      '  fastify.use(app);',
+      '  fastify.use((req, res, next) => {',
+      '    const pathname = String(req.url).split("?")[0];',
+      '    if (registerNativeRoutes.matches(req.method, pathname) || registerNativeCrud.matches(req.method, pathname)) return next();',
+      '    app(req, res, next);',
+      '  });',
       '  registerNativeRoutes(fastify);',
       '  registerNativeCrud(fastify);',
       '  await fastify.listen({port, host});',
