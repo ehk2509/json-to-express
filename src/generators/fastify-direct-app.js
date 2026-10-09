@@ -8,7 +8,7 @@ module.exports = function directFastifyAppSource(spec) {
   const nativeModules = ['fastify-native', 'fastify-crud', 'fastify-endpoints', 'fastify-auth'];
   return [
     "'use strict';",
-    "const fastify = require('fastify')({logger: false});",
+    "const fastify = require('fastify')({logger: false" + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});',
     ...(spec.storage.enabled ? ["fastify.register(require('@fastify/multipart'));"] : []),
     ...nativeModules.map((name, i) =>
       'const register' + i + ' = require(' + js(relativeRequire(appPath, require('node:path').posix.join(root, name + '.js'))) + ');'),
