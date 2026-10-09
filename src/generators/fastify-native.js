@@ -9,6 +9,7 @@ module.exports = function fastifyNativeSource(spec) {
     '',
     ...(spec.app.production.requestId ? ["const crypto = require('node:crypto');"] : []),
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(nativePath, filePaths(spec).observability)) + ');'] : []),
+    ...(spec.api.graphql.enabled ? ['const graphqlApi = require(' + js(relativeRequire(nativePath, filePaths(spec).graphql)) + ');'] : []),
     '',
     'module.exports = function registerNativeRoutes(fastify) {'
   ];
@@ -66,6 +67,7 @@ module.exports = function fastifyNativeSource(spec) {
       '  });'
     );
   }
+  if (spec.api.graphql.enabled) lines.push('  fastify.route({method: ["GET", "POST"], url: ' + js(spec.api.graphql.path) + ', handler: graphqlApi.fastifyHandler});');
   const nativeGetPaths = [
     ...(spec.app.health.enabled ? [spec.app.health.path] : []),
     ...(spec.observability.health.liveness.enabled ? [spec.observability.health.liveness.path] : []),
@@ -78,6 +80,6 @@ module.exports = function fastifyNativeSource(spec) {
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
     '  });'
   );
-  lines.push('};', 'module.exports.matches = (method, pathname) => method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname);', '');
+  lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');
   return lines.join('\n');
 };
