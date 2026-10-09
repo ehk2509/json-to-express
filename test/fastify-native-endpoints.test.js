@@ -150,6 +150,7 @@ test('native middleware lifecycle hooks register and execute on native routes', 
   const required = name => {
     if (name === 'dotenv') return {config: () => {}};
     if (name === 'fastify') return () => fakeFastify;
+    if (name === '@fastify/express') return async () => {};
     if (name.includes('check')) return middleware;
     if (name.includes('environment')) return () => {};
     if (name.includes('database')) return Object.assign(async () => {}, {disconnect: async () => {}});
