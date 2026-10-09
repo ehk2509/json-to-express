@@ -8,6 +8,7 @@ const {js} = require('./utils');
 module.exports = function postgresDeleteSource(spec) {
   const entities = Object.fromEntries(spec.entities.map(entity => [entity.name, {
     softDelete: entity.softDelete,
+    fileFields: entity.fields.filter(field => field.type === 'file').map(field => field.name),
     references: entity.fields.filter(field => field.type === 'reference').map(field => ({
       name:field.name, ref:field.ref, many: Boolean(field.many), onDelete:field.onDelete
     }))
@@ -25,13 +26,14 @@ module.exports = function postgresDeleteSource(spec) {
     'const delegateName = name => name[0].toLowerCase() + name.slice(1);',
     'function conflict(message) { const error = new Error(message); error.statusCode = 409; return error; }',
     'function missing() { const error = new Error("Not found"); error.code = "P2025"; return error; }',
-    'async function remove(db, name, id, active, visited = new Set(), forceHard = !entities[name].softDelete.enabled) {',
+    'async function remove(db, name, id, active, visited, forceHard, values) {',
     '  const meta = entities[name];',
     '  if (!meta) throw new Error("Unknown deletion entity: " + name);',
     '  const delegate = db[delegateName(name)];',
     '  const where = {id, ...(!forceHard && meta.softDelete.enabled ? {[meta.softDelete.field]: null} : {})};',
     '  const current = await delegate.findFirst({where});',
     '  if (!current) {if (active) throw missing(); return;}',
+    '  for (const field of meta.fileFields) {const entry = current[field]; if (Array.isArray(entry)) values.push(...entry.filter(Boolean)); else if (entry) values.push(entry);}',
     '  const key = name + ":" + id;',
     '  if (visited.has(key)) throw conflict("Cyclic relationship cascade");',
     '  visited.add(key);',
@@ -47,7 +49,7 @@ module.exports = function postgresDeleteSource(spec) {
     '      if (relation.many) {for (const item of related) await child.update({where: {id: item.id}, data: {[relation.field]: {disconnect: [{id}]}}});}',
     '      else await child.updateMany({where: condition, data: {[relation.field + "Id"]: null}});',
     '    } else if (relation.onDelete === "cascade") {',
-    '      for (const item of related) await remove(db, relation.model, item.id, false, visited, forceHard);',
+    '      for (const item of related) await remove(db, relation.model, item.id, false, visited, forceHard, values);',
     '    } else throw conflict("Unsupported delete policy for " + relation.model + "." + relation.field);',
     '  }',
     '  if (meta.softDelete.enabled && !forceHard) {',
@@ -55,7 +57,11 @@ module.exports = function postgresDeleteSource(spec) {
     '  } else await delegate.delete({where: {id}});',
     '  visited.delete(key);',
     '}',
-    'module.exports = async (db, name, id) => remove(db, name, id, true);',
+    'module.exports = async (db, name, id) => {',
+    '  const values = [];',
+    '  await remove(db, name, id, true, new Set(), !entities[name].softDelete.enabled, values);',
+    '  return values;',
+    '};',
     ''
   ].join('\n');
 };

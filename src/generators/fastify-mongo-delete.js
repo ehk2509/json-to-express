@@ -5,7 +5,8 @@ const {js} = require('./utils');
 // Source for recursive, session-bound native MongoDB referential deletions.
 module.exports = function mongoDeleteSource(spec) {
   const entities = Object.fromEntries(spec.entities.map(entity => [entity.name, {
-    softDelete: entity.softDelete
+    softDelete: entity.softDelete,
+    fileFields: entity.fields.filter(field => field.type === 'file').map(field => field.name)
   }]));
   const inbound = Object.fromEntries(spec.entities.map(target => [target.name,
     spec.entities.flatMap(source => source.fields.filter(field =>
@@ -19,13 +20,14 @@ module.exports = function mongoDeleteSource(spec) {
     'const inbound = ' + js(inbound) + ';',
     'function conflict(message) {const error = new Error(message);error.statusCode=409;return error;}',
     'module.exports = async function mongoDelete(models, rootName, rootId, session) {',
-    '  async function remove(name, id, active, seen, forceHard) {',
+    '  async function remove(name, id, active, seen, forceHard, values) {',
     '    const entry = entities[name];',
     '    const model = models[name];',
     '    if (!entry || !model) throw new Error("Unknown MongoDB delete model: " + name);',
     '    const where = {_id: id, ...(!forceHard && entry.softDelete.enabled ? {[entry.softDelete.field]: null} : {})};',
     '    const current = await model.findOne(where).session(session || null);',
     '    if (!current) {if (active) {const error = new Error("Not found");error.statusCode=404;throw error;} return;}',
+    '    for (const field of entry.fileFields) {const value = current[field]; if (Array.isArray(value)) values.push(...value.filter(Boolean)); else if (value) values.push(value);}',
     '    const key = name + ":" + String(id);',
     '    if (seen.has(key)) throw conflict("Cyclic relationship cascade");',
     '    seen.add(key);',
@@ -41,7 +43,7 @@ module.exports = function mongoDeleteSource(spec) {
     '        await child.updateMany(filter, relation.many ? {$pull: {[relation.field]: id}} : {$set: {[relation.field]: null}}, session ? {session} : {});',
     '      } else if (relation.onDelete === "cascade") {',
     '        const dependents = await child.find(filter).select("_id").session(session || null);',
-    '        for (const dependent of dependents) await remove(relation.model, dependent._id, false, seen, forceHard);',
+    '        for (const dependent of dependents) await remove(relation.model, dependent._id, false, seen, forceHard, values);',
     '      } else throw conflict("Unsupported delete policy for " + relation.model + "." + relation.field);',
     '    }',
     '    if (entry.softDelete.enabled && !forceHard) {',
@@ -49,7 +51,9 @@ module.exports = function mongoDeleteSource(spec) {
     '    } else await model.findOneAndDelete(where, session ? {session} : {});',
     '    seen.delete(key);',
     '  }',
-    '  return remove(rootName, rootId, true, new Set(), !entities[rootName].softDelete.enabled);',
+    '  const values = [];',
+    '  await remove(rootName, rootId, true, new Set(), !entities[rootName].softDelete.enabled, values);',
+    '  return values;',
     '};',
     ''
   ].join('\n');

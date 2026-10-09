@@ -74,7 +74,7 @@ test('post-commit deletion records intent before physical IO and releases failed
   const events = [];
   const record = {id:'job1',attempts:0,maxAttempts:8};
   const outbox = {
-    enqueueJob: async (name, payload, options) => {events.push('enqueue'); assert.equal(name,'__j2e_storage_cleanup__'); assert.equal(options.config.queue,'storage'); return record;},
+    enqueueJob: async (name, payload, options) => {events.push('enqueue'); assert.equal(name,'__j2e_storage_cleanup__'); assert.equal(options.config.queue,'storage'); return {...record,payload};},
     markDone: async () => {events.push('done');},
     markFailed: async () => {events.push('failed');}
   };
@@ -107,4 +107,101 @@ test('storage observability includes queue backlog metrics and Prometheus alerts
   assert.match(alerts,/svc_storage_cleanup_pending > 100/);
   assert.match(metrics,/storage_cleanup_dead/);
   assert.match(metrics,/storage_cleanup_pending/);
+});
+
+test('transactional storage cleanup inserts job through Prisma tx and Mongo session', async () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const source = buildFiles(makeSpec(database)).get('src/config/storage.js');
+    const queued = [];
+    const outbox = {
+      enqueueJob: async (name, payload, options) => {
+        queued.push({name, payload, options});
+        return {payload, id:'intent', attempts:0, maxAttempts:8};
+      },
+      markDone:async () => {},
+      markFailed:async () => {}
+    };
+    const dependencies = name => {
+      if (name === 'node:crypto') return require('node:crypto');
+      if (name === 'node:path') return path;
+      if (name === 'node:fs') return require('node:fs');
+      if (name === 'node:fs/promises') return require('node:fs/promises');
+      if (name === 'multer') return Object.assign(() => ({}), {memoryStorage:() => ({})});
+      if (name.endsWith('/outbox')) return outbox;
+      throw new Error('Unexpected require ' + name);
+    };
+    const module={exports:{}};
+    vm.runInNewContext(source,{module,require:dependencies,process,console,Buffer,setTimeout});
+    const tx={transactionId:'active'};
+    const pending=await module.exports.enqueueCleanupIntent([{key:'asset/file/old.txt',provider:'local'}],tx);
+    assert.equal(queued.length,1);
+    assert.equal(queued[0].name,'__j2e_storage_cleanup__');
+    assert.equal(queued[0].options.config.queue,'storage');
+    assert.equal(queued[0].options[database==='postgresql'?'db':'session'],tx);
+    assert.equal(pending.payload.values[0].key,'asset/file/old.txt');
+    assert.equal(await module.exports.enqueueCleanupIntent([],tx),null);
+    assert.equal(queued.length,1);
+  }
+});
+
+test('atomic cleanup planner only schedules unreferenced old fields', () => {
+  const source=buildFiles(makeSpec()).get('src/config/storage.js');
+  const module={exports:{}};
+  const dependencies=name=>{
+    if (name === 'node:crypto') return require('node:crypto');
+    if (name === 'node:path') return path;
+    if (name === 'node:fs') return require('node:fs');
+    if (name === 'node:fs/promises') return require('node:fs/promises');
+    if (name === 'multer') return Object.assign(() => ({}), {memoryStorage:() => ({})});
+    if (name.endsWith('/outbox')) return {};
+    throw new Error('Unexpected require '+name);
+  };
+  vm.runInNewContext(source,{module,require:dependencies,process,console,Buffer,setTimeout});
+  const a={key:'asset/file/previous.txt',provider:'local'},b={key:'asset/file/current.txt',provider:'local'};
+  assert.deepEqual(Array.from(module.exports.planReplaced('Asset',{file:a},{file:b})).map(x=>x.key),[a.key]);
+  assert.equal(module.exports.planReplaced('Asset',{file:a},{name:'unchanged'}).length,0);
+  assert.deepEqual(Array.from(module.exports.planEntity('Asset',{file:b})).map(x=>x.key),[b.key]);
+});
+
+test('Express PostgreSQL and MongoDB controllers use transactional cleanup intents', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const raw = {
+      specVersion:'1.0',app:{name:'legacy-atomic',framework:'express'},database:{type:database},
+      storage:{enabled:true,provider:'local'},
+      entities:{Asset:{
+        fields:{name:{type:'string'},file:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}}},
+        operations:{update:{transaction:true},delete:{transaction:true}}
+      }}
+    };
+    const files=buildFiles(normalizeSpec(raw));
+    const source=files.get('src/controllers/AssetController.js');
+    assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
+    assert.match(source,/storage.enqueueCleanupIntent\(storage.planEntity/);
+    assert.match(source,/storage.finishCleanupIntent/);
+    assert.match(source,/withTransaction\(/);
+    if (database === 'mongodb') assert.match(source,/mongoCanTransact\(\)/);
+    new vm.Script(source);
+  }
+});
+
+test('recursive delete planners collect file references from cascaded descendants', () => {
+  for(const database of ['mongodb','postgresql']) {
+    const spec=normalizeSpec({
+      specVersion:'1.0',app:{name:'cascade-intents',framework:'fastify'},
+      database:{type:database},storage:{enabled:true,provider:'local'},
+      entities:{
+        Parent:{fields:{title:{type:'string'}},softDelete:{enabled:true}},
+        Child:{fields:{parent:{type:'reference',ref:'Parent',onDelete:'cascade'},
+          attachment:{type:'file',upload:{mimeTypes:['image/png'],maxBytes:1024}}}}
+      }
+    });
+    const files=buildFiles(spec);
+    const planner=files.get(database==='mongodb'?'src/fastify-mongo-delete.js':'src/fastify-postgres-delete.js');
+    const crud=files.get('src/fastify-crud.js');
+    assert.match(planner,/fileFields/);
+    assert.match(planner,/values.push/);
+    assert.match(planner,/return values/);
+    assert.match(crud,/storage.enqueueCleanupIntent\(affected, (session|tx)\)/);
+    new vm.Script(planner);
+  }
 });

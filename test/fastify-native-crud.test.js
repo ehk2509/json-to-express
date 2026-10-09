@@ -129,7 +129,7 @@ test('native Fastify local storage routes use multipart parser and cleanup', () 
   const native = files.get('src/fastify-crud.js');
   assert.match(native, /storage.parseFastifyMultipart/);
   assert.match(native, /storage.cleanupReplaced/);
-  assert.match(native, /storage.cleanupEntity/);
+  assert.match(native, /storage.enqueueCleanupIntent\(affected/);
   assert.match(files.get('src/app.js'), /@fastify\/multipart/);
   assert.ok(JSON.parse(files.get('package.json')).dependencies['@fastify/multipart']);
   assert.match(files.get('src/config/storage.js'), /async function parseFastifyMultipart/);
@@ -403,8 +403,11 @@ test('native Fastify storage only compensates uploads before commit and retries 
   const storage=files.get('src/config/storage.js');
   assert.match(source,/storedUploads = \[\]; \/\/ Database has committed/);
   assert.match(source,/storedUploads = \[\]; \/\/ Never compensate a committed database write/);
-  assert.match(source,/storage.cleanupReplaced/);
-  assert.match(source,/storage.cleanupEntity/);
+  assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
+  assert.match(source,/storage.enqueueCleanupIntent\(affected/);
+  assert.match(source,/storage.finishCleanupIntent\(cleanupIntent\)/);
+  assert.match(source,/storage.finishCleanupIntent\(deleteCleanupIntent\)/);
+  assert.match(storage,/async function enqueueCleanupIntent\(values, tx = null\)/);
   assert.match(storage,/async function cleanupAfterCommit/);
   assert.match(storage,/attempt < 3/);
   new vm.Script(source);
