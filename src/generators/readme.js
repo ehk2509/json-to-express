@@ -56,7 +56,7 @@ module.exports = function readmeSource(spec) {
     'Check drift/status: `npm run db:migrate:status`. `db:push` is for disposable development databases only.',
     'Never edit previously applied migration SQL. Use a new migration for changes. `db:push` is for disposable development databases.', ''
   );
-  if (spec.database.type === 'postgresql' && Object.keys(spec.seeds).length) deployment.push(
+  if (spec.database.type === 'postgresql' && (Object.keys(spec.seeds).length || Object.keys(spec.factories).length || Object.keys(spec.fixtures).length)) deployment.push(
     '## Declarative seed data', '',
     'Run `npm run db:seed` after migration deployment. Duplicate protection depends on unique indexes. Do not run sample seeds against sensitive production data.', ''
   );
