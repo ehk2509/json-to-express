@@ -998,6 +998,7 @@ jobs:
           const fs = require('node:fs');
           const input = JSON.parse(fs.readFileSync('examples/e2e-s3.json','utf8'));
           input.app.framework = 'fastify';
+          input.outbox = {worker: 'separate'};
           input.app.port = 3495;
           input.generation.outputDir = '.tmp/fastify-s3';
           fs.writeFileSync('/tmp/fastify-s3-spec.json',JSON.stringify(input));
@@ -1020,6 +1021,55 @@ jobs:
           echo $! > server.pid
       - name: Exercise generated S3 storage
         run: E2E_S3_BASE_URL=http://127.0.0.1:3495 node scripts/e2e-generated-s3.js
+      - name: Verify persistent S3 deletion after outage and worker restart
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+        run: |
+          node - <<'NODE'
+          const {S3Client,PutObjectCommand,HeadObjectCommand}=require('@aws-sdk/client-s3');
+          const client=new S3Client({region:'us-east-1',endpoint:process.env.S3_ENDPOINT,forcePathStyle:true,credentials:{accessKeyId:'test',secretAccessKey:'test'}});
+          (async()=>{await client.send(new PutObjectCommand({Bucket:'j2e-e2e',Key:'assets/files/recover-after-outage.txt',Body:'durable'}));})()
+            .catch(error=>{console.error(error);process.exitCode=1;})
+            .finally(()=>client.destroy());
+          NODE
+          S3_ENDPOINT=http://127.0.0.1:9091 node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const db=require('./src/config/database');
+          const storage=require('./src/config/storage');
+          const outbox=require('./src/workflows/outbox');
+          (async()=>{
+            await db();
+            try {
+              const success=await storage.cleanupAfterCommit([{key:'assets/files/recover-after-outage.txt',provider:'s3'}]);
+              assert.equal(success,false,'S3 service unavailable through broken endpoint');
+              assert.equal((await outbox.storageStats()).pending,1,'cleanup intent persisted in MongoDB');
+            } finally {await db.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
+          sleep 2
+          node src/workflows/worker.js --once
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const db=require('./src/config/database');
+          const outbox=require('./src/workflows/outbox');
+          const {S3Client,HeadObjectCommand}=require('@aws-sdk/client-s3');
+          (async()=>{
+            await db();
+            try {
+              assert.equal((await outbox.storageStats()).pending,0);
+              const client=new S3Client({region:'us-east-1',endpoint:process.env.S3_ENDPOINT,forcePathStyle:true,credentials:{accessKeyId:'test',secretAccessKey:'test'}});
+              try {
+                await assert.rejects(client.send(new HeadObjectCommand({Bucket:'j2e-e2e',Key:'assets/files/recover-after-outage.txt'})),error=>error.$metadata && error.$metadata.httpStatusCode===404);
+              } finally {client.destroy();}
+            } finally {await db.disconnect();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
@@ -1046,6 +1096,7 @@ jobs:
           input.app.framework = 'fastify';
           input.app.port = 3494;
           input.storage.provider = 'local';
+          input.outbox = {worker: 'separate'};
           input.storage.local = {directory: 'uploaded-files'};
           input.generation.outputDir = '.tmp/fastify-local-files';
           fs.writeFileSync('/tmp/fastify-local-files.json',JSON.stringify(input));
