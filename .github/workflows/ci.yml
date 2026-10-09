@@ -675,6 +675,67 @@ jobs:
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
 
+  generated-fastify-oidc-provider-e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate native OIDC Fastify application
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const spec = {
+            specVersion:'1.0',
+            generation:{outputDir:'.tmp/fastify-oidc-provider'},
+            app:{name:'fastify-oidc-provider',framework:'fastify',port:3503,host:'127.0.0.1'},
+            database:{type:'mongodb'},
+            auth:{enabled:true,strategies:['oidc','jwt'],
+              jwt:{secretEnv:'JWT_SECRET'},
+              oidc:{enabled:true,issuer:'http://127.0.0.1:3502',clientIdEnv:'OIDC_CLIENT_ID'}
+            },
+            entities:{Todo:{fields:{title:{type:'string'}},operations:{
+              list:{auth:{required:true,strategies:['oidc']}}
+            }}}
+          };
+          fs.writeFileSync('/tmp/fastify-oidc-provider.json',JSON.stringify(spec));
+          NODE
+          node bin/json-to-express.js generate /tmp/fastify-oidc-provider.json
+      - name: Install and inspect generated native OIDC app
+        working-directory: .tmp/fastify-oidc-provider
+        run: |
+          npm install --no-audit --no-fund
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const pkg=require('./package.json');
+          assert.equal(pkg.dependencies.express,undefined);
+          assert.equal(pkg.dependencies['@fastify/express'],undefined);
+          NODE
+      - name: Test end-to-end OIDC provider exchange
+        working-directory: .tmp/fastify-oidc-provider
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_native_oidc
+          OIDC_CLIENT_ID: ci-oidc-client
+          JWT_SECRET: ci-native-oidc-secret-at-least-32-characters
+          PORT: 3503
+          HOST: 127.0.0.1
+        run: |
+          npm start > server.log 2>&1 &
+          for attempt in {1..45}; do
+            if curl -fsS http://127.0.0.1:3503/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node ../../scripts/e2e-fastify-oidc.js
+      - name: Print OIDC app logs on failure
+        if: failure()
+        run: cat .tmp/fastify-oidc-provider/server.log || true
+
   generated-fastify-auth-e2e:
     runs-on: ubuntu-latest
     services:
