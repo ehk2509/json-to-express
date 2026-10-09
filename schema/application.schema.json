@@ -265,11 +265,6 @@
           },
           "default": []
         },
-        "fastifyMiddlewareOnly": {
-          "type": "boolean",
-          "default": false,
-          "description": "Require native Fastify lifecycle exports from custom middleware modules to enable adapter-free generation."
-        },
         "production": {
           "type": "object",
           "additionalProperties": false,
