@@ -16,6 +16,7 @@ function eligible(entity, spec) {
     (!entity.fields.some(field => field.type === 'file') ||
       (spec.storage.enabled && !entity.operations.create.transaction && !entity.operations.update.transaction)) &&
     (!entity.fields.some(field => field.type === 'reference') ||
+      spec.database.type === 'mongodb' ||
       ['create', 'update', 'delete'].every(name => !entity.operations[name].enabled) ||
       (spec.database.type === 'postgresql' &&
         (!entity.operations.delete.enabled || safePrismaDelete(entity, spec)) &&
