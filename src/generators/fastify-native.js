@@ -24,7 +24,19 @@ module.exports = function fastifyNativeSource(spec) {
       '    reply.header("X-Request-Id", request.raw.id);'
     );
     if (spec.app.production.cors.enabled) lines.push(
-      '    reply.header("Access-Control-Allow-Origin", ' + js(spec.app.production.cors.origin) + ');'
+      '    const allowedOrigin = ' + js(spec.app.production.cors.origin) + ';',
+      '    const origin = request.headers.origin;',
+      '    const acceptedOrigin = Array.isArray(allowedOrigin) ? (allowedOrigin.includes(origin) ? origin : null) : (allowedOrigin === "*" ? "*" : (origin === allowedOrigin ? origin : null));',
+      '    if (acceptedOrigin) {',
+      '      reply.header("Access-Control-Allow-Origin", acceptedOrigin);',
+      '      if (acceptedOrigin !== "*") reply.header("Vary", "Origin");',
+      '    }',
+      '    if (request.method === "OPTIONS" && request.headers["access-control-request-method"]) {',
+      '      if (!acceptedOrigin) return reply.code(403).send({error: "CORS origin rejected"});',
+      '      reply.header("Access-Control-Allow-Methods", request.headers["access-control-request-method"]);',
+      '      reply.header("Access-Control-Allow-Headers", request.headers["access-control-request-headers"] || "Content-Type, Authorization");',
+      '      return reply.code(204).send();',
+      '    }'
     );
     lines.push('  });');
   }
@@ -60,6 +72,12 @@ module.exports = function fastifyNativeSource(spec) {
     ...(spec.observability.health.readiness.enabled ? [spec.observability.health.readiness.path] : []),
     ...(spec.observability.metrics.enabled ? [spec.observability.metrics.path] : [])
   ];
+  lines.push(
+    '  fastify.setErrorHandler((error, request, reply) => {',
+    '    const status = error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500;',
+    '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
+    '  });'
+  );
   lines.push('};', 'module.exports.matches = (method, pathname) => method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname);', '');
   return lines.join('\n');
 };
