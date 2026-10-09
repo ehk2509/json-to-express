@@ -818,7 +818,9 @@ jobs:
             entities:{
               Owner:{fields:{name:{type:'string',required:true}},softDelete:{enabled:true},audit:{enabled:true},hooks:{module:'src/hooks/owner.js',before:{create:'preCreate'},after:{create:'postCreate'}},
                 operations:{create:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},update:{transaction:true,auth:{required:true,strategies:['apiKey'],roles:['admin']}},delete:{transaction:true}}},
-              Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}}}
+              Dependent:{fields:{title:{type:'string'},owner:{type:'reference',ref:'Owner',onDelete:'restrict'}}},
+              Link:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'nullify'}}},
+              Cascade:{fields:{owner:{type:'reference',ref:'Owner',onDelete:'cascade'}}}
             }
           };
           fs.writeFileSync('/tmp/fastify-mongo-transaction.json',JSON.stringify(spec));
@@ -861,6 +863,12 @@ jobs:
             const updated=await send('/owners/'+owner._id,'PATCH',{name:'New name'});
             assert.equal(updated.status,200);
             assert.equal((await updated.json()).updatedBy,'auditor');
+            const linkResponse=await send('/links','POST',{owner:owner._id});
+            assert.equal(linkResponse.status,201);
+            const link=await linkResponse.json();
+            const cascadeResponse=await send('/cascades','POST',{owner:owner._id});
+            assert.equal(cascadeResponse.status,201);
+            const cascade=await cascadeResponse.json();
             const dependentResponse=await send('/dependents','POST',{title:'Dependent',owner:owner._id});
             assert.equal(dependentResponse.status,201);
             const restricted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
@@ -871,6 +879,10 @@ jobs:
             const deleted=await fetch(root+'/owners/'+owner._id,{method:'DELETE',headers:{'x-api-key':'test-audit-key'}});
             assert.equal(deleted.status,204);
             assert.equal((await fetch(root+'/owners/'+owner._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
+            const linked=await fetch(root+'/links/'+link._id,{headers:{'x-api-key':'test-audit-key'}});
+            assert.equal(linked.status,200);
+            assert.equal((await linked.json()).owner,null);
+            assert.equal((await fetch(root+'/cascades/'+cascade._id,{headers:{'x-api-key':'test-audit-key'}})).status,404);
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
       - name: Print logs on failure
