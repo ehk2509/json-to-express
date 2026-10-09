@@ -325,7 +325,7 @@ module.exports = function storageSource(spec) {
       '  const target = localPath(metadata.key);',
       '  try {await fsp.access(target);} catch (error) {if (error.code === "ENOENT") return reply.code(404).send({error: "File not found"}); throw error;}',
       '  reply.header("Content-Type", metadata.mimeType || "application/octet-stream");',
-      '  reply.header("Content-Disposition", "inline; filename*=UTF-8\\'\\'" + encodeURIComponent(metadata.originalName || path.basename(metadata.key)));',
+      '  reply.header("Content-Disposition", "inline; filename*=UTF-8" + String.fromCharCode(39, 39) + encodeURIComponent(metadata.originalName || path.basename(metadata.key)));',
       '  return reply.send(fs.createReadStream(target));'
     ] : ['  return reply.code(404).send({error: "Signed S3 URLs are returned directly"});']),
     '}',
