@@ -166,6 +166,10 @@
             "directory": "products/attachments",
             "preserveExtension": true
           }
+        },
+        "fixtureKey": {
+          "type": "string",
+          "unique": true
         }
       }
     },
@@ -580,5 +584,34 @@
     "local": {
       "directory": "uploads"
     }
+  },
+  "fixtures": {
+    "Product": [
+      {
+        "where": {
+          "fixtureKey": "fixture-prod-1"
+        },
+        "data": {
+          "fixtureKey": "fixture-prod-1",
+          "name": "Fixture Product",
+          "price": 25,
+          "category": {
+            "where": {
+              "name": "Fixture Category"
+            }
+          }
+        }
+      }
+    ],
+    "Category": [
+      {
+        "where": {
+          "name": "Fixture Category"
+        },
+        "data": {
+          "name": "Fixture Category"
+        }
+      }
+    ]
   }
 }

@@ -634,6 +634,51 @@ function validateSpec(inputSpec) {
     }
   }
 
+  if (spec.fixtures && isObject(spec.fixtures)) {
+    if (!spec.database || spec.database.type !== 'postgresql') errors.push('fixtures require postgresql');
+    const dependencies = new Map();
+    for (const [entityName, rows] of Object.entries(spec.fixtures)) {
+      const entity = spec.entities && spec.entities[entityName];
+      if (!entity) { errors.push('fixtures.' + entityName + ' references unknown entity'); continue; }
+      const deps = new Set();
+      dependencies.set(entityName, deps);
+      if (!Array.isArray(rows)) continue;
+      for (const [index, row] of rows.entries()) {
+        if (!isObject(row) || !isObject(row.where) || !isObject(row.data)) continue;
+        const keys = Object.keys(row.where);
+        if (keys.length !== 1 || !entity.fields[keys[0]] || entity.fields[keys[0]].unique !== true) {
+          errors.push('fixtures.' + entityName + '[' + index + '].where must select one declared unique scalar field');
+        }
+        for (const [key, value] of Object.entries(row.data)) {
+          const field = entity.fields[key];
+          if (!field || field.type === 'file') { errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' is unsupported'); continue; }
+          if (field.type === 'reference') {
+            if (field.many || !isObject(value) || !isObject(value.where) || Object.keys(value.where).length !== 1) {
+              errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' requires a single reference where selector');
+              continue;
+            }
+            const target = spec.entities[field.ref];
+            const refKey = Object.keys(value.where)[0];
+            if (!target || !target.fields[refKey] || target.fields[refKey].unique !== true) errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' requires target unique field');
+            deps.add(field.ref);
+          }
+        }
+      }
+    }
+    const visiting = new Set(), visited = new Set();
+    function visit(name) {
+      if (visiting.has(name)) { errors.push('fixtures dependency cycle at ' + name); return; }
+      if (visited.has(name)) return;
+      visiting.add(name);
+      for (const dep of dependencies.get(name) || []) {
+        if (!dependencies.has(dep)) errors.push('fixtures.' + name + ' requires fixture rows for dependency ' + dep);
+        else visit(dep);
+      }
+      visiting.delete(name);
+      visited.add(name);
+    }
+    for (const name of dependencies.keys()) visit(name);
+  }
   if (spec.factories && isObject(spec.factories)) {
     if (!spec.database || spec.database.type !== 'postgresql') errors.push('factories are currently supported only for postgresql');
     for (const [entityName, config] of Object.entries(spec.factories)) {

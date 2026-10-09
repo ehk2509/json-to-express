@@ -265,6 +265,23 @@ Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by en
 }
 ~~~
 
+Relational PostgreSQL fixtures can be declared separately from simple seeds and factories:
+
+~~~json
+{
+  "fixtures": {
+    "Category": [
+      {"where": {"name": "Hardware"}, "data": {"name": "Hardware"}}
+    ],
+    "Product": [
+      {"where": {"sku": "SKU-1"}, "data": {"sku": "SKU-1", "category": {"where": {"name": "Hardware"}}}}
+    ]
+  }
+}
+~~~
+
+The generated seed runner uses Prisma `upsert` for these fixtures, resolves references through unique-key lookups, and orders entity batches by relation dependencies. Selectors must use declared unique scalar fields; cycles, unsupported fields and missing dependency batches fail validation. These fixtures currently support single-valued relations, not many-to-many or self-referential graphs. Production seed use should still be reviewed carefully because reruns update matching records.
+
 The generated `npm run db:seed` uses Prisma `createMany` with `skipDuplicates`. Only scalar fields are supported for now; repeated seed runs avoid duplication only when suitable database unique constraints exist. These seeds are intentionally separate from schema migrations.
 
 PostgreSQL uses UUID primary keys while MongoDB continues to use ObjectId identifiers. Generated route validation and OpenAPI adapt automatically.

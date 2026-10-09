@@ -146,7 +146,7 @@ function buildFiles(spec) {
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
     files.set('scripts/create-initial-migration.js', migrationInitSource(spec));
-    if (Object.keys(spec.seeds).length || Object.keys(spec.factories).length) files.set('prisma/seed.js', seedSource(spec));
+    if (Object.keys(spec.seeds).length || Object.keys(spec.factories).length || Object.keys(spec.fixtures).length) files.set('prisma/seed.js', seedSource(spec));
   }
 
   for (const entity of spec.entities) {
