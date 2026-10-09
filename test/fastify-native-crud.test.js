@@ -84,5 +84,5 @@ test('relational entity with populate uses native Fastify when read-only', () =>
   input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
   input.entities.Todo.operations = {create: false, update: false, delete: false, list: {populate: ['owner']}};
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
-  assert.doesNotMatch(source, /"name":"Todo"/);
+  assert.match(source, /"name":"Todo"/);
 });
