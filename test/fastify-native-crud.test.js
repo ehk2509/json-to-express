@@ -176,3 +176,19 @@ test('MongoDB native Fastify supports transactional create, update and soft dele
   assert.match(source, /entry.softDelete.field/);
   new vm.Script(source);
 });
+
+test('native Mongo deletion generates transactional inbound restrict, nullify and cascade rules', () => {
+  const input = spec('mongodb');
+  input.entities.Reviewer = {fields: {name:{type:'string'}, todo:{type:'reference',ref:'Todo',onDelete:'restrict'}}};
+  input.entities.Watcher = {fields: {todo:{type:'reference',ref:'Todo',onDelete:'nullify'}}};
+  input.entities.Archive = {fields: {todo:{type:'reference',ref:'Todo',onDelete:'cascade'}}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /"onDelete":"restrict"/);
+  assert.match(source, /"onDelete":"nullify"/);
+  assert.match(source, /"onDelete":"cascade"/);
+  assert.match(source, /related.countDocuments/);
+  assert.match(source, /related.updateMany/);
+  assert.match(source, /related.deleteMany/);
+  assert.match(source, /entry.inbound.length > 0/);
+  new vm.Script(source);
+});
