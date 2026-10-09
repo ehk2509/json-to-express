@@ -93,3 +93,12 @@ test('Fastify OIDC routes delegate PKCE state handling to shared auth engine', (
   assert.match(native, /oidcRoutes.callback/);
   new vm.Script(native);
 });
+
+test('native Fastify observability intercepts native routes only to avoid duplicate Express metrics', () => {
+  const spec = normalizeSpec({specVersion:'1.0',app:{name:'native-observable',framework:'fastify'},database:{type:'mongodb'},observability:{enabled:true},entities:{Todo:{fields:{title:{type:'string'}}}}});
+  const files=buildFiles(spec);
+  const server=files.get('src/server.js');
+  assert.match(server,/observability.requestMiddleware\(request.raw, reply.raw, done\)/);
+  assert.match(server,/registerNativeCrud.matches/);
+  new vm.Script(server);
+});
