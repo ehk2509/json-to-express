@@ -56,6 +56,8 @@ test('reconciliation rejects unsafe paths, young objects and unbounded scans', (
     if (name === 'dotenv') return {config() {}};
     if (name === 'node:fs/promises') return {};
     if (name === 'node:path') return path;
+    if (name === 'node:crypto') return require('node:crypto');
+    if (name.includes('storage-lease')) return {};
     return {};
   };
   vm.runInNewContext(source, {require: mockRequire, module, process: {argv: []}}, {filename: 'storage-reconcile.js'});
@@ -226,6 +228,8 @@ test('reconcile rechecks each candidate after a writer races in and refuses chan
   const connect=async()=>{}; connect.disconnect=async()=>{};
   const mod={exports:{}};
   const fakeRequire=name=>{
+    if(name==='node:crypto')return require('node:crypto');
+    if(name.includes('storage-lease'))return {};
     if(name==='dotenv')return {config(){}};
     if(name==='node:path')return path;
     if(name==='node:fs/promises')return fakeFs;
@@ -233,8 +237,10 @@ test('reconcile rechecks each candidate after a writer races in and refuses chan
     if(name.includes('storage'))return {cleanup:async values=>removed.push(...values.map(v=>v.key))};
     return model;
   };
-  vm.runInNewContext(source,{module:mod,require:fakeRequire,process:{argv:[],cwd:()=>process.cwd()},Date});
+  vm.runInNewContext(source,{module:mod,require:fakeRequire,process:{argv:[],cwd:()=>process.cwd()},Date,setInterval:()=>1,clearInterval:()=>{}});
+  const lease={acquire:async owner=>({owner,generation:1}),valid:async()=>true,renew:async()=>true,release:async()=>{}};
   const report=await mod.exports.reconcile(mod.exports.args(['--execute']),{
+    lease,
     async beforeCandidate(item){
       if(item.key.endsWith('/referenced.txt')) rows.push({file:{key:item.key}});
       if(item.key.endsWith('/changed.txt')) modified.add('changed.txt');
@@ -255,4 +261,23 @@ test('reconciliation holds configured prefix and per-object age guards', () => {
   assert.match(generated,/skippedReferenced/);
   assert.match(generated,/skippedModified/);
   new vm.Script(generated);
+});
+
+test('lease generation covers Mongo and Prisma with exclusive conditional renewal', () => {
+  for (const database of ['mongodb','postgresql']) {
+    const files=buildFiles(makeSpec(database));
+    const lease=files.get('src/config/storage-lease.js');
+    assert.match(lease,/async function acquire\(owner/);
+    assert.match(lease,/async function renew\(token/);
+    assert.match(lease,/async function valid\(token/);
+    assert.match(lease,/generation/);
+    new vm.Script(lease);
+    if(database==='postgresql')assert.match(files.get('prisma/schema.prisma'),/model J2EStorageLease/);
+    const reconcile=files.get('scripts/storage-reconcile.js');
+    assert.match(reconcile,/lease\.acquire\(owner,ttlMs\)/);
+    assert.match(reconcile,/lease\.valid\(token\)/);
+    assert.match(reconcile,/clearInterval\(heartbeat\)/);
+    assert.match(reconcile,/--s3-verified-conditional-delete/);
+    assert.match(reconcile,/DeleteObjectCommand/);
+  }
 });
