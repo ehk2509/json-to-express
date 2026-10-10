@@ -1387,9 +1387,11 @@ jobs:
               assert.equal(fs.existsSync(orphan.file),false,'unreferenced old object should be deleted');
               assert.equal((await Asset.countDocuments({'file.key':linked.key})),1);
               const pair=oldFile('multi-reconciler.txt');
-              const runs=await Promise.all([audit.reconcile(audit.args(['--execute'])),audit.reconcile(audit.args(['--execute']))]);
-              assert.ok(runs.every(x=>x.mode==='execute'));
-              assert.equal(fs.existsSync(pair.file),false,'idempotent competing reconciliations');
+              const runs=await Promise.allSettled([audit.reconcile(audit.args(['--execute'])),audit.reconcile(audit.args(['--execute']))]);
+              assert.equal(runs.filter(x=>x.status==='fulfilled').length,1,'exactly one lease holder');
+              assert.equal(runs.filter(x=>x.status==='rejected').length,1,'competing replica must fail closed');
+              assert.match(String(runs.find(x=>x.status==='rejected').reason),/distributed lease/);
+              assert.equal(fs.existsSync(pair.file),false,'lease holder performs deletion once');
             } finally {await db.disconnect();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
