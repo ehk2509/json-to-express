@@ -154,6 +154,11 @@ module.exports = function readmeSource(spec) {
       '    npm run storage:retry-dead',
       '    npm run storage:reconcile',
       '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25', '',
+      'Destructive reconciliation acquires one database-backed lease shared by application replicas. It renews the lease, checks its fencing generation before object deletion, and releases it on completion.', '',
+      'S3 reconciliation requires a provider verified to honor DeleteObject If-Match and explicit opt-in:', '',
+      '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25 --s3-verified-conditional-delete', '',
+      'The --s3-verified-conditional-delete flag is an operator attestation, not a feature probe. Do not enable it for an unverified S3-compatible service; unsupported preconditions must fail closed.', '',
+      'Migrate a PostgreSQL database to create the J2EStorageLease model before running destructive reconciliation.', '',
       'Reconciliation is read-only by default. Execute mode is capped at 100 deletions per invocation, restricted to configured upload prefixes, and enforces a minimum 24-hour object age.', '',
       'Database commits and storage deletion are separate systems. Prisma transactions and MongoDB replica-set sessions persist cleanup intents atomically with record mutations; physical cleanup follows commit or worker recovery. Standalone MongoDB falls back to best-effort deletion, and staged uploads still require reconciliation after a crash. Use S3 for distributed deployments.', '',
       'Read caching is disabled automatically for entities with signed file URLs so expired signed URLs are never served from cache.', ''
