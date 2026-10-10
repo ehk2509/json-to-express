@@ -809,6 +809,13 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-chaos-postgres-kill.js ./storage-chaos-postgres-kill.js
           node storage-chaos-postgres-kill.js
+      - name: Real PostgreSQL cross-process storage lease and SIGKILL takeover
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          cp ../../scripts/fixtures/storage-lease-kill.js ./storage-lease-kill.js
+          node storage-lease-kill.js
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
@@ -1204,6 +1211,18 @@ jobs:
             } finally {await db.disconnect();client.destroy();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: SIGKILL S3 cleanup worker between deletion and acknowledgement
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+        run: |
+          cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
+          node storage-worker-kill.js s3
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
@@ -1380,9 +1399,11 @@ jobs:
               assert.equal(fs.existsSync(orphan.file),false,'unreferenced old object should be deleted');
               assert.equal((await Asset.countDocuments({'file.key':linked.key})),1);
               const pair=oldFile('multi-reconciler.txt');
-              const runs=await Promise.all([audit.reconcile(audit.args(['--execute'])),audit.reconcile(audit.args(['--execute']))]);
-              assert.ok(runs.every(x=>x.mode==='execute'));
-              assert.equal(fs.existsSync(pair.file),false,'idempotent competing reconciliations');
+              const runs=await Promise.allSettled([audit.reconcile(audit.args(['--execute'])),audit.reconcile(audit.args(['--execute']))]);
+              assert.equal(runs.filter(x=>x.status==='fulfilled').length,1,'exactly one lease holder');
+              assert.equal(runs.filter(x=>x.status==='rejected').length,1,'competing replica must fail closed');
+              assert.match(String(runs.find(x=>x.status==='rejected').reason),/distributed lease/);
+              assert.equal(fs.existsSync(pair.file),false,'lease holder performs deletion once');
             } finally {await db.disconnect();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
@@ -1435,6 +1456,14 @@ jobs:
             }
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: SIGKILL local storage worker between deletion and acknowledgement
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
+          node storage-worker-kill.js local
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
@@ -1633,6 +1662,13 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-chaos-mongo-kill.js ./storage-chaos-mongo-kill.js
           node storage-chaos-mongo-kill.js
+      - name: Mongo replica-set cross-process storage lease SIGKILL recovery
+        working-directory: .tmp/fastify-mongo-transaction
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_native_tx?replicaSet=rs0
+        run: |
+          cp ../../scripts/fixtures/storage-lease-kill.js ./storage-lease-kill.js
+          node storage-lease-kill.js
       - name: Print logs on failure
         if: failure()
         run: |
