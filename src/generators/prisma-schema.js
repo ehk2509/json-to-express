@@ -98,6 +98,18 @@ module.exports = function prismaSchemaSource(spec) {
     );
   }
 
+  if (spec.storage.enabled) {
+    lines.push(
+      'model J2EStorageLease {',
+      '  id String @id',
+      '  owner String',
+      '  generation Int @default(0)',
+      '  expiresAt DateTime',
+      '  @@index([expiresAt])',
+      '  @@map("_j2e_storage_lease")',
+      '}', ''
+    );
+  }
   if (spec.outbox.enabled) {
     lines.push(
       'model J2EOutbox {',
