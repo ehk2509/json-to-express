@@ -1211,6 +1211,18 @@ jobs:
             } finally {await db.disconnect();client.destroy();}
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: SIGKILL S3 cleanup worker between deletion and acknowledgement
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+        run: |
+          cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
+          node storage-worker-kill.js s3
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
@@ -1444,6 +1456,14 @@ jobs:
             }
           })().catch(error=>{console.error(error);process.exitCode=1;});
           NODE
+      - name: SIGKILL local storage worker between deletion and acknowledgement
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+        run: |
+          cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
+          node storage-worker-kill.js local
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
