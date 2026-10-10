@@ -281,3 +281,20 @@ test('lease generation covers Mongo and Prisma with exclusive conditional renewa
     assert.match(reconcile,/DeleteObjectCommand/);
   }
 });
+
+test('unverified S3-compatible stores fail closed before destructive reconciliation', async () => {
+  const code=buildFiles(makeSpec('mongodb','s3')).get('scripts/storage-reconcile.js');
+  const module={exports:{}};
+  const stub=name=>{
+    if(name==='dotenv')return {config(){}};
+    if(name==='node:path')return path;
+    if(name==='node:crypto')return require('node:crypto');
+    return {};
+  };
+  vm.runInNewContext(code,{module,require:stub,process:{argv:[],cwd:()=>process.cwd()}});
+  const unsafe=module.exports.args(['--execute']);
+  assert.equal(unsafe.conditionalDeleteVerified,false);
+  await assert.rejects(module.exports.reconcile(unsafe),/verified If-Match-capable backend/);
+  const acknowledged=module.exports.args(['--execute','--s3-verified-conditional-delete']);
+  assert.equal(acknowledged.conditionalDeleteVerified,true);
+});
