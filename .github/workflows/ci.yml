@@ -809,6 +809,13 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-chaos-postgres-kill.js ./storage-chaos-postgres-kill.js
           node storage-chaos-postgres-kill.js
+      - name: Real PostgreSQL cross-process storage lease and SIGKILL takeover
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+        run: |
+          cp ../../scripts/fixtures/storage-lease-kill.js ./storage-lease-kill.js
+          node storage-lease-kill.js
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
@@ -1633,6 +1640,13 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-chaos-mongo-kill.js ./storage-chaos-mongo-kill.js
           node storage-chaos-mongo-kill.js
+      - name: Mongo replica-set cross-process storage lease SIGKILL recovery
+        working-directory: .tmp/fastify-mongo-transaction
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_native_tx?replicaSet=rs0
+        run: |
+          cp ../../scripts/fixtures/storage-lease-kill.js ./storage-lease-kill.js
+          node storage-lease-kill.js
       - name: Print logs on failure
         if: failure()
         run: |
