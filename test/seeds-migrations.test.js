@@ -28,7 +28,7 @@ test('generates Prisma migration commands and executable seed source', () => {
   assert.equal(pkg.scripts['db:seed'], 'node prisma/seed.js');
   const source = files.get('prisma/seed.js');
   assert.match(source, /Hardware/);
-  assert.match(source, /skipDuplicates: true/);
+  assert.match(source, /skipDuplicates:true/);
   new vm.Script(source);
 });
 
