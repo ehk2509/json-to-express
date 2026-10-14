@@ -314,3 +314,24 @@ test('storage writers issue exclusive object creation and reject multipart metad
     }
   }
 });
+
+
+test('declarative workflow writes cannot reattach retired file keys', () => {
+  const {filePaths}=require('../src/generators/utils');
+  for(const db of ['mongodb','postgresql']){
+    const spec=normalizeSpec({
+      specVersion:'1.0',
+      app:{name:'workflow-storage-writers',framework:'fastify'},
+      database:{type:db}, storage:{enabled:true,provider:'local'},
+      entities:{Asset:{fields:{title:{type:'string'},file:{type:'file',upload:{maxBytes:1024,mimeTypes:['text/plain']}}}}},
+      workflows:{PutAsset:{steps:[{name:'write',action:'create',entity:'Asset',data:{title:'$body.title',file:'$body.file'}}]}}
+    });
+    const files=buildFiles(spec);
+    const code=files.get(filePaths(spec).workflowEngine);
+    assert.ok(code);
+    assert.match(code,/assertProtectedStorageFields/);
+    assert.match(code,/Storage metadata is upload-only/);
+    assert.match(code, /protectedFileFields/);
+    new vm.Script(code);
+  }
+});
