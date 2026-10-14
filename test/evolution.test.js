@@ -40,6 +40,7 @@ test('new projects produce a deterministic dry-run without touching disk', t => 
 test('manifest v2 stores reduced schema only, without runtime secrets or seed records', t => {
   const {output} = fixture(t);
   const spec = original();
+  spec.database.type = 'postgresql'; // Seeds are supported only for PostgreSQL.
   spec.app.package = {description: 'private-credential-should-not-be-stored'};
   spec.seeds = {Product: [{title: 'seed-secret-should-not-be-stored', sku: 'S1'}]};
   generateApplication(spec, output);
