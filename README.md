@@ -11,7 +11,7 @@ Two persistence targets now share the same normalized application model:
 
 ## What is generated
 
-- Express app and server bootstrap
+- Express or native Fastify app and server bootstrap
 - MongoDB/Mongoose or PostgreSQL/Prisma connection
 - Mongoose models or Prisma schema/client
 - CRUD controllers and routers
@@ -24,6 +24,19 @@ Two persistence targets now share the same normalized application model:
 - .j2e-manifest.json for safe regeneration
 
 ## Quick start
+
+**Public beta:** `0.2.0-beta.1`. Requires Node.js 18 or newer.
+
+Once the npm beta package has been published, install the CLI with:
+
+~~~bash
+npm install --global json-to-express@beta
+j2e --version
+j2e validate my-spec.json
+j2e generate my-spec.json --output generated/my-api
+~~~
+
+For development directly from this repository, without an npm publication:
 
 ~~~bash
 node bin/json-to-express.js validate examples/shop.json
@@ -245,13 +258,17 @@ Choose PostgreSQL directly in the same application spec:
 }
 ~~~
 
-The generated project includes @prisma/client, the Prisma CLI, schema generation, and these scripts:
+The generated project includes @prisma/client, the Prisma CLI, schema generation, and versioned migration scripts. For a new PostgreSQL project, create and review the initial migration before deployment:
 
 ~~~bash
 npm run prisma:generate
-npm run db:push
+npm run db:migrate:init
+npm run db:migrate:verify
+npm run db:migrate:deploy
 npm start
 ~~~
+
+`db:push` is a development-only convenience and is not a substitute for versioned production migrations.
 
 For versioned production migrations, run `npm run db:migrate:init` to generate a reviewed initial SQL migration **and a SHA-256 migration-history manifest** with Prisma `migrate diff` without a running database. The command refuses to overwrite existing migration history. For later changes, use `npm run db:migrate:dev -- --name change_name` against a disposable development database, inspect the new SQL, run `npm run db:migrate:record`, and commit both SQL and the updated `migration-history.json`. Deploy only reviewed migrations with `npm run db:migrate:deploy` (which checks SHA-256 history first); inspect status using `npm run db:migrate:status`. The SQL/history files live alongside `database.prisma.schemaPath`, including custom schema paths. Never use `db:push` as a production migration replacement.
 
@@ -1713,6 +1730,10 @@ Fastify custom middleware **must** use native lifecycle hooks. List developer-ow
 **Migration from Express:** Replace `module.exports = (req, res, next) => { ...; next(); }` with `module.exports = {fastifyOnRequest(request, reply) { /* use request.headers, reply.header(...) */ }}`. Native request properties live on `request`; use `reply.code(...).send(...)` to end a response. Do not call `next()` in an async native hook. The generated app fails at startup with a descriptive error if a module exports only Express middleware. If any entity in the same Fastify specification cannot use native CRUD, generation fails rather than silently running custom middleware in an Express fallback. Express framework applications continue to support Express middleware.
 
 Fastify never generates `@fastify/express` or an Express fallback. Invalid population paths and unsupported configurations fail generation rather than dropping behavior silently. Custom middleware must use native lifecycle exports. Storage cleanup and cyclic/concurrent relationship failure tests are part of the parity verification; see issue #18.
+
+## Releases
+
+The [changelog](CHANGELOG.md) describes releases and compatibility expectations. For release automation and the npm publication prerequisite, see [RELEASING.md](docs/RELEASING.md). The beta may change APIs before 1.0.0.
 
 ## License
 
