@@ -36,7 +36,7 @@ async function make(port,name) {
   form.set(nameField,name);
   form.set(field,new Blob([target==='postgres'?new Uint8Array([137,80,78,71]):'content'],{type:mime}),name+'.txt');
   const res=await fetch(prefixUrl(port)+'/api/assets',{method:'POST',body:form});
-  assert.equal(res.status,201,await res.text());
+  if(res.status!==201)throw new Error('Expected 201 from '+port+': '+res.status+' '+await res.text());
   return res.json();
 }
 function spawnChild(args,env={}){
