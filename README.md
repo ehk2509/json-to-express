@@ -25,7 +25,7 @@ Two persistence targets now share the same normalized application model:
 
 ## Quick start
 
-**Public beta:** `0.2.0-beta.1`. Requires Node.js 18 or newer.
+**Public beta:** `0.2.0-beta.2`. Requires Node.js 18 or newer.
 
 Once the npm beta package has been published, install the CLI with:
 
