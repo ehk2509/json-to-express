@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {normalizeSpec,validateSpec}=require('../src');
+const {normalizeSpec,validateSpec,generateApplication}=require('../src');
 const {buildFiles}=require('../src/generators');
 
 const base={
@@ -94,4 +94,26 @@ test('fixture validation rejects required cycles, ambiguous keys and non-determi
  const factory=copy();
  factory.factories.Doc.template.code='duplicated-key';
  assert.throws(()=>validateSpec(factory),/requires \{\{index\}\}/);
+});
+
+test('regeneration preserves developer-owned reviewed migration SQL and history',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'j2e-history-regenerate-'));
+ try{
+   const spec=JSON.parse(JSON.stringify(base));
+   const first=generateApplication(spec,root);
+   assert.ok(first.files.includes('scripts/create-initial-migration.js'));
+   const schemaDir=path.join(root,'config/db');
+   const migration=path.join(schemaDir,'migrations','00000000000000_init');
+   fs.mkdirSync(migration,{recursive:true});
+   const sql=path.join(migration,'migration.sql');
+   fs.writeFileSync(sql,'-- developer-reviewed immutable history\n');
+   const history=path.join(schemaDir,'migration-history.json');
+   fs.writeFileSync(history,'{"version":1,"migrations":{"00000000000000_init":"owned"}}\n');
+   // Modifying the spec regenerates only generator-owned artifacts.
+   spec.app.name='migration-relational-upgraded';
+   generateApplication(spec,root);
+   assert.equal(fs.readFileSync(sql,'utf8'),'-- developer-reviewed immutable history\n');
+   assert.match(fs.readFileSync(history,'utf8'),/"owned"/);
+   assert.ok(fs.existsSync(sql));
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
