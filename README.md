@@ -61,6 +61,8 @@ npm start
 ## CLI
 
 ~~~text
+j2e init [name] [--template crud|saas|ecommerce] [--yes] [options]
+j2e doctor [spec.json] [--output <dir>] [--json] [--strict]
 j2e validate <spec.json>
 j2e generate <spec.json> [--output <dir>] [--force]
 j2e diff <spec.json> [--output <dir>] [--json]
@@ -71,6 +73,44 @@ j2e upgrade <spec.json> [--output <dir>] [--approve-schema] [--allow-destructive
 The output flag overrides generation.outputDir.
 
 Force does not delete the output directory. It only allows replacement of generator-owned files that were modified since the previous generation.
+
+## Interactive CLI and starter applications
+
+Start with a guided setup in a terminal (framework, database, authentication, deployment):
+
+~~~bash
+j2e init
+~~~
+
+Or initialize an application deterministically in CI, on a non-interactive terminal, or via scripting:
+
+~~~bash
+j2e init my-tasks --template crud --framework fastify --database mongodb --auth none --deployment compose --yes
+j2e init team-saas --template saas --database postgresql --auth local --deployment compose --yes
+j2e init my-store --template ecommerce --database mongodb --auth api-key --deployment compose --yes
+~~~
+
+The built-in templates live under templates/, are distributed with the npm package, and contain real entities:
+
+- **CRUD:** tasks with required titles, due dates and completion state
+- **SaaS:** organizations, projects and tasks with relational references; the default enables local registration/login and JWT authentication
+- **E-commerce:** categories, products, orders and line items; this starter is **not** a complete payment, tax, or checkout system
+
+The initializer validates the complete JSON specification **before writing**, refuses to adopt nonempty project directories, and generates two paths: <project>/app.j2e.json (editable spec) and <project>/server (generated runtime). Configurable options: --template, --framework express|fastify, --database mongodb|postgresql, --auth none|jwt|local|api-key|oidc, --deployment none|docker|compose|kubernetes, --output <workspace>, --yes, --dry-run. For OIDC, provide --issuer https://your-idp.example and optionally --audience <audience>; no credentials are ever written to the spec. Use j2e init --list-templates to discover presets.
+
+Inspect without writing, or diagnose an existing workspace:
+
+~~~bash
+j2e init demo --template saas --yes --dry-run
+cd my-tasks
+j2e doctor app.j2e.json
+j2e doctor app.j2e.json --json
+j2e doctor app.j2e.json --strict
+~~~
+
+Doctor checks Node/npm, packaged template integrity, JSON schema validity, Docker/Compose or Kubernetes tooling when configured, required runtime environment variables (presence only, never values), existing generated files, manifest conflicts and schema migration risks. JSON reports can be consumed by CI. Warnings are advisory by default; --strict treats warnings as failures.
+
+**Running your starter:** for Compose projects, enter <project>/server, copy .env.example to .env, set real credentials, and use docker compose up -d --build. For local runtime, install dependencies and configure a running database first. PostgreSQL projects require reviewed Prisma migrations (db:migrate:init for a new project and db:migrate:deploy against a configured database); j2e init intentionally does not execute database migrations. Never use placeholder JWT or API key secrets in production, and enable authentication before exposing endpoints publicly.
 
 ## Safe deterministic regeneration
 

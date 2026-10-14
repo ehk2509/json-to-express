@@ -25,6 +25,11 @@ try {
   for (const entry of [
     'bin/json-to-express.js',
     'src/index.js',
+    'src/onboarding.js',
+    'src/doctor.js',
+    'templates/crud.json',
+    'templates/saas.json',
+    'templates/ecommerce.json',
     'schema/application.schema.json',
     'README.md',
     'LICENSE'
@@ -54,7 +59,15 @@ try {
   for (const entry of ['package.json', '.j2e-manifest.json']) {
     assert.ok(fs.existsSync(path.join(output, entry)), 'Missing generated file: ' + entry);
   }
-  console.log('Verified published tarball, CLI validation, generation, and manifest.');
+  const starterWorkspace = path.join(temporary, 'starter');
+  run(process.execPath, [cli, 'init', 'starter-api', '--template', 'saas',
+    '--framework', 'express', '--deployment', 'none', '--yes', '--output', starterWorkspace]);
+  assert.ok(fs.existsSync(path.join(starterWorkspace, 'app.j2e.json')));
+  assert.ok(fs.existsSync(path.join(starterWorkspace, 'server', '.j2e-manifest.json')));
+  const doctor = JSON.parse(run(process.execPath, [cli, 'doctor',
+    path.join(starterWorkspace, 'app.j2e.json'), '--output', path.join(starterWorkspace, 'server'), '--json']));
+  assert.equal(doctor.ok, true);
+  console.log('Verified tarball, installed starter templates, init, doctor and generated app.');
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }

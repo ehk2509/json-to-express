@@ -28,7 +28,7 @@ test('bundled CRUD, SaaS, and e-commerce templates match schema and contain usef
   for (const name of Object.keys(TEMPLATES)) {
     const spec = loadTemplate(name);
     assert.ok(Object.keys(spec.entities).length >= 1);
-    assert.equal(validateSpec(spec), undefined);
+    assert.doesNotThrow(() => validateSpec(spec));
     for (const database of ['mongodb', 'postgresql']) {
       const converted = buildStarter({
         template: name, name: 'demo-api', framework: 'express',
@@ -82,7 +82,7 @@ test('noninteractive init creates a real generated app and exact selected specif
   assert.ok(spec.entities.OrderItem);
   assert.ok(fs.existsSync(path.join(result.appDir, '.j2e-manifest.json')));
   assert.ok(fs.existsSync(path.join(result.appDir, 'docker-compose.yml')));
-  assert.equal(validateSpec(spec), undefined);
+  assert.doesNotThrow(() => validateSpec(spec));
 
   const plan = exec(['plan', result.specFile, '--output', result.appDir, '--json']);
   assert.equal(plan.status, 0, plan.stderr);

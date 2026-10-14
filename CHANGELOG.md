@@ -4,6 +4,11 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
+### Added
+- Interactive init and doctor CLI commands, non-interactive setup, and bundled CRUD/SaaS/e-commerce templates.
+- Tarball smoke coverage for installed starter generation and diagnostics.
+
+
 ### Changed
 - Automate version-independent beta releases, immutable GitHub SHA/tag verification, concurrency fencing, changelog validation and dependency security audits.
 
