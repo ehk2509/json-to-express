@@ -1733,7 +1733,7 @@ Fastify never generates `@fastify/express` or an Express fallback. Invalid popul
 
 ## Releases
 
-The [changelog](CHANGELOG.md) describes releases and compatibility expectations. For release automation and the npm publication prerequisite, see [RELEASING.md](docs/RELEASING.md). The beta may change APIs before 1.0.0.
+The [changelog](CHANGELOG.md) tracks releases. See [RELEASING.md](docs/RELEASING.md) for the version-independent GitHub and npm OIDC release process, SHA/tag verification, security checks and migration guidance. The beta may change APIs before 1.0.0.
 
 ## License
 
