@@ -167,7 +167,7 @@ async function objectUnchanged(item, cutoff) {
   try {
     const current = await s3.send(new HeadObjectCommand({Bucket: process.env[config.s3.bucketEnv], Key: item.key}));
     return Boolean(current.LastModified && current.LastModified <= cutoff &&
-      current.LastModified.toISOString() === item.modifiedAt &&
+      Math.abs(current.LastModified.getTime() - new Date(item.modifiedAt).getTime()) < 1000 &&
       current.ContentLength === item.size && current.ETag === item.etag);
   } catch (error) {
     if (error.$metadata && error.$metadata.httpStatusCode === 404) return false;
