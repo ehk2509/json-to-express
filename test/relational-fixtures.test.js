@@ -28,8 +28,8 @@ test('generates idempotent dependency-ordered relational fixture runner', () => 
   const files = buildFiles(normalizeSpec(specimen()));
   const seed = files.get('prisma/seed.js');
   assert.match(seed, /model.upsert/);
-  assert.match(seed, /targetModel.findUnique/);
-  assert.match(seed, /Unresolvable fixture dependency order/);
+  assert.match(seed, /getModel\(tx,ref.target\).findUnique/);
+  assert.match(seed, /Unresolvable required fixture dependency order/);
   new vm.Script(seed);
   assert.ok(JSON.parse(files.get('package.json')).scripts['db:seed']);
 });
@@ -46,9 +46,13 @@ test('rejects missing fixture relation dependency', () => {
   assert.throws(() => validateSpec(input), /requires fixture rows for dependency/);
 });
 
-test('rejects cyclic fixture references', () => {
-  const input = specimen();
-  input.entities.Category.fields.product = {type: 'reference', ref: 'Product'};
-  input.fixtures.Category[0].data.product = {where: {sku: 'SKU-1'}};
-  assert.throws(() => validateSpec(input), /fixtures dependency cycle/);
+test('allows nullable relational cycles and rejects required dependency cycles', () => {
+  const optional = specimen();
+  optional.entities.Category.fields.product = {type: 'reference', ref: 'Product'};
+  optional.fixtures.Category[0].data.product = {where: {sku: 'SKU-1'}};
+  assert.doesNotThrow(() => validateSpec(optional));
+  const required = specimen();
+  required.entities.Category.fields.product = {type: 'reference', ref: 'Product', required: true};
+  required.fixtures.Category[0].data.product = {where: {sku: 'SKU-1'}};
+  assert.throws(() => validateSpec(required), /required dependency cycle/);
 });
