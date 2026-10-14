@@ -1,0 +1,29 @@
+{
+  "specVersion": "1.0",
+  "app": {
+    "name": "task-api"
+  },
+  "database": {
+    "type": "mongodb"
+  },
+  "entities": {
+    "Task": {
+      "fields": {
+        "title": {
+          "type": "string",
+          "required": true
+        },
+        "description": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "boolean",
+          "default": false
+        },
+        "dueAt": {
+          "type": "date"
+        }
+      }
+    }
+  }
+}

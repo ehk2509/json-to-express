@@ -1,0 +1,86 @@
+{
+  "specVersion": "1.0",
+  "app": {
+    "name": "store-api"
+  },
+  "database": {
+    "type": "mongodb"
+  },
+  "entities": {
+    "Category": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true
+        },
+        "slug": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        }
+      }
+    },
+    "Product": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true
+        },
+        "sku": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        "priceCents": {
+          "type": "number",
+          "required": true,
+          "min": 0
+        },
+        "stock": {
+          "type": "number",
+          "default": 0
+        },
+        "category": {
+          "type": "reference",
+          "ref": "Category"
+        }
+      }
+    },
+    "Order": {
+      "fields": {
+        "customerEmail": {
+          "type": "string",
+          "required": true
+        },
+        "status": {
+          "type": "string",
+          "default": "pending"
+        }
+      }
+    },
+    "OrderItem": {
+      "fields": {
+        "order": {
+          "type": "reference",
+          "ref": "Order",
+          "required": true
+        },
+        "product": {
+          "type": "reference",
+          "ref": "Product",
+          "required": true
+        },
+        "quantity": {
+          "type": "number",
+          "required": true,
+          "min": 1
+        },
+        "unitPriceCents": {
+          "type": "number",
+          "required": true,
+          "min": 0
+        }
+      }
+    }
+  }
+}
