@@ -88,7 +88,7 @@ module.exports = function storageSource(spec) {
       '  await fsp.mkdir(path.dirname(target), {recursive: true});',
       '  await fsp.writeFile(target, file.buffer, {flag: "wx"});'
     ] : [
-      '  await client().send(new PutObjectCommand({Bucket: bucket(), Key: key, Body: file.buffer, ContentType: file.mimetype}));'
+      '  await client().send(new PutObjectCommand({Bucket: bucket(), Key: key, Body: file.buffer, ContentType: file.mimetype, IfNoneMatch: "*"}));'
     ]),
     '  return {',
     '    key, originalName: file.originalname, mimeType: file.mimetype, size: file.size,',
@@ -201,6 +201,9 @@ module.exports = function storageSource(spec) {
     '      const stored = [];',
     '      try {',
     '        normalizeBody(entityName, req);',
+    '        for (const name of Object.keys(fields)) {',
+    '          if (Object.prototype.hasOwnProperty.call(req.body, name)) throw storageError("File metadata must come from a new upload: " + name);',
+    '        }',
     '        for (const [fieldName, definition] of entries) {',
     '          const files = req.files && req.files[fieldName] || [];',
     '          for (const file of files) {',
@@ -348,7 +351,10 @@ module.exports = function storageSource(spec) {
     '  const maxBytes = Math.max(...entries.map(([, field]) => field.upload.maxBytes));',
     '  try {',
     '    for await (const part of request.parts({limits: {fileSize: maxBytes, files: entries.reduce((n, [, field]) => n + (field.many ? 20 : 1), 0)}})) {',
-    '      if (part.type !== "file") {body[part.fieldname] = part.value; continue;}',
+    '      if (part.type !== "file") {',
+    '        if (Object.prototype.hasOwnProperty.call(fields, part.fieldname)) throw storageError("File metadata must come from a new upload: " + part.fieldname);',
+    '        body[part.fieldname] = part.value; continue;',
+    '      }',
     '      const definition = fields[part.fieldname];',
     '      if (!definition) throw storageError("Unexpected file field: " + part.fieldname);',
     '      counts[part.fieldname] = (counts[part.fieldname] || 0) + 1;',
