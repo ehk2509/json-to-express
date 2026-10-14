@@ -63,6 +63,9 @@ npm start
 ~~~text
 j2e validate <spec.json>
 j2e generate <spec.json> [--output <dir>] [--force]
+j2e diff <spec.json> [--output <dir>] [--json]
+j2e plan <spec.json> [--output <dir>] [--json]
+j2e upgrade <spec.json> [--output <dir>] [--approve-schema] [--allow-destructive] [--allow-unknown-schema] [--force]
 ~~~
 
 The output flag overrides generation.outputDir.
@@ -84,6 +87,37 @@ On regeneration json-to-express:
 7. rejects dangerous output targets such as filesystem root, home, or the generator working directory
 
 Custom files therefore survive regeneration.
+
+## Intelligent regeneration and schema evolution
+
+The generator uses a v2 `.j2e-manifest.json` with generator-owned file hashes and a **minimal schema history**. It does not store authentication values, raw seeds, environment settings or credentials. Existing v1 manifests remain readable, but lack schema history and therefore need explicit approval on upgrade.
+
+Preview **without touching the output directory**:
+
+~~~bash
+j2e diff examples/shop.json --output generated/shop-api
+j2e plan examples/shop.json --output generated/shop-api
+j2e plan examples/shop.json --output generated/shop-api --json
+~~~
+
+- `diff` reports added, updated, removed and conflicting generated files.
+- `plan` adds classified declarative schema differences: `safe` (e.g. optional field), `review` (index, route, soft-delete, enum, default, framework or storage change), `breaking` (e.g. field removal/type change, required field, collection change), or `unknown` (legacy snapshot).
+- Modified generator-owned files are marked as conflicts and refuse writes unless `--force` is supplied. **Files not owned by the generator are never overwritten, including with force.**
+- Output symlinks, unsafe paths, and unowned output directories fail validation before any writes.
+
+After reviewing the plan:
+
+~~~bash
+j2e upgrade examples/shop.json --output generated/shop-api
+# Acknowledgements, when your plan reports risks:
+j2e upgrade examples/shop.json --output generated/shop-api --approve-schema
+j2e upgrade examples/shop.json --output generated/shop-api --allow-destructive
+j2e upgrade examples/shop.json --output generated/shop-api --allow-unknown-schema
+~~~
+
+`--allow-destructive` is a deliberate acknowledgement: **it does not run, create, or validate SQL migrations**. Back up data, prepare and review Prisma migrations (`db:migrate:verify` and `db:migrate:deploy`) or equivalent MongoDB migrations first. `--approve-schema` is a separate acknowledgement for review-level changes. Changes with both severities require both flags. The legacy `--allow-unknown-schema` flag means you manually checked schema state before initializing the v2 manifest; it does not prove that the database matches.
+
+The drift check compares the **previous generated declarative model** against the new specification, not the live contents or physical schema of MongoDB/PostgreSQL. Continue to use database-specific migration and drift tools for production verification. Both `generate` and `upgrade` refuse risky regeneration by default; `diff` and `plan` are read-only.
 
 ## One specification contract
 
