@@ -6,6 +6,7 @@ const {spawn}=require('node:child_process');
 const {S3Client,PutObjectCommand,HeadObjectCommand}=require('@aws-sdk/client-s3');
 const db=require('./src/config/database');
 const audit=require('./scripts/storage-reconcile');
+const outbox=require('./src/workflows/outbox');
 const sleep=n=>new Promise(r=>setTimeout(r,n));
 const base='http://127.0.0.1:3495',second='http://127.0.0.1:3497';
 const mode=process.argv[2]||'parent';
@@ -87,7 +88,37 @@ async function parent(){
     assert.equal(result.code,0,'reconciler failed: '+result.stderr);
     assert.equal(await has(oldKey),false,'conditional deletion removes orphan');
     assert.equal(await has(fresh.file.key),true,'new reference survives parallel reconciliation');
-    console.log('Two real S3-backed API replicas and conditional reconciler passed');
+
+    // Exercise an outbox cleanup worker racing a paused reconciler on the same key.
+    for(const marker of ['.j2e-s3-chaos-ready','.j2e-s3-chaos-resume'])fs.rmSync(marker,{force:true});
+    const overlapKey=a.file.key.replace(/[^/]+$/,'orphan-overlap-'+process.pid+'.txt');
+    await s3.send(new PutObjectCommand({Bucket:bucket,Key:overlapKey,Body:'worker-race',IfNoneMatch:'*'}));
+    const competing=launch([__filename,'reconcile'],{J2E_TARGET_KEY:overlapKey});
+    await Promise.race([
+      wait(()=>fs.existsSync('.j2e-s3-chaos-ready'),'worker/reconciler barrier'),
+      competing.done.then(result=>{throw new Error('Reconciler exited before overlap: '+JSON.stringify(result));})
+    ]);
+    await db();
+    let job;
+    try{
+      job=await outbox.enqueueJob('__j2e_storage_cleanup__',{values:[{key:overlapKey,provider:'s3'}]},
+        {config:{queue:'storage',maxAttempts:5,backoffMs:50}});
+    }finally{await db.disconnect();}
+    const worker=launch(['src/workflows/worker.js','--once'],{J2E_WORKER_QUEUES:'storage'});
+    const workerResult=await worker.done;
+    assert.equal(workerResult.code,0,'independent cleanup worker: '+workerResult.stderr);
+    assert.equal(await has(overlapKey),false,'cleanup worker removed orphan before reconciler resumed');
+    fs.writeFileSync('.j2e-s3-chaos-resume','go');
+    const overlapResult=await competing.done;
+    assert.equal(overlapResult.code,0,'overlapping reconciler must tolerate already deleted object: '+overlapResult.stderr);
+    await db();
+    try {
+      const jobRecord=await outbox.Outbox.findById(job._id);
+      assert.equal(jobRecord.status,'done');
+    } finally {await db.disconnect();}
+    assert.equal(await has(overlapKey),false,'two maintenance processes remain idempotent');
+    assert.equal(await has(fresh.file.key),true,'referenced object survives overlapping cleanup');
+    console.log('Two real S3-backed API replicas, conditional reconciler and overlapping worker passed');
   }finally{
     server.child.kill('SIGTERM');
     await Promise.race([server.done,sleep(3000)]);
