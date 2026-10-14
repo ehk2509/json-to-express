@@ -155,7 +155,7 @@ module.exports = function readmeSource(spec) {
       '    npm run storage:reconcile',
       '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25', '',
       'Destructive reconciliation acquires one database-backed lease shared by application replicas. It renews the lease, checks its fencing generation before object deletion, and releases it on completion.',
-      'Normal API writers cannot supply existing file metadata or reuse a key. Generated local uploads use exclusive file creation and S3 uploads use If-None-Match: *. Do not bypass generated upload validation in hooks or external database clients.', '',
+      'Normal API writers cannot supply existing file metadata or reuse a key. Generated local uploads use exclusive file creation and S3 uploads use If-None-Match: *. Workflow mutations cannot directly write file metadata; upload routes must create keys. Do not bypass generated upload validation in hooks or external database clients.', '',
       'S3 reconciliation requires a provider verified to honor DeleteObject If-Match and explicit opt-in:', '',
       '    npm run storage:reconcile -- --execute --older-than-hours 48 --limit 25 --s3-verified-conditional-delete', '',
       'The --s3-verified-conditional-delete flag requests a live capability check: a unique probe must reject a wrong If-Match with 412 and permit a matching conditional delete. Incompatible providers fail closed.', '',
