@@ -6,66 +6,108 @@ on:
     types: [completed]
     branches: [main]
 
+# Avoid competing tag creation and npm publish attempts; never cancel a publish.
+concurrency:
+  group: json-to-express-beta-release-${{ github.repository }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
   github-release:
-    # workflow_run has elevated permissions: accept only successful push-to-main CI
-    # from this repository, never pull requests or forks.
+    # workflow_run has elevated permissions: never run PR or fork payloads.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      release: ${{ steps.metadata.outputs.release }}
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      sha: ${{ steps.metadata.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
-      - name: Verify public-beta release metadata
-        id: version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify CI source SHA and derive immutable release metadata
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          if [[ "$VERSION" != "0.2.0-beta.2" ]]; then
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          CURRENT="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$CURRENT" != "$EXPECTED_SHA" ]]; then
+            echo "Superseded push CI: skipping older main commit." >> "$GITHUB_STEP_SUMMARY"
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          node scripts/release-metadata.js check
+          VERSION="$(node scripts/release-metadata.js version)"
+          TAG="$(node scripts/release-metadata.js tag)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+          # A previously released version always stays attached to its
+          # original commit. Ordinary changes without version bump are no-ops.
+          if EXISTING="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha' 2>/dev/null)"; then
+            if [[ "$EXISTING" != "commit $EXPECTED_SHA" ]]; then
+              echo "$TAG is already tagged at a different SHA. Bump the version to publish again." >> "$GITHUB_STEP_SUMMARY"
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           echo "release=true" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Create immutable prerelease tag and GitHub Release
-        if: steps.version.outputs.release == 'true'
+      - name: Create and verify immutable tag and GitHub release
+        if: steps.metadata.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+          SHA: ${{ steps.metadata.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "GitHub release $TAG already exists, leaving it unchanged."
-            exit 0
+          test "$(git rev-parse HEAD)" = "$SHA"
+          TAG_REF="repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG"
+          if EXISTING="$(gh api "$TAG_REF" --jq '.object.type + " " + .object.sha' 2>/dev/null)"; then
+            test "$EXISTING" = "commit $SHA" || {
+              echo "Tag SHA mismatch: refusing to overwrite $TAG" >&2
+              exit 1
+            }
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$SHA" >/dev/null
           fi
-          gh release create "$TAG" \
-            --target "$RELEASE_SHA" \
-            --title "json-to-express $TAG" \
-            --notes-file .github/release-notes/v0.2.0-beta.2.md \
-            --prerelease
+          test "$(gh api "$TAG_REF" --jq '.object.type + " " + .object.sha')" = "commit $SHA"
+          node scripts/release-metadata.js notes > "$RUNNER_TEMP/release-notes.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release already exists; leaving it unchanged."
+          else
+            gh release create "$TAG" --verify-tag \
+              --title "json-to-express $TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease
+          fi
+          test "$(gh api "$TAG_REF" --jq '.object.type + " " + .object.sha')" = "commit $SHA"
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease \
+            --jq 'select(.isDraft == false and .isPrerelease == true) | .tagName' | grep -Fx "$TAG"
 
   npm-beta:
     needs: github-release
-    # Enable explicitly only after the package has been bootstrapped on npm
-    # and its Trusted Publisher has been configured for publish-beta.yml.
     if: >-
       needs.github-release.result == 'success' &&
-      vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      needs.github-release.outputs.release == 'true' &&
+      vars.NPM_TRUSTED_PUBLISHING_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,32 +115,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Publish the exact immutable GitHub prerelease source, rather than a
-          # later main commit with the same package.json version.
-          ref: v0.2.0-beta.2
+          ref: ${{ needs.github-release.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
-      - name: Verify release version and OIDC-compatible npm
+      - name: Verify exact GitHub tag identity and release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.github-release.outputs.sha }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+          TAG: ${{ needs.github-release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$(node -p "require('./package.json').version")" = "0.2.0-beta.2"
-          node --version
-          npm --version
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          node scripts/release-metadata.js check
+          test "$(node scripts/release-metadata.js version)" = "$VERSION"
+          test "$(node scripts/release-metadata.js tag)" = "$TAG"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" \
+            --jq '.object.type + " " + .object.sha')" = "commit $EXPECTED_SHA"
           npm --version | awk -F. '{ if ($1 > 11 || ($1 == 11 && $2 >= 5)) exit 0; exit 1 }'
-      - name: Publish beta with npm Trusted Publishing (OIDC)
+      - name: Publish using npm OIDC and verify registry
+        env:
+          VERSION: ${{ needs.github-release.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          if npm view 'json-to-express@0.2.0-beta.2' version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
-            echo "npm version 0.2.0-beta.2 already published; not overwriting."
+          PACKAGE="json-to-express"
+          if npm view "$PACKAGE@$VERSION" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "$PACKAGE@$VERSION already exists; never republishing."
             exit 0
           fi
-          # No NODE_AUTH_TOKEN or NPM_TOKEN: npm exchanges this job's
-          # GitHub OIDC identity for short-lived registry credentials.
-          # Provenance is automatically generated by npm for public repos.
+          # npm exchanges the GitHub OIDC identity for short-lived credentials.
+          # No NODE_AUTH_TOKEN or NPM_TOKEN is used; provenance is automatic.
           npm publish --tag beta --access public
+          for attempt in {1..12}; do
+            ACTUAL="$(npm view "$PACKAGE@$VERSION" version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+            if [[ "$ACTUAL" == "$VERSION" ]]; then
+              echo "Registry confirmed $PACKAGE@$VERSION"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Published package not yet visible on npm registry" >&2
+          exit 1
