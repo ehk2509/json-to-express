@@ -197,6 +197,43 @@ jobs:
           npm run db:migrate:deploy
           npm run db:migrate:deploy
           npm run db:migrate:status
+          npm run db:migrate:verify
+          test -s prisma/migration-history.json
+          cp prisma/migrations/00000000000000_init/migration.sql /tmp/j2e-original-init.sql
+          echo '-- tampered history' >> prisma/migrations/00000000000000_init/migration.sql
+          if npm run db:migrate:verify; then echo "Historical migration tampering undetected"; exit 1; fi
+          cp /tmp/j2e-original-init.sql prisma/migrations/00000000000000_init/migration.sql
+          npm run db:migrate:verify
+      - name: Upgrade schema with versioned Prisma migration and deploy repeatedly
+        working-directory: .tmp/e2e-postgres
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_postgres
+        run: |
+          cat >> prisma/schema.prisma <<'PRISMA'
+
+          model UpgradeMarker {
+            id String @id @default(uuid())
+            version Int
+          }
+          PRISMA
+          npm run db:migrate:dev -- --name add_upgrade_marker
+          if npm run db:migrate:verify; then echo "Untracked migration accepted"; exit 1; fi
+          npm run db:migrate:record
+          npm run db:migrate:verify
+          npm run db:migrate:deploy
+          npm run db:migrate:deploy
+          npm run db:migrate:status
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const fs=require('node:fs');
+          const {PrismaClient}=require('@prisma/client');
+          assert.equal(Object.keys(JSON.parse(fs.readFileSync('prisma/migration-history.json','utf8')).migrations).length,2);
+          const prisma=new PrismaClient();
+          (async()=>{
+            const row=await prisma.upgradeMarker.create({data:{version:2}});
+            assert.equal((await prisma.upgradeMarker.findUnique({where:{id:row.id}})).version,2);
+          })().catch(error=>{console.error(error);process.exitCode=1;}).finally(()=>prisma.$disconnect());
+          NODE
       - name: Test generated PostgreSQL contracts
         working-directory: .tmp/e2e-postgres
         run: npm test
@@ -251,10 +288,21 @@ jobs:
           const prisma = new PrismaClient();
           (async () => {
             const categories = await prisma.category.findMany({where: {name: 'Fixture Category'}});
-            const products = await prisma.product.findMany({where: {fixtureKey: 'fixture-prod-1'}, include: {category: true}});
+            const products = await prisma.product.findMany({where: {fixtureKey: 'fixture-prod-1'}, include: {category: true, tags: true}});
             assert.equal(categories.length, 1);
             assert.equal(products.length, 1);
             assert.equal(products[0].category.name, 'Fixture Category');
+             assert.deepEqual(products[0].tags.map(tag=>tag.name).sort(),['Fixture Tag A','Fixture Tag B']);
+             assert.equal(await prisma.tag.count({where:{name:{startsWith:'Fixture Tag'}}}),2);
+             const root=await prisma.treeNode.findUnique({where:{slug:'root'}});
+             const child=await prisma.treeNode.findUnique({where:{slug:'child'},include:{parent:true}});
+             const sibling=await prisma.treeNode.findUnique({where:{slug:'sibling'},include:{parent:true}});
+             assert.equal(child.parent.id,root.id);
+             assert.equal(sibling.parent.id,root.id);
+             assert.equal(await prisma.treeNode.count({where:{slug:{in:['root','child','sibling']}}}),3);
+             const factory=await prisma.product.findMany({where:{fixtureKey:{startsWith:'factory-prod-'}},include:{category:true,tags:true}});
+             assert.equal(factory.length,3);
+             assert.ok(factory.every(row=>row.category.name==='Fixture Category'&&row.tags.length===1&&row.tags[0].name==='Fixture Tag A'));
           })().catch(error => {console.error(error); process.exitCode = 1;}).finally(() => prisma.$disconnect());
           NODE
       - name: Print PostgreSQL generated server log on failure

@@ -72,7 +72,13 @@
           "type": "string",
           "minLength": 1
         },
-        "framework": {"enum": ["express", "fastify"], "default": "express"},
+        "framework": {
+          "enum": [
+            "express",
+            "fastify"
+          ],
+          "default": "express"
+        },
         "port": {
           "type": "integer",
           "minimum": 1,
@@ -364,14 +370,84 @@
       },
       "additionalProperties": false
     },
-    "fixtures": {"type": "object", "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"}, "additionalProperties": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["where", "data"], "properties": {"where": {"type": "object", "minProperties": 1}, "data": {"type": "object"}}}}},
-    "factories": {"type": "object", "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"}, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["count", "template"], "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 1000}, "template": {"type": "object"}}}},
-    "seeds": {
+    "fixtures": {
       "type": "object",
-      "propertyNames": {"pattern": "^[A-Z][A-Za-z0-9]*$"},
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
       "additionalProperties": {
         "type": "array",
-        "items": {"type": "object"}
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "where",
+            "data"
+          ],
+          "properties": {
+            "where": {
+              "type": "object",
+              "minProperties": 1
+            },
+            "data": {
+              "type": "object"
+            },
+            "onConflict": {
+              "enum": [
+                "update",
+                "skip",
+                "error"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "factories": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "template"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "template": {
+            "type": "object"
+          },
+          "uniqueBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "onConflict": {
+            "enum": [
+              "update",
+              "skip",
+              "error"
+            ]
+          }
+        }
+      }
+    },
+    "seeds": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
       }
     },
     "entities": {

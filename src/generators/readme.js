@@ -42,23 +42,26 @@ module.exports = function readmeSource(spec) {
   const setup = [
     '    npm install',
     '    cp .env.example .env',
-    ...(spec.database.type === 'postgresql' ? ['    npm run db:push'] : []),
+    ...(spec.database.type === 'postgresql' ? ['    npm run db:migrate:init   # fresh project only', '    npm run db:migrate:deploy'] : []),
     '    npm start'
   ];
 
   const deployment = [];
   if (spec.database.type === 'postgresql') deployment.push(
     '## Database migrations', '',
-    'For a new generated app, run `npm run db:migrate:init` to create an initial SQL migration without needing a running database.',
-    'Review and commit the generated `prisma/migrations` directory, then run `npm run db:migrate:deploy` against your database.',
-    'The initial generator refuses to overwrite any existing migrations. Use `npm run db:migrate:dev -- --name change_name` for later changes against a disposable development database.',
-    'Deploy committed migrations in staging/production: `npm run db:migrate:deploy`.',
-    'Check drift/status: `npm run db:migrate:status`. `db:push` is for disposable development databases only.',
-    'Never edit previously applied migration SQL. Use a new migration for changes. `db:push` is for disposable development databases.', ''
+    'For a new project, run `npm run db:migrate:init` to generate the initial SQL and a SHA-256 migration-history manifest without a running database.',
+    'Review and commit the migration directory, migration_lock.toml and migration-history.json together. The generator never replaces these unowned SQL artifacts.',
+    'Later changes: modify the Prisma schema, run `npm run db:migrate:dev -- --name meaningful_change` on a disposable development database, inspect generated SQL, then run `npm run db:migrate:record` and commit both SQL and updated history manifest.',
+    'Production deployment: back up the database, run `npm run db:migrate:verify`, `npm run db:migrate:deploy`, and `npm run db:migrate:status`. Deploy and status fail if tracked SQL changed or new SQL has not been recorded.',
+    'Never edit applied SQL or migration_lock.toml, nor regenerate over a user-owned migration. `db:push` is disposable development only and must not be used for production.',
+    'Prisma SQL migrations are forward-only. For recovery, restore a tested database backup or create a reviewed compensating forward migration. Use `prisma migrate resolve` only after verifying the database schema and _prisma_migrations state.',
+    'Custom database.prisma.schemaPath layouts keep their migrations and history manifest alongside the configured schema.', ''
   );
   if (spec.database.type === 'postgresql' && (Object.keys(spec.seeds).length || Object.keys(spec.factories).length || Object.keys(spec.fixtures).length)) deployment.push(
     '## Declarative seed data', '',
-    'Run `npm run db:seed` after migration deployment. Duplicate protection depends on unique indexes. Do not run sample seeds against sensitive production data.', ''
+    'Run `npm run db:seed` after migration deployment. Declared fixtures use unique scalar selectors and a transactional two-pass dependency planner, so optional self references and many-to-many links are rerunnable without duplicate rows.',
+    'Fixture rows support onConflict: update (default), skip, or error. Deterministic relational factories use uniqueBy on a declared unique scalar field, a {{index}} key template for multiple rows, and optional onConflict. Legacy scalar-only factories still use skipDuplicates.',
+    'Do not run demo seed data against sensitive production databases.', ''
   );
   if (spec.outbox.enabled) {
     deployment.push(

@@ -47,6 +47,7 @@ const fastifyMongoDeleteSource = require('./fastify-mongo-delete');
 const fastifyEndpointSource = require('./fastify-endpoints');
 const fastifyAuthSource = require('./fastify-auth');
 const migrationInitSource = require('./migration-init');
+const migrationHistorySource = require('./migration-history');
 const {filePaths} = require('./utils');
 
 function envExample(spec) {
@@ -172,6 +173,7 @@ function buildFiles(spec) {
   if (spec.database.type === 'postgresql') {
     files.set(spec.database.prisma.schemaPath, prismaSchemaSource(spec));
     files.set('scripts/create-initial-migration.js', migrationInitSource(spec));
+    files.set('scripts/verify-migration-history.js', migrationHistorySource(spec));
     if (Object.keys(spec.seeds).length || Object.keys(spec.factories).length || Object.keys(spec.fixtures).length) files.set('prisma/seed.js', seedSource(spec));
   }
 
