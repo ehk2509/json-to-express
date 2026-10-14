@@ -634,40 +634,62 @@ function validateSpec(inputSpec) {
     }
   }
 
+  const collisionPolicies = new Set(['update','skip','error']);
+  function validUniqueField(entityName, selector) {
+    const fields = spec.entities && spec.entities[entityName] && spec.entities[entityName].fields;
+    const keys = isObject(selector) ? Object.keys(selector) : [];
+    const field = fields && fields[keys[0]];
+    return keys.length === 1 && selector[keys[0]] !== null && selector[keys[0]] !== undefined &&
+      field && field.unique === true && field.type !== 'reference' && field.type !== 'file';
+  }
+  function validateRelationalData(name, data, path, requiredDeps) {
+    const entity = spec.entities && spec.entities[name];
+    if (!entity || !isObject(data)) return;
+    for (const [key, value] of Object.entries(data)) {
+      const field = entity.fields[key];
+      if (!field || field.type === 'file') {
+        errors.push(path + '.' + key + ' is unsupported'); continue;
+      }
+      if (field.type !== 'reference') continue;
+      const selections = field.many ? value : [value];
+      if (!Array.isArray(selections) || (field.required && !field.many && value === null)) {
+        errors.push(path + '.' + key + ' requires ' + (field.many ? 'an array' : 'a non-null reference') + ' of unique selectors');
+        continue;
+      }
+      for (const selector of selections) {
+        if (selector === null && !field.many && !field.required) continue;
+        if (!isObject(selector) || !validUniqueField(field.ref, selector.where)) {
+          errors.push(path + '.' + key + ' requires target unique field via {where: {...}}');
+        }
+      }
+      // Many-to-many and nullable single relations connect in a second pass.
+      if (field.required && !field.many && requiredDeps) requiredDeps.add(field.ref);
+    }
+  }
   if (spec.fixtures && isObject(spec.fixtures)) {
     if (!spec.database || spec.database.type !== 'postgresql') errors.push('fixtures require postgresql');
     const dependencies = new Map();
-    for (const [entityName, rows] of Object.entries(spec.fixtures)) {
-      const entity = spec.entities && spec.entities[entityName];
-      if (!entity) { errors.push('fixtures.' + entityName + ' references unknown entity'); continue; }
+    for (const [name, rows] of Object.entries(spec.fixtures)) {
+      const entity = spec.entities && spec.entities[name];
+      if (!entity) { errors.push('fixtures.' + name + ' references unknown entity'); continue; }
       const deps = new Set();
-      dependencies.set(entityName, deps);
+      dependencies.set(name, deps);
       if (!Array.isArray(rows)) continue;
+      const selectors = new Set();
       for (const [index, row] of rows.entries()) {
         if (!isObject(row) || !isObject(row.where) || !isObject(row.data)) continue;
-        const keys = Object.keys(row.where);
-        if (keys.length !== 1 || !entity.fields[keys[0]] || entity.fields[keys[0]].unique !== true) {
-          errors.push('fixtures.' + entityName + '[' + index + '].where must select one declared unique scalar field');
-        }
-        for (const [key, value] of Object.entries(row.data)) {
-          const field = entity.fields[key];
-          if (!field || field.type === 'file') { errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' is unsupported'); continue; }
-          if (field.type === 'reference') {
-            if (field.many || !isObject(value) || !isObject(value.where) || Object.keys(value.where).length !== 1) {
-              errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' requires a single reference where selector');
-              continue;
-            }
-            const target = spec.entities[field.ref];
-            const refKey = Object.keys(value.where)[0];
-            if (!target || !target.fields[refKey] || target.fields[refKey].unique !== true) errors.push('fixtures.' + entityName + '[' + index + '].data.' + key + ' requires target unique field');
-            deps.add(field.ref);
-          }
-        }
+        const path = 'fixtures.' + name + '[' + index + ']';
+        if (!validUniqueField(name, row.where)) errors.push(path + '.where must select one declared unique scalar field');
+        const canonical = JSON.stringify(row.where);
+        if (selectors.has(canonical)) errors.push(path + '.where repeats a previous fixture unique selector');
+        selectors.add(canonical);
+        if (row.onConflict !== undefined && !collisionPolicies.has(row.onConflict)) errors.push(path + '.onConflict must be update, skip or error');
+        validateRelationalData(name, row.data, path + '.data', deps);
       }
     }
     const visiting = new Set(), visited = new Set();
     function visit(name) {
-      if (visiting.has(name)) { errors.push('fixtures dependency cycle at ' + name); return; }
+      if (visiting.has(name)) { errors.push('fixtures required dependency cycle at ' + name); return; }
       if (visited.has(name)) return;
       visiting.add(name);
       for (const dep of dependencies.get(name) || []) {
@@ -681,14 +703,27 @@ function validateSpec(inputSpec) {
   }
   if (spec.factories && isObject(spec.factories)) {
     if (!spec.database || spec.database.type !== 'postgresql') errors.push('factories are currently supported only for postgresql');
-    for (const [entityName, config] of Object.entries(spec.factories)) {
-      if (!spec.entities || !spec.entities[entityName]) {
-        errors.push('factories.' + entityName + ' references an unknown entity');
-      } else if (isObject(config) && isObject(config.template)) {
-        const fields = spec.entities[entityName].fields || {};
+    for (const [name, config] of Object.entries(spec.factories)) {
+      const entity = spec.entities && spec.entities[name];
+      if (!entity) { errors.push('factories.' + name + ' references an unknown entity'); continue; }
+      if (!isObject(config) || !isObject(config.template)) continue;
+      const whereKey = config.uniqueBy;
+      if (config.onConflict !== undefined && !collisionPolicies.has(config.onConflict)) errors.push('factories.' + name + '.onConflict must be update, skip or error');
+      if (whereKey !== undefined && (!entity.fields[whereKey] || !validUniqueField(name, {[whereKey]: config.template[whereKey]}))) {
+        errors.push('factories.' + name + '.uniqueBy must select a unique scalar template field');
+      }
+      if (whereKey !== undefined) {
+        validateRelationalData(name, config.template, 'factories.' + name + '.template');
+        if (config.count > 1 && typeof config.template[whereKey] === 'string' && !config.template[whereKey].includes('{{index}}')) {
+          errors.push('factories.' + name + '.template.' + whereKey + ' requires {{index}} for a collision-free stable key');
+        }
+        if (config.count > 1 && typeof config.template[whereKey] !== 'string') {
+          errors.push('factories.' + name + '.template.' + whereKey + ' must be a templated unique string for count > 1');
+        }
+      } else {
         for (const fieldName of Object.keys(config.template)) {
-          if (!fields[fieldName] || ['reference', 'file'].includes(fields[fieldName].type)) {
-            errors.push('factories.' + entityName + '.template.' + fieldName + ' must be a scalar entity field');
+          if (!entity.fields[fieldName] || ['reference','file'].includes(entity.fields[fieldName].type)) {
+            errors.push('factories.' + name + '.template.' + fieldName + ' must be a scalar entity field unless uniqueBy is set');
           }
         }
       }
