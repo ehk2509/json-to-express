@@ -253,7 +253,7 @@ npm run db:push
 npm start
 ~~~
 
-For versioned production migrations, run `npm run db:migrate:init` to generate a reviewed, versioned initial SQL migration with Prisma `migrate diff` without a running database. The command refuses to overwrite existing migration history. For later changes, use `npm run db:migrate:dev -- --name change_name` against a disposable development database. Commit the generated `prisma/migrations` directory. Deploy only reviewed migrations with `npm run db:migrate:deploy`; inspect status using `npm run db:migrate:status`. Never use `db:push` as a production migration replacement.
+For versioned production migrations, run `npm run db:migrate:init` to generate a reviewed initial SQL migration **and a SHA-256 migration-history manifest** with Prisma `migrate diff` without a running database. The command refuses to overwrite existing migration history. For later changes, use `npm run db:migrate:dev -- --name change_name` against a disposable development database, inspect the new SQL, run `npm run db:migrate:record`, and commit both SQL and the updated `migration-history.json`. Deploy only reviewed migrations with `npm run db:migrate:deploy` (which checks SHA-256 history first); inspect status using `npm run db:migrate:status`. The SQL/history files live alongside `database.prisma.schemaPath`, including custom schema paths. Never use `db:push` as a production migration replacement.
 
 Optional declarative PostgreSQL seeds use a top-level `seeds` object keyed by entity name. A `factories` map can additionally generate bounded deterministic fixtures, e.g. `"factories": {"Category": {"count": 3, "template": {"name": "Category {{index}}"}}}`. The placeholder is replaced by 1-based row numbers. For example:
 
@@ -280,9 +280,9 @@ Relational PostgreSQL fixtures can be declared separately from simple seeds and 
 }
 ~~~
 
-The generated seed runner uses Prisma `upsert` for these fixtures, resolves references through unique-key lookups, and orders entity batches by relation dependencies. Selectors must use declared unique scalar fields; cycles, unsupported fields and missing dependency batches fail validation. These fixtures currently support single-valued relations, not many-to-many or self-referential graphs. Production seed use should still be reviewed carefully because reruns update matching records.
+The generated seed runner uses Prisma `upsert` for these fixtures, resolves references through unique-key lookups, and orders entity batches by relation dependencies. Selectors must use declared unique scalar fields; cycles, unsupported fields and missing dependency batches fail validation. Fixtures support single-valued references, many-to-many `[{"where": {...}}]` selectors and nullable self-referential graphs using a two-pass relation writer; cycles made entirely of required foreign keys are rejected. Production seed use should still be reviewed carefully because reruns update matching records.
 
-The generated `npm run db:seed` uses Prisma `createMany` with `skipDuplicates`. Only scalar fields are supported for now; repeated seed runs avoid duplication only when suitable database unique constraints exist. These seeds are intentionally separate from schema migrations.
+Stable-key relational factories accept `uniqueBy` (a declared unique scalar template field) and `onConflict: update | skip | error`, and can populate related rows via unique-key selectors. Their `{{index}}` unique template makes repeated runs deterministic. Legacy scalar-only seeds/factories still use Prisma `createMany` with `skipDuplicates`. Only scalar fields are supported for now; repeated seed runs avoid duplication only when suitable database unique constraints exist. These seeds are intentionally separate from schema migrations.
 
 PostgreSQL uses UUID primary keys while MongoDB continues to use ObjectId identifiers. Generated route validation and OpenAPI adapt automatically.
 
@@ -324,6 +324,13 @@ The Prisma CRUD target supports:
 PostgreSQL/Prisma now covers the same major application features as MongoDB/Mongoose, including workflows, durable outbox/jobs, many-to-many relations, multi-strategy auth, REST, and GraphQL.
 
 Remaining differences are ORM-specific options: Mongoose-only `schemaOptions` and raw field `options` are rejected for PostgreSQL instead of being silently ignored.
+
+
+### Migration recovery and safety
+
+**Never use `db:push` for production.** Generate and review a new migration on a disposable development database, record its hashes with `db:migrate:record`, and commit the migration SQL, `migration_lock.toml` and `migration-history.json` together. Deploy in staging before production; take a verified backup before any destructive change. Run `db:migrate:verify` to detect modified historical SQL or unreviewed new migrations. Re-running `db:migrate:deploy` is idempotent on a database with the same migration history.
+
+Prisma does not generate automatic down migrations. For rollback, restore a tested backup or write a safe compensating forward migration. Do **not** manually delete rows from `_prisma_migrations`; use `prisma migrate resolve` only after reconciling actual schema state and recorded migration outcomes. Generated migrations are developer-owned files and are not overwritten by normal regeneration.
 
 ## Entities and Mongoose
 
@@ -1660,7 +1667,7 @@ A second generated-app-postgres-e2e job independently performs:
 PostgreSQL JSON spec
   -> generate fresh Prisma application
   -> npm install
-  -> prisma db push against Postgres 16
+  -> reviewed Prisma migrate deploy against Postgres 16
   -> generated contract tests
   -> start generated Express server
   -> create related Category/Product rows
@@ -1699,7 +1706,7 @@ PostgreSQL/Prisma is now a full application target for CRUD, declarative workflo
 
 Both persistence targets can now emit container/Kubernetes deployment artifacts, standalone JavaScript/TypeScript SDK packages, and a complete generated admin UI from the same JSON contract.
 
-File uploads and object storage are implemented. PostgreSQL projects now generate a declarative scalar seed runner and Prisma migration commands. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Deterministic scalar factories are supported; relational factories and production-grade migration snapshots remain future work. Fastify-native generation now includes qualifying PostgreSQL and MongoDB CRUD, transaction-aware PostgreSQL and MongoDB recursive `restrict`/`nullify`/`cascade` deletion (including many-to-many and multilevel cascades), Mongo replica-set transactions, audit/soft-delete hooks, JWT/API-key/local/OIDC authentication, GraphQL/workflows, Redis caching, local/S3 multipart uploads, signed URLs, observability, embedded outbox workers, rate limiting and compression. The OIDC integration suite runs a local provider with JWKS signing, PKCE validation, token exchange and replay checks. Advanced Fastify integration tests cover real PostgreSQL, MongoDB, S3-compatible storage, and Redis.
+File uploads and object storage are implemented. PostgreSQL projects now generate versioned Prisma migration creation/deploy commands, SHA-256 immutable-history checks, and idempotent relational seed runners. The Prisma CLI creates versioned SQL migrations against a development database; the generator does not commit or invent migration snapshots. Deterministic scalar and relational factories with unique-key collision policies are supported; two-phase fixtures cover many-to-many and nullable self references. Reviewed versioned SQL migrations and history manifests remain owned by the generated application. Fastify-native generation now includes qualifying PostgreSQL and MongoDB CRUD, transaction-aware PostgreSQL and MongoDB recursive `restrict`/`nullify`/`cascade` deletion (including many-to-many and multilevel cascades), Mongo replica-set transactions, audit/soft-delete hooks, JWT/API-key/local/OIDC authentication, GraphQL/workflows, Redis caching, local/S3 multipart uploads, signed URLs, observability, embedded outbox workers, rate limiting and compression. The OIDC integration suite runs a local provider with JWKS signing, PKCE validation, token exchange and replay checks. Advanced Fastify integration tests cover real PostgreSQL, MongoDB, S3-compatible storage, and Redis.
 
 Fastify custom middleware **must** use native lifecycle hooks. List developer-owned modules under `app.middlewareModules`; no additional opt-in is required. Each module must export at least one of `fastifyOnRequest(request, reply)`, `fastifyPreValidation(request, reply)`, `fastifyPreHandler(request, reply)`, `fastifyPreSerialization(request, reply, payload)`, `fastifyOnSend(request, reply, payload)`, `fastifyOnError(request, reply, error)`, or `fastifyOnResponse(request, reply)`. Both synchronous and asynchronous hooks are supported.
 
