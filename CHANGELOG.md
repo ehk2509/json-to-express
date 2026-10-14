@@ -2,6 +2,11 @@
 
 All notable project changes are tracked here. Versions prior to this beta were developed on the main branch.
 
+## [Unreleased]
+
+### Changed
+- Automate version-independent beta releases, immutable GitHub SHA/tag verification, concurrency fencing, changelog validation and dependency security audits.
+
 ## [0.2.0-beta.2] - 2026-10-14
 
 ### Changed
