@@ -1264,6 +1264,19 @@ jobs:
             }
           })().catch(e=>{console.error(e);process.exitCode=1;});
           NODE
+      - name: Two S3-backed API replicas and independent conditional reconciliation
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+          PORT: 3495
+        run: |
+          cp ../../scripts/fixtures/storage-two-s3-replicas.js ./storage-two-s3-replicas.js
+          timeout 120s node storage-two-s3-replicas.js
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
