@@ -44,7 +44,13 @@ async function child(){
     const all=await audit.inventory(['assets/files/'],new Date(Date.now()-24*3600000),1000);
     console.error('S3 chaos inventory',JSON.stringify({target:process.env.J2E_TARGET_KEY,listed:all.items.map(x=>x.key),scanned:all.scanned}));
     await audit.reconcile(audit.args(['--execute','--s3-verified-conditional-delete']),{
-      async beforeCandidate(item){console.error('S3 chaos candidate',item.key);},
+      async beforeCandidate(item){
+        const head=await s3.send(new HeadObjectCommand({Bucket:bucket,Key:item.key}));
+        const unchanged=await audit.objectUnchanged(item,new Date(Date.now()-24*3600000));
+        console.error('S3 chaos candidate',JSON.stringify({item,
+          head:{etag:head.ETag,size:head.ContentLength,modifiedAt:head.LastModified?.toISOString()},
+          unchanged}));
+      },
       async beforeDelete(item) {
         if(item.key!==process.env.J2E_TARGET_KEY)return;
         fs.writeFileSync('.j2e-s3-chaos-ready','ready');
