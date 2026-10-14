@@ -194,6 +194,54 @@ async function conditionalS3Delete(item) {
     throw error;
   } finally {s3.destroy();}
 }
+// Never trust a flag alone: exercise a real conditional DELETE mismatch and match
+// against this provider. A backend that ignores If-Match must fail closed.
+async function verifyConditionalS3() {
+  const {S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand} = require('@aws-sdk/client-s3');
+  const options = {region: process.env[config.s3.regionEnv], forcePathStyle: config.s3.forcePathStyle};
+  if (config.s3.endpointEnv && process.env[config.s3.endpointEnv]) options.endpoint = process.env[config.s3.endpointEnv];
+  if (config.s3.accessKeyEnv && config.s3.secretKeyEnv &&
+      process.env[config.s3.accessKeyEnv] && process.env[config.s3.secretKeyEnv]) {
+    options.credentials = {accessKeyId: process.env[config.s3.accessKeyEnv], secretAccessKey: process.env[config.s3.secretKeyEnv]};
+  }
+  const client = new S3Client(options);
+  const bucket = process.env[config.s3.bucketEnv];
+  const key = '__j2e_reconciliation_probes__/' + crypto.randomUUID();
+  let created = false;
+  try {
+    const put = await client.send(new PutObjectCommand({
+      Bucket:bucket,Key:key,Body:'conditional-delete-probe',IfNoneMatch:'*'
+    }));
+    created = true;
+    const etag = put.ETag || (await client.send(new HeadObjectCommand({Bucket:bucket,Key:key}))).ETag;
+    if (!etag) throw new Error('S3 provider did not return a probe ETag');
+    let refused = false;
+    try {
+      await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key,IfMatch:'"intentionally-wrong-etag"'}));
+    } catch(error) {
+      refused = Boolean(error.$metadata && error.$metadata.httpStatusCode === 412);
+      if (!refused) throw error;
+    }
+    if (!refused) throw new Error('S3 backend ignores conditional DELETE If-Match: aborting reconciliation');
+    const retained = await client.send(new HeadObjectCommand({Bucket:bucket,Key:key}));
+    if (retained.ETag !== etag) throw new Error('S3 conditional-delete probe changed unexpectedly');
+    await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key,IfMatch:etag}));
+    created = false;
+    try {
+      await client.send(new HeadObjectCommand({Bucket:bucket,Key:key}));
+      throw new Error('S3 matching conditional DELETE did not remove the object');
+    } catch(error) {
+      if (!error.$metadata || error.$metadata.httpStatusCode !== 404) throw error;
+    }
+    return true;
+  } finally {
+    // Only the unique probe key may be cleaned up unconditionally.
+    if (created) {
+      await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key})).catch(() => {});
+    }
+    client.destroy();
+  }
+}
 async function reconcile(options, hooks = {}) {
   const lease = hooks.lease || storageLease;
   const owner=crypto.randomUUID();
@@ -204,6 +252,7 @@ async function reconcile(options, hooks = {}) {
   if(options.execute) {
     if(config.provider==='s3' && !options.conditionalDeleteVerified)
       throw new Error('S3 destructive reconciliation requires --s3-verified-conditional-delete and a verified If-Match-capable backend');
+    if(config.provider==='s3') await verifyConditionalS3();
     token=await lease.acquire(owner,ttlMs);
     if(!token)throw new Error('Another storage reconciler holds the distributed lease');
     heartbeat=setInterval(()=>{
@@ -257,7 +306,7 @@ async function main() {
   finally {await connectDatabase.disconnect();}
 }
 if (require.main === module) main().catch(error => {console.error(error);process.exitCode = 1;});
-module.exports = {args, safePrefix, reconcile, referencedKeys, inventory, objectUnchanged};
+module.exports = {args, safePrefix, reconcile, referencedKeys, inventory, objectUnchanged, verifyConditionalS3};
 `;
   return template.trimStart()
     .replace('__DATABASE_REQUIRE__', js(relativeRequire(target, paths.database)))
