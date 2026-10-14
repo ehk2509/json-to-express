@@ -1,0 +1,71 @@
+{
+  "specVersion": "1.0",
+  "app": {
+    "name": "team-saas-api"
+  },
+  "database": {
+    "type": "postgresql"
+  },
+  "auth": {
+    "enabled": true,
+    "strategies": [
+      "jwt"
+    ],
+    "jwt": {
+      "enabled": true
+    },
+    "local": {
+      "enabled": true,
+      "allowRegistration": true
+    }
+  },
+  "entities": {
+    "Organization": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true
+        },
+        "slug": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        }
+      }
+    },
+    "Project": {
+      "fields": {
+        "name": {
+          "type": "string",
+          "required": true
+        },
+        "organization": {
+          "type": "reference",
+          "ref": "Organization",
+          "required": true
+        },
+        "status": {
+          "type": "string",
+          "default": "active"
+        }
+      }
+    },
+    "Task": {
+      "fields": {
+        "title": {
+          "type": "string",
+          "required": true
+        },
+        "project": {
+          "type": "reference",
+          "ref": "Project",
+          "required": true
+        },
+        "done": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

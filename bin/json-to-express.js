@@ -4,12 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const pkg = require('../package.json');
 const {generateApplication, planApplication, validateSpec} = require('../src');
+const {initialize, parseInitArgs, TEMPLATES} = require('../src/onboarding');
+const {parseDoctorArgs, diagnose} = require('../src/doctor');
 
 function printHelp() {
   console.log([
     'json-to-express ' + pkg.version,
     '',
     'Usage:',
+    '  j2e init [name] [--template crud|saas|ecommerce] [--yes] [options]',
+    '  j2e doctor [spec.json] [--output <dir>] [--json] [--strict]',
     '  j2e validate <spec.json>',
     '  j2e generate <spec.json> [--output <dir>] [--force]',
     '  j2e diff <spec.json> [--output <dir>] [--json]',
@@ -22,7 +26,17 @@ function printHelp() {
     '  --approve-schema       Acknowledge review-level schema risks',
     '  --allow-destructive    Acknowledge breaking schema changes (backup/migrate first)',
     '  --allow-unknown-schema Acknowledge missing legacy schema history',
-    '  --json                 Print machine-readable diff or plan',
+    '  --json                 Print machine-readable diff, plan or doctor report',
+    '  --template <name>      CRUD, SaaS or e-commerce starter (init)',
+    '  --framework <name>     express or fastify (init)',
+    '  --database <name>      mongodb or postgresql (init)',
+    '  --auth <mode>          none, jwt, local, api-key or oidc (init)',
+    '  --deployment <mode>    none, docker, compose, kubernetes (init)',
+    '  --issuer <https-url>   OIDC issuer (required if auth is oidc)',
+    '  --yes                  Use defaults non-interactively (init)',
+    '  --dry-run              Validate and preview init without writing',
+    '  --list-templates       List built-in starters (init)',
+    '  --strict               Treat doctor warnings as failures',
     '  -h, --help             Show help',
     '  -v, --version          Show version',
     '',
@@ -55,11 +69,53 @@ function formatPlan(plan, fileOnly = false) {
   }
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   if (!args.length || args.includes('-h') || args.includes('--help')) return printHelp();
   if (args.includes('-v') || args.includes('--version')) return console.log(pkg.version);
   const command = args[0], specFile = args[1];
+  if (command === 'init') {
+    const options = parseInitArgs(args.slice(1));
+    const result = await initialize(options);
+    if (result.templates) {
+      for (const entry of result.templates) console.log(entry.name.padEnd(12) + entry.description);
+      return;
+    }
+    if (result.dryRun) {
+      console.log('✓ Starter configuration valid (dry run; no files written).');
+      console.log(JSON.stringify({workspace: result.workspace, specFile: result.specFile,
+        appDir: result.appDir, template: options['--template'] || 'crud',
+        name: result.spec.app.name, framework: result.spec.app.framework,
+        database: result.spec.database.type,
+        plannedFiles: result.plan.summary.add}, null, 2));
+      return;
+    }
+    console.log('✓ Created ' + result.workspace);
+    console.log('  Specification: ' + result.specFile);
+    console.log('  Application:   ' + result.appDir);
+    console.log('  cd ' + path.relative(process.cwd(), result.workspace));
+    if (result.spec.deployment.compose.enabled) {
+      console.log('  cd server && docker compose up -d --build');
+    } else {
+      console.log('  cd server && npm install && npm start');
+    }
+    console.log('  Run j2e doctor app.j2e.json to check local prerequisites.');
+    return;
+  }
+  if (command === 'doctor') {
+    const options = parseDoctorArgs(args.slice(1));
+    const report = diagnose(options);
+    if (options.json) console.log(JSON.stringify(report, null, 2));
+    else {
+      for (const check of report.checks) {
+        console.log('[' + check.level.toUpperCase() + '] ' + check.code + ': ' + check.message);
+        if (check.remedy && check.level !== 'ok') console.log('  → ' + check.remedy);
+      }
+      console.log(report.errors + ' error(s), ' + report.warnings + ' warning(s).');
+    }
+    if (!report.ok) process.exitCode = 1;
+    return;
+  }
   if (!specFile || specFile.startsWith('-')) throw new Error('Missing specification file. Run j2e --help.');
   const allowed = new Set(['-o', '--output', '--force', '--approve-schema',
     '--allow-destructive', '--allow-unknown-schema', '--json']);
@@ -111,8 +167,7 @@ function main() {
   }
   throw new Error('Unknown command: ' + command + '. Run j2e --help for usage.');
 }
-try {main();}
-catch (error) {
+main().catch(error => {
   console.error('json-to-express: ' + error.message);
   process.exitCode = 1;
-}
+});
