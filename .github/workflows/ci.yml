@@ -21,6 +21,16 @@ jobs:
       - run: npm run check
       - run: npm run validate:examples
 
+  packaged-install-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build tarball and exercise published CLI layout
+        run: npm run test:package
+
   generated-app-e2e:
     runs-on: ubuntu-latest
     env:

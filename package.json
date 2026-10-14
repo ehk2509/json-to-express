@@ -1,7 +1,7 @@
 {
   "name": "json-to-express",
-  "version": "0.1.0",
-  "description": "Generate runnable Express REST APIs from declarative JSON for MongoDB/Mongoose or PostgreSQL/Prisma.",
+  "version": "0.2.0-beta.1",
+  "description": "Generate runnable Express or native Fastify APIs from declarative JSON, with MongoDB/Mongoose or PostgreSQL/Prisma.",
   "main": "src/index.js",
   "bin": {
     "json-to-express": "bin/json-to-express.js",
@@ -10,7 +10,8 @@
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check-syntax.js",
-    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json && node bin/json-to-express.js validate examples/e2e-s3.json"
+    "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json && node bin/json-to-express.js validate examples/e2e-s3.json",
+    "test:package": "node scripts/verify-package.js"
   },
   "keywords": [
     "express",
@@ -20,7 +21,13 @@
     "mongoose",
     "scaffolding",
     "prisma",
-    "postgresql"
+    "postgresql",
+    "fastify",
+    "api-generator",
+    "code-generation",
+    "backend",
+    "mongodb",
+    "object-storage"
   ],
   "author": "Elyes Hkiri",
   "license": "MIT",
@@ -35,5 +42,16 @@
     "scripts",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ehk2509/json-to-express.git"
+  },
+  "homepage": "https://github.com/ehk2509/json-to-express#readme",
+  "bugs": {
+    "url": "https://github.com/ehk2509/json-to-express/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
