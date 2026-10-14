@@ -181,6 +181,24 @@
           "unique": true
         }
       }
+    },
+    "TreeNode": {
+      "fields": {
+        "slug": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        "title": {
+          "type": "string",
+          "required": true
+        },
+        "parent": {
+          "type": "reference",
+          "ref": "TreeNode",
+          "onDelete": "nullify"
+        }
+      }
     }
   },
   "deployment": {
@@ -599,7 +617,19 @@
             "where": {
               "name": "Fixture Category"
             }
-          }
+          },
+          "tags": [
+            {
+              "where": {
+                "name": "Fixture Tag A"
+              }
+            },
+            {
+              "where": {
+                "name": "Fixture Tag B"
+              }
+            }
+          ]
         }
       }
     ],
@@ -612,6 +642,85 @@
           "name": "Fixture Category"
         }
       }
+    ],
+    "Tag": [
+      {
+        "where": {
+          "name": "Fixture Tag A"
+        },
+        "data": {
+          "name": "Fixture Tag A"
+        }
+      },
+      {
+        "where": {
+          "name": "Fixture Tag B"
+        },
+        "data": {
+          "name": "Fixture Tag B"
+        },
+        "onConflict": "skip"
+      }
+    ],
+    "TreeNode": [
+      {
+        "where": {
+          "slug": "child"
+        },
+        "data": {
+          "title": "Fixture Child",
+          "parent": {
+            "where": {
+              "slug": "root"
+            }
+          }
+        }
+      },
+      {
+        "where": {
+          "slug": "root"
+        },
+        "data": {
+          "title": "Fixture Root"
+        }
+      },
+      {
+        "where": {
+          "slug": "sibling"
+        },
+        "data": {
+          "title": "Fixture Sibling",
+          "parent": {
+            "where": {
+              "slug": "root"
+            }
+          }
+        }
+      }
     ]
+  },
+  "factories": {
+    "Product": {
+      "count": 3,
+      "uniqueBy": "fixtureKey",
+      "onConflict": "update",
+      "template": {
+        "name": "Factory Product {{index}}",
+        "price": 10,
+        "fixtureKey": "factory-prod-{{index}}",
+        "category": {
+          "where": {
+            "name": "Fixture Category"
+          }
+        },
+        "tags": [
+          {
+            "where": {
+              "name": "Fixture Tag A"
+            }
+          }
+        ]
+      }
+    }
   }
 }
