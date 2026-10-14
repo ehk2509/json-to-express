@@ -1,14 +1,14 @@
 # Releasing json-to-express
 
-## v0.2.0-beta.1 GitHub release
+## v0.2.0-beta.1 GitHub release (completed)
 
 - PR #42 merged and 16 CI jobs passed. GitHub prerelease and immutable version tag: https://github.com/ehk2509/json-to-express/releases/tag/v0.2.0-beta.1
 - GitHub installation without npm: `npm install -g github:ehk2509/json-to-express#v0.2.0-beta.1`.
-- npm publication from the original workflow was rejected with HTTP 403 because the npm token lacked appropriate two-factor publishing authorization. The npm package's first publication therefore remains a separate bootstrap step.
+- npm publication of `0.2.0-beta.1` succeeded after the registry's initial conflicts were resolved. The version is already published and must never be republished.
 
-## One-time npm registry bootstrap (maintainer action)
+## One-time npm registry bootstrap (already completed; historical reference)
 
-**npm Trusted Publishers cannot be configured for a package that does not yet exist on the registry.** If `json-to-express` has never been published, its owner must make one interactive publication first, with 2FA, from the exact reviewed release tag:
+**No bootstrap publication is necessary now.** For reference, first publication of a different package may need interactive npm login and 2FA. The commands below must not be run for an already published version:
 
 ```bash
 git clone https://github.com/ehk2509/json-to-express.git
@@ -24,7 +24,7 @@ npm view json-to-express@beta version
 
 ## Enable GitHub Actions OIDC Trusted Publishing
 
-Once the npm package is under your ownership:
+The npm package is already published. To enable OIDC for `0.2.0-beta.2`:
 
 1. In the npm package's **Settings → Trusted publishing**, add **GitHub Actions** using the following exact values:
    - Owner/user: `ehk2509`
@@ -33,11 +33,16 @@ Once the npm package is under your ownership:
    - Environment: leave empty (this workflow does not declare one)
    - Allowed actions: **allow `npm publish`** (since September 2026, `npm stage publish` is allowed by default; direct publication needs its own permission).
 2. In the GitHub repository **Settings → Secrets and variables → Actions → Variables**, create `NPM_TRUSTED_PUBLISHING_ENABLED` with value `true`. The npm job is skipped until this opt-in is enabled.
-3. The workflow's `npm-beta` job uses GitHub-hosted runners, Node.js 24, `id-token: write`, and npm >= 11.5.1, without `NPM_TOKEN` or `NODE_AUTH_TOKEN`. On the next suitable successful CI push to `main`, it publishes the exact reviewed beta tag if the version is not already in npm. As `v0.2.0-beta.1` is already on GitHub, the existing version is not overwritten.
+3. The workflow's `npm-beta` job uses GitHub-hosted runners, Node.js 24, `id-token: write`, and npm >= 11.5.1, without `NPM_TOKEN` or `NODE_AUTH_TOKEN`. On the next suitable successful CI push to `main`, it publishes the exact reviewed `v0.2.0-beta.2` tag if that version is not already in npm. The existing `v0.2.0-beta.1` release is never overwritten.
 4. Inspect the workflow result and registry before announcing npm availability: `npm view json-to-express@beta version`; `npm install -g json-to-express@beta`; `j2e --version`.
 5. Once OIDC publication succeeds, revoke unused publishing tokens on npm and delete the obsolete `NPM_TOKEN` GitHub secret. Optionally set npm publishing access to **require 2FA and disallow tokens**, without affecting Trusted Publishing.
 
-A newly configured trusted publisher must complete a successful publish within two days or it expires. Configure it shortly before the **next new version** and check that a successful publish occurs. OIDC authentication does not make an existing version publishable again.
+A newly configured trusted publisher should complete a successful publication promptly to avoid expiry. Configure it shortly before the **next new version** and check that a successful publish occurs. OIDC authentication does not make an existing version publishable again.
+
+## v0.2.0-beta.2 OIDC verification
+
+- CI validates `v0.2.0-beta.2`; the successful push-to-main release workflow creates its GitHub prerelease and publishes with **no npm token** if the repository variable is enabled.
+- Verify registry version and the `beta` dist-tag, and confirm the publisher workflow succeeds with OIDC and provenance. If the `npm-beta` job is skipped, check `NPM_TRUSTED_PUBLISHING_ENABLED`; if authentication fails, check the npm Trusted Publisher repository owner, workflow filename, environment and allowed `npm publish` action.
 
 ## Future releases
 

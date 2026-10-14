@@ -2,6 +2,17 @@
 
 All notable project changes are tracked here. Versions prior to this beta were developed on the main branch.
 
+## [0.2.0-beta.2] - 2026-10-14
+
+### Changed
+- Use npm Trusted Publishing (GitHub Actions OIDC) for token-free beta distribution.
+- Release workflow verifies the new prerelease tag, uses a GitHub-hosted runner and requests scoped OIDC credentials.
+- Safe package publication remains gated behind a successful CI run, an npm trusted publisher, and the repository's `NPM_TRUSTED_PUBLISHING_ENABLED` variable.
+
+### Notes
+- No generator runtime changes compared with beta.1.
+- This release verifies OIDC registry publication and provenance after the successful beta.1 package bootstrap.
+
 ## [0.2.0-beta.1] - 2026-10-14
 
 ### Added
