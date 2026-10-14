@@ -278,6 +278,7 @@ async function reconcile(options, hooks = {}) {
       if (currentReferences.has(item.key)) {skippedReferenced += 1; continue;}
       // Revalidate the object's age, inode/ETag and size before destructive IO.
       if (!await objectUnchanged(item, cutoff)) {skippedModified += 1; continue;}
+      if (hooks.beforeDelete) await hooks.beforeDelete(item);
       if(lost || !await lease.valid(token))throw new Error('Storage reconciliation lease lost before deletion');
       if(config.provider==='s3') {
         if(!await conditionalS3Delete(item)){skippedModified+=1;continue;}
