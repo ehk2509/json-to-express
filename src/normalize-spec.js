@@ -536,9 +536,11 @@ function normalizeSpec(inputSpec) {
             'prisma:generate': 'prisma generate --schema ' + prismaSchemaPath,
             'db:push': 'prisma db push --schema ' + prismaSchemaPath,
             'db:migrate:init': 'node scripts/create-initial-migration.js',
-            'db:migrate:dev': 'prisma migrate dev --schema ' + prismaSchemaPath,
-            'db:migrate:deploy': 'prisma migrate deploy --schema ' + prismaSchemaPath,
-            'db:migrate:status': 'prisma migrate status --schema ' + prismaSchemaPath,
+            'db:migrate:dev': 'node scripts/verify-migration-history.js --allow-new && prisma migrate dev --schema ' + prismaSchemaPath,
+            'db:migrate:deploy': 'node scripts/verify-migration-history.js && prisma migrate deploy --schema ' + prismaSchemaPath,
+            'db:migrate:status': 'node scripts/verify-migration-history.js && prisma migrate status --schema ' + prismaSchemaPath,
+            'db:migrate:record': 'node scripts/verify-migration-history.js --record',
+            'db:migrate:verify': 'node scripts/verify-migration-history.js',
             ...((spec.seeds && Object.keys(spec.seeds).length) || (spec.factories && Object.keys(spec.factories).length) || (spec.fixtures && Object.keys(spec.fixtures).length) ? {'db:seed': 'node prisma/seed.js'} : {})
           } : {}),
           ...(hasAsyncWork ? {
