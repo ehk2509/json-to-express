@@ -47,7 +47,7 @@ test('manifest v2 stores reduced schema only, without runtime secrets or seed re
   const raw = fs.readFileSync(path.join(output, '.j2e-manifest.json'), 'utf8');
   const saved = JSON.parse(raw);
   assert.equal(saved.version, 2);
-  assert.equal(saved.schema.database, 'mongodb');
+  assert.equal(saved.schema.database, 'postgresql');
   assert.equal(saved.schema.entities.Product.fields.title.type, 'string');
   assert.doesNotMatch(raw, /private-credential-should-not-be-stored|seed-secret-should-not-be-stored/);
 });
