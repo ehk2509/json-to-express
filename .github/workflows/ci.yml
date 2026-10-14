@@ -816,6 +816,14 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-lease-kill.js ./storage-lease-kill.js
           node storage-lease-kill.js
+      - name: Two independent postgres APIs and final-check deletion barrier
+        working-directory: .tmp/fastify-postgres-smoke
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/fastify_native
+          PORT: 3498
+        run: |
+          cp ../../scripts/fixtures/storage-two-replicas.js ./storage-two-replicas.js
+          timeout 120s node storage-two-replicas.js postgres
       - name: Print Fastify PostgreSQL logs on failure
         if: failure()
         run: cat .tmp/fastify-postgres-smoke/server.log || true
@@ -1223,6 +1231,52 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
           node storage-worker-kill.js s3
+      - name: Verify conditional S3 PUT and DELETE semantics on live provider
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+        run: |
+          node - <<'NODE'
+          const assert=require('node:assert/strict');
+          const audit=require('./scripts/storage-reconcile');
+          const {S3Client,PutObjectCommand,DeleteObjectCommand,HeadObjectCommand}=require('@aws-sdk/client-s3');
+          const client=new S3Client({region:process.env.AWS_REGION,endpoint:process.env.S3_ENDPOINT,forcePathStyle:true,
+            credentials:{accessKeyId:'test',secretAccessKey:'test'}});
+          const bucket=process.env.S3_BUCKET,key='__j2e_conditional_tests__/immutable-writer-key';
+          (async()=>{
+            try {
+              await client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:'original',IfNoneMatch:'*'}));
+              await assert.rejects(
+                client.send(new PutObjectCommand({Bucket:bucket,Key:key,Body:'overwritten',IfNoneMatch:'*'})),
+                e=>e.$metadata && e.$metadata.httpStatusCode===412,
+                'S3 provider must reject duplicate exclusive creation');
+              assert.ok((await client.send(new HeadObjectCommand({Bucket:bucket,Key:key}))).ETag);
+              // verifyConditionalS3 will try wrong and matching IfMatch against its own probe.
+              assert.equal(await audit.verifyConditionalS3(),true);
+            } finally {
+              await client.send(new DeleteObjectCommand({Bucket:bucket,Key:key})).catch(()=>{});
+              client.destroy();
+            }
+          })().catch(e=>{console.error(e);process.exitCode=1;});
+          NODE
+      - name: Two S3-backed API replicas and independent conditional reconciliation
+        working-directory: .tmp/fastify-s3
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_s3
+          S3_BUCKET: j2e-e2e
+          AWS_REGION: us-east-1
+          S3_ENDPOINT: http://127.0.0.1:9090
+          S3_ACCESS_KEY: test
+          S3_SECRET_KEY: test
+          PORT: 3495
+        run: |
+          cp ../../scripts/fixtures/storage-two-s3-replicas.js ./storage-two-s3-replicas.js
+          timeout 120s node storage-two-s3-replicas.js
       - name: Print generated S3 logs on failure
         if: failure()
         run: |
@@ -1464,6 +1518,15 @@ jobs:
         run: |
           cp ../../scripts/fixtures/storage-worker-kill.js ./storage-worker-kill.js
           node storage-worker-kill.js local
+      - name: Two independent mongo APIs and final-check deletion barrier
+        working-directory: .tmp/fastify-local-files
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/j2e_fastify_local
+          FILE_SIGNING_SECRET: test-only-local-file-signing-secret
+          PORT: 3494
+        run: |
+          cp ../../scripts/fixtures/storage-two-replicas.js ./storage-two-replicas.js
+          timeout 120s node storage-two-replicas.js mongo
       - name: Print application logs on failure
         if: failure()
         run: cat .tmp/fastify-local-files/server.log || true
