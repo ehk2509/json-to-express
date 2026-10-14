@@ -18,7 +18,11 @@ function schemaSnapshot(spec) {
         many: Boolean(field.many),
         onDelete: field.onDelete || null,
         hasDefault: field.default !== undefined,
-        enumFingerprint: field.enum ? hashValue(field.enum) : null
+        defaultFingerprint: field.default === undefined ? null : hashValue(field.default),
+        enumFingerprint: field.enum ? hashValue(field.enum) : null,
+        constraintsFingerprint: hashValue({min: field.min, max: field.max,
+          minLength: field.minLength, maxLength: field.maxLength}),
+        uploadFingerprint: field.type === 'file' ? hashValue(field.upload) : null
       };
     }
     entities[entity.name] = {
@@ -93,8 +97,14 @@ function compareSnapshots(previous, next) {
       if (oldField.enumFingerprint !== newField.enumFingerprint) {
         add('review', 'field-enum', at, 'Enum constraint changed; verify existing values');
       }
-      if (oldField.hasDefault !== newField.hasDefault) {
-        add('review', 'field-default', at, 'Default behavior changed');
+      if (oldField.defaultFingerprint !== newField.defaultFingerprint) {
+        add('review', 'field-default', at, 'Default value or behavior changed');
+      }
+      if (oldField.constraintsFingerprint !== newField.constraintsFingerprint) {
+        add('review', 'field-constraints', at, 'Validation constraints changed; review existing data');
+      }
+      if (oldField.uploadFingerprint !== newField.uploadFingerprint) {
+        add('review', 'file-upload-policy', at, 'File upload policy changed');
       }
     }
     for (const fieldName of sortedKeys(after.fields)) {
