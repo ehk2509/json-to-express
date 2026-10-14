@@ -41,7 +41,10 @@ async function child(){
   // Simulate age passage without waiting 24 hours; production cutoff is unchanged.
   Date.now=()=>realNow()+49*3600000;
   try{
+    const all=await audit.inventory(['assets/files/'],new Date(Date.now()-24*3600000),1000);
+    console.error('S3 chaos inventory',JSON.stringify({target:process.env.J2E_TARGET_KEY,listed:all.items.map(x=>x.key),scanned:all.scanned}));
     await audit.reconcile(audit.args(['--execute','--s3-verified-conditional-delete']),{
+      async beforeCandidate(item){console.error('S3 chaos candidate',item.key);},
       async beforeDelete(item) {
         if(item.key!==process.env.J2E_TARGET_KEY)return;
         fs.writeFileSync('.j2e-s3-chaos-ready','ready');
@@ -62,7 +65,10 @@ async function parent(){
     await s3.send(new PutObjectCommand({Bucket:bucket,Key:oldKey,Body:'previously-orphaned',IfNoneMatch:'*'}));
     for(const marker of ['.j2e-s3-chaos-ready','.j2e-s3-chaos-resume'])fs.rmSync(marker,{force:true});
     const reconciler=launch([__filename,'reconcile'],{J2E_TARGET_KEY:oldKey});
-    await wait(()=>fs.existsSync('.j2e-s3-chaos-ready'),'reconcile final-check barrier');
+    await Promise.race([
+      wait(()=>fs.existsSync('.j2e-s3-chaos-ready'),'reconcile final-check barrier'),
+      reconciler.done.then(result=>{throw new Error('Reconciler exited before barrier: '+JSON.stringify(result));})
+    ]);
     const forged=new FormData();
     forged.set('name','reusing-an-existing-key');
     forged.set('file',oldKey);
