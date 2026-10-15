@@ -16,11 +16,11 @@ The harness uses the public `crud` starter from the installed tarball.
 | `crud-fastify-mongodb` | Native Fastify | MongoDB | `src/fastify-native.js` |
 | `crud-fastify-postgresql` | Native Fastify | PostgreSQL | `prisma/schema.prisma` |
 
-A fifth case uses the actual installed `flatfile` external database provider
+A seventh case uses the actual installed §flatfile§ external database provider `flatfile` external database provider
 in `examples/plugins` to verify that the released plugin entrypoint and
 custom project generator remain functional.
 
-All five perform generation, artifact verification, manifest v2 checks
+All seven perform generation, artifact verification, manifest v2 checks
 and safe repeat generation; each checks planned changes are empty after a
 successful write. The planner must never write files; operator-owned files
 must survive. The examples **do not connect to a database** or attempt to
@@ -66,3 +66,6 @@ production operators can participate through the
 
 An example passing in CI is an engineering smoke test, not proof of
 an independent customer.
+
+The two domain-specific examples are public and intended as starting points,
+not production-ready systems. Review security, permissions and migration plans.
