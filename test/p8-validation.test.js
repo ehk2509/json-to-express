@@ -136,3 +136,29 @@ test('Unreviewed or self-reviewed pilots NEVER qualify for external acceptance',
     checks:{...item.review.checks,rollbackReviewed:false}}}));
   assert.equal(assess({reports,attestations:incomplete,requiredSha:SHA,policy}).verifiedAttestationCount,0);
 });
+
+test('External pilot cohort commit remains pinned when main and CI advance',()=>{
+  const laterCommit='b'.repeat(40);
+  const approved=[
+    attestation('org-one','billing','fastify','postgresql'),
+    attestation('org-one','warehouse','express','mongodb'),
+    attestation('org-two','orders','express','postgresql')
+  ];
+  const result=assess({reports,attestations:approved,
+    requiredSha:SHA,externalTargetCommit:SHA,policy});
+  assert.equal(result.targetCommit,SHA);
+  assert.equal(result.smokeCommit,SHA);
+  const moved=assess({
+    reports:reports.map(report=>({...report,commit:laterCommit})),
+    attestations:approved,requiredSha:laterCommit,
+    externalTargetCommit:SHA,policy
+  });
+  assert.equal(moved.status,'externally-validated');
+  assert.equal(moved.targetCommit,SHA);
+  assert.equal(moved.smokeCommit,laterCommit);
+  const unpinned=assess({reports:reports.map(report=>({...report,commit:laterCommit})),
+    attestations:approved,requiredSha:laterCommit,policy});
+  assert.equal(unpinned.externalEvidenceReady,false);
+  assert.throws(()=>assess({reports,attestations:approved,requiredSha:'bad',policy}),
+    /exact CI smoke SHA/);
+});
