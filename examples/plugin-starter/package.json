@@ -1,0 +1,30 @@
+{
+  "name": "j2e-plugin-example-greeting",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example community generator plugin for json-to-express",
+  "main": "index.js",
+  "keywords": [
+    "json-to-express-plugin",
+    "j2e-plugin"
+  ],
+  "j2ePlugin": {
+    "apiVersion": 1,
+    "kind": "generator",
+    "id": "community.greeting",
+    "hostMinVersion": "0.2.0-beta.2",
+    "hostMaxExclusive": "1.0.0",
+    "frameworks": [
+      "express",
+      "fastify"
+    ],
+    "databases": [
+      "mongodb",
+      "postgresql"
+    ]
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

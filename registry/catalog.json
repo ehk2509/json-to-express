@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "policy": "Entries are reviewed project examples, not an endorsement or security certification of external code. npm search results are unverified.",
+  "plugins": [
+    {
+      "id": "example.flatfile",
+      "title": "Flatfile demo database provider",
+      "kind": "database",
+      "source": "bundled-example",
+      "module": "examples/plugins/flatfile-provider.js",
+      "apiVersion": 1,
+      "review": "reference-only",
+      "description": "Illustrates a complete-project provider with persistent local JSON; not concurrency-safe production storage"
+    }
+  ],
+  "templates": [
+    {
+      "id": "crud",
+      "title": "CRUD task manager",
+      "file": "templates/crud.json",
+      "category": "api",
+      "review": "bundled"
+    },
+    {
+      "id": "saas",
+      "title": "SaaS organizations and projects",
+      "file": "templates/saas.json",
+      "category": "saas",
+      "review": "bundled"
+    },
+    {
+      "id": "ecommerce",
+      "title": "E-commerce catalog and orders",
+      "file": "templates/ecommerce.json",
+      "category": "commerce",
+      "review": "bundled"
+    }
+  ]
+}
