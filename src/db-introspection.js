@@ -100,6 +100,8 @@ function mongoIndexSpec(fields, options = {}) {
 function expectedMongo(spec, output) {
   const req=localRequire(output);
   const mongoose=req('mongoose');
+  mongoose.set('autoIndex',false);
+  mongoose.set('autoCreate',false);
   const collections={};
   for (const entity of spec.entities) {
     const file=path.join(path.resolve(output),spec.generation.paths.source,
@@ -112,7 +114,9 @@ function expectedMongo(spec, output) {
 }
 async function inspectMongo(spec, output) {
   const mongoose=localRequire(output)('mongoose');
-  await mongoose.connect(requireEnv(spec));
+  mongoose.set('autoIndex',false);
+  mongoose.set('autoCreate',false);
+  await mongoose.connect(requireEnv(spec),{autoIndex:false,autoCreate:false});
   try {
     const collections={};
     const listed=await mongoose.connection.db.listCollections({}, {nameOnly:false}).toArray();
