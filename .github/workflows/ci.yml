@@ -1815,3 +1815,127 @@ jobs:
         run: |
           cat .tmp/fastify-mongo-transaction/server.log || true
           docker logs mongo-transaction || true
+
+
+  compatibility-runtime:
+    name: compat / Node ${{ matrix.node }} / ${{ matrix.framework }} / ${{ matrix.database }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+        framework: [express, fastify]
+        database: [mongodb, postgresql]
+        # Fastify 5 requires Node 20+. Node 18 is Express-only.
+        exclude:
+          - node: 18
+            framework: fastify
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'quit(db.runCommand({ping:1}).ok ? 0 : 2)'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: j2e_compatibility
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d j2e_compatibility"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Generate, install, migrate and exercise live CRUD
+        run: node scripts/compatibility-runtime.js ${{ matrix.framework }} ${{ matrix.database }}
+
+  cross-release-upgrade:
+    name: upgrade / ${{ matrix.release }} / ${{ matrix.framework }} / ${{ matrix.database }}
+    strategy:
+      fail-fast: false
+      matrix:
+        release: [0.2.0-beta.1, 0.2.0-beta.2]
+        framework: [express, fastify]
+        database: [mongodb, postgresql]
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'quit(db.runCommand({ping:1}).ok ? 0 : 2)'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: j2e_compatibility
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d j2e_compatibility"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Verify immutable npm predecessor and persistent data through upgrade
+        run: node scripts/cross-release-upgrade.js ${{ matrix.release }} ${{ matrix.framework }} ${{ matrix.database }}
+
+  production-artifacts:
+    name: release artifacts / ${{ matrix.framework }} / ${{ matrix.database }}
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [express, fastify]
+        database: [mongodb, postgresql]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install YAML parser pinned for Kubernetes structure validation
+        run: python3 -m pip install --disable-pip-version-check --quiet PyYAML==6.0.2
+      - name: Audit production dependencies and verify generated Compose/K8s manifests
+        run: node scripts/verify-deployment-matrix.js ${{ matrix.framework }} ${{ matrix.database }}
+
+  large-app-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Compare 36-entity generators against immutable published baseline
+        env:
+          J2E_PERFORMANCE_REPORT: .tmp/ci/performance.json
+        run: node scripts/large-app-benchmark.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generator-performance-baseline
+          path: .tmp/ci/performance.json
+          if-no-files-found: warn
+          retention-days: 30
