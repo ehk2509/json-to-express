@@ -1851,3 +1851,11 @@ The [changelog](CHANGELOG.md) tracks releases. See [RELEASING.md](docs/RELEASING
 ## License
 
 MIT
+
+
+## Database migration intelligence (P7)
+
+`j2e db inspect`, `j2e db plan`, `j2e db apply` and MongoDB `j2e db rollback`
+provide live database drift analysis, explicit reviewed plans, mandatory backups
+and controlled migration execution. See [Database migrations](docs/DATABASE-MIGRATIONS.md)
+for prerequisites, commands, safety limitations and restoration procedures.
