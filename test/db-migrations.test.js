@@ -51,7 +51,7 @@ test('MongoDB planner preserves extra live indexes and requires review for uniqu
  const steps=planMongo(target,live);
  assert.equal(steps.filter(s=>s.action==='create-index').length,2);
  assert.equal(steps.find(s=>s.index&&s.index.options.unique).risk,'review');
- assert.equal(steps.find(s=>s.action==='extra-index').risk,'manual');
+ assert.equal(steps.find(s=>s.action==='extra-index').risk,'notice');
  const empty=planMongo(target,{collections:{}});
  assert.equal(empty[0].action,'create-collection');
 });
