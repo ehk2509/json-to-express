@@ -147,8 +147,12 @@ function planMongo(expected, actual) {
     const existing=actual.collections[collection];
     if (!existing) steps.push({action:'create-collection',collection,risk:'review',reverse:'drop-collection'});
     const current=existing ? existing.indexes : [];
+    const plannedKeys=new Set();
     for (const index of target.indexes) {
-      if (!current.some(i=>digest(i)===digest(index))) {
+      const indexHash=digest(index);
+      if (plannedKeys.has(indexHash)) continue;
+      plannedKeys.add(indexHash);
+      if (!current.some(i=>digest(i)===indexHash)) {
         steps.push({action:'create-index',collection,index,risk:index.options.unique?'review':'low',
           reverse:'drop-index'});
       }
