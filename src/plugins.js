@@ -52,7 +52,7 @@ function invokePlugin(declaration, spec, pluginRoot) {
   const root = path.resolve(pluginRoot || process.cwd());
   const candidate = declaration.module;
   const modulePath = candidate.startsWith('.') || path.isAbsolute(candidate)
-    ? path.resolve(root, candidate)
+    ? require.resolve(path.resolve(root, candidate))
     : require.resolve(candidate, {paths: [root]});
   if (!fs.existsSync(modulePath) || !fs.statSync(modulePath).isFile()) {
     throw new Error('Plugin module not found: ' + candidate);

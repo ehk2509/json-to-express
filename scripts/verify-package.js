@@ -25,6 +25,10 @@ try {
   for (const entry of [
     'bin/json-to-express.js',
     'src/index.js',
+    'src/plugins.js',
+    'src/plugin-worker.js',
+    'examples/plugins/flatfile-provider.js',
+    'examples/plugins/flatfile-spec.json',
     'src/onboarding.js',
     'src/doctor.js',
     'templates/crud.json',
@@ -67,7 +71,16 @@ try {
   const doctor = JSON.parse(run(process.execPath, [cli, 'doctor',
     path.join(starterWorkspace, 'app.j2e.json'), '--output', path.join(starterWorkspace, 'server'), '--json']));
   assert.equal(doctor.ok, true);
-  console.log('Verified tarball, installed starter templates, init, doctor and generated app.');
+  const customSpec = path.join(installRoot, 'node_modules', 'json-to-express',
+    'examples', 'plugins', 'flatfile-spec.json');
+  const customOutput = path.join(temporary, 'flatfile-custom-provider');
+  run(process.execPath, [cli, 'validate', customSpec]);
+  run(process.execPath, [cli, 'generate', customSpec, '--output', customOutput]);
+  assert.ok(fs.existsSync(path.join(customOutput, 'src', 'server.js')));
+  const generatedPluginPkg = JSON.parse(fs.readFileSync(path.join(customOutput, 'package.json')));
+  assert.equal(generatedPluginPkg.name, 'flatfile-notes');
+  console.log('Verified tarball, starter CLI, and external database provider.');
+
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }
