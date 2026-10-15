@@ -94,7 +94,7 @@ function isApprovedReview(item) {
       typeof review.issue !== 'string' ||
       !/^https:\/\/github\.com\/ehk2509\/json-to-express\/issues\/[1-9][0-9]*$/.test(review.issue) ||
       typeof review.reviewedAt !== 'string' ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$/.test(review.reviewedAt) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(review.reviewedAt) ||
       Number.isNaN(Date.parse(review.reviewedAt)) ||
       !review.checks || !REVIEW_CHECKS.every(check => review.checks[check] === true)) {
     return false;
