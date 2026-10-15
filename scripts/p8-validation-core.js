@@ -102,8 +102,9 @@ function isApprovedReview(item) {
   return true;
 }
 
-function assess({reports, attestations, requiredSha, policy}) {
-  assert.ok(HEX_SHA.test(requiredSha), 'A complete exact target SHA is required');
+function assess({reports, attestations, requiredSha, externalTargetCommit = requiredSha, policy}) {
+  assert.ok(HEX_SHA.test(requiredSha), 'A complete exact CI smoke SHA is required');
+  assert.ok(HEX_SHA.test(externalTargetCommit), 'A pinned external pilot release SHA is required');
   const requiredChecks = ['create', 'retrieve', 'validation', 'restartPersistence', 'delete', 'soak'];
   const validated = [];
   for (const report of reports) {
@@ -128,7 +129,7 @@ function assess({reports, attestations, requiredSha, policy}) {
       'observedHours', 'incidentCount', 'rollbackDrill', 'operatorConfirmed',
       'publicEvidence'], 'external attestation');
     if (!SAFE_NAME.test(item.project) || !SAFE_NAME.test(item.organization) ||
-        !HEX_SHA.test(item.commit) || item.commit !== requiredSha ||
+        !HEX_SHA.test(item.commit) || item.commit !== externalTargetCommit ||
         !DRIVERS.has(item.runtime?.database) || !FRAMEWORKS.has(item.runtime?.framework) ||
         !Number.isSafeInteger(item.observedHours) || item.observedHours < minObservationHours ||
         item.incidentCount !== 0 || item.rollbackDrill !== true ||
@@ -156,7 +157,8 @@ function assess({reports, attestations, requiredSha, policy}) {
   const smokeReady = validated.length >= 2 &&
     new Set(reports.map(x => x.framework + '/' + x.database)).size >= 2;
   return {
-    schemaVersion: 1, targetCommit: requiredSha,
+    schemaVersion: 1, targetCommit: externalTargetCommit,
+    smokeCommit: requiredSha, externalTargetCommit,
     status: evidenceReady && smokeReady ? 'externally-validated' : 'awaiting-external-evidence',
     smokeReady, externalEvidenceReady: evidenceReady,
     simulatedCases: validated,
