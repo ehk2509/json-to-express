@@ -1,5 +1,15 @@
 # json-to-express
 
+> **Looking for independent Node.js pilot users:** We are validating this beta
+> outside the maintainer's test environment. Interested in trying Express or
+> Fastify with MongoDB or PostgreSQL? [Start with a no-database preview](docs/P8-GET-STARTED.md)
+> or [reply to the pilot invitation](https://github.com/ehk2509/json-to-express/issues/57)
+> with your preferred stack. **No 72-hour commitment is needed to express interest.**
+> Genuine external production validation is still **pending**.
+>
+> **Important:** P8 testing uses pinned source commit `dc964d701dc7236bf9dc7a586b6c1e7e78e066f2`;
+> the npm `0.2.0-beta.3` tag comes from an earlier source revision.
+>
 Generate a runnable Express or Fastify application from a declarative JSON specification. `app.framework: "fastify"` uses native Fastify handlers when supported; configurations with fully native CRUD and routes now generate an adapter-free Fastify app without the Express runtime. Fastify configurations use native routes and hooks without an Express compatibility adapter; unsupported configurations fail generation with an explicit error.
 
 The project is JSON-first: runtime behavior, project layout, routes, persistence target, query behavior, middleware, hooks, package metadata, and server settings are described in JSON.
