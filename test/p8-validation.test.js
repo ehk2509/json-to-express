@@ -3,7 +3,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {validateCase, percentile, publicReport, assess}=require('../scripts/p8-validation-core');
-const {parseArgs,recordIdentifier}=require('../scripts/p8-consumer-smoke');
+const {argumentsFrom:parseArgs,recordIdentifier}=require('../scripts/p8-consumer-smoke');
 const {parseArgs:parseAssessArgs}=require('../scripts/p8-assess');
 
 const SHA='a'.repeat(40);
