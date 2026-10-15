@@ -42,6 +42,15 @@ try {
     'templates/saas.json',
     'templates/ecommerce.json',
     'schema/application.schema.json',
+    'ci/p9/contracts.json',
+    'ci/p9/consumer-matrix.json',
+    'docs/GETTING-STARTED.md',
+    'docs/GENERATOR-API.md',
+    'docs/UPGRADE-GUARANTEES.md',
+    'docs/EXAMPLES.md',
+    'docs/REFERENCE.md',
+    'scripts/p9-contract-check.js',
+    'scripts/p9-consumer-contract.js',
     'README.md',
     'LICENSE'
   ]) assert.ok(packageFiles.has(entry), 'Missing from npm pack: ' + entry);
