@@ -18,6 +18,12 @@ function shaFile(filename) {
   finally {fs.closeSync(fd);}
   return hash.digest('hex');
 }
+function connectionFingerprint(spec) {
+  const parsed=new URL(requireEnv(spec));
+  // Pin the server, database, username and connection options, never the password.
+  return sha(JSON.stringify({protocol:parsed.protocol,host:parsed.host,
+    database:parsed.pathname,username:parsed.username,options:parsed.search}));
+}
 function readJson(filename) {return JSON.parse(fs.readFileSync(filename,'utf8'));}
 function writeExclusive(filename, value) {
   fs.mkdirSync(path.dirname(filename),{recursive:true});
@@ -97,7 +103,8 @@ async function buildPlan(spec,output) {
   }
   const plan={
     version:1,engine:spec.database.type,output:path.resolve(output),
-    specFingerprint:digest(spec),liveFingerprint:live.fingerprint,
+    specFingerprint:digest(spec),connectionFingerprint:connectionFingerprint(spec),
+    liveFingerprint:live.fingerprint,
     changes:comparison.changes,steps,
     sql:spec.database.type==='postgresql'?live.sql:undefined,
     // Plans are intentionally limited to supported DDL. Unsupported statements
@@ -112,7 +119,8 @@ function assertPlan(plan, options, spec) {
   const {hash,...unsigned}=plan;
   if(!hash || digest(unsigned)!==hash)throw new Error('Migration plan checksum mismatch');
   if(plan.version!==1 || plan.engine!==spec.database.type ||
-      plan.output!==options.output || plan.specFingerprint!==digest(spec))
+      plan.output!==options.output || plan.specFingerprint!==digest(spec) ||
+      plan.connectionFingerprint!==connectionFingerprint(spec))
     throw new Error('Migration plan target or specification changed');
   if(options['--approve']!==hash)throw new Error('Approval hash does not match reviewed migration plan');
   if(plan.requiresManual)throw new Error('Unsupported/manual migration detected: handle outside automated apply');
@@ -325,4 +333,4 @@ async function executeDb(args) {
       :applyMongo(spec,options,saved,backup);
   }finally{unlock();}
 }
-module.exports={executeDb,parseOptions,analyzeSql,buildPlan,assertPlan,defaultBackupPath,backupDatabase,verifyBackup};
+module.exports={executeDb,parseOptions,analyzeSql,buildPlan,assertPlan,connectionFingerprint,defaultBackupPath,backupDatabase,verifyBackup};
