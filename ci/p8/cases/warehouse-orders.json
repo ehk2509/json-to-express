@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "id": "warehouse-orders",
+  "spec": {
+    "specVersion": "1.0",
+    "app": {
+      "name": "p8-warehouse-orders",
+      "framework": "express"
+    },
+    "database": {
+      "type": "mongodb",
+      "uriEnv": "MONGODB_URI"
+    },
+    "entities": {
+      "Order": {
+        "fields": {
+          "reference": {
+            "type": "string",
+            "required": true,
+            "unique": true
+          },
+          "fulfilled": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    }
+  },
+  "probe": {
+    "route": "/api/orders",
+    "payload": {
+      "reference": "P8-WAREHOUSE-01",
+      "fulfilled": false
+    },
+    "assertField": "reference",
+    "assertValue": "P8-WAREHOUSE-01"
+  }
+}
