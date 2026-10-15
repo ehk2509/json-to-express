@@ -6,7 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const {planDrift,digest}=require('../src/migration-intelligence');
-const {parseOptions,analyzeSql,assertPlan,verifyBackup}=require('../src/db-migrations');
+const {parseOptions,analyzeSql,assertPlan,verifyBackup,defaultBackupPath}=require('../src/db-migrations');
 const {planMongo}=require('../src/db-introspection');
 
 test('plans are deterministic and preserve column-level drift diagnostics',()=>{
@@ -73,6 +73,13 @@ test('apply and rollback require explicit hash approval',()=>{
  assert.throws(()=>assertPlan(plan,{...opts,'--approve':'wrong'},spec),/Approval hash/);
 });
 
+test('backup paths are adjacent to output and shared by apply and rollback',()=>{
+ const output=path.resolve('generated','demo');
+ const location=defaultBackupPath({output},{hash:'a'.repeat(64),engine:'mongodb'});
+ assert.equal(path.dirname(path.dirname(location)),path.dirname(output));
+ assert.match(location,/\\.archive$/);
+ assert.match(defaultBackupPath({output},{hash:'a'.repeat(64),engine:'postgresql'}),/\\.dump$/);
+});
 test('backup receipts reject tampering before rollback',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'j2e-p7-receipt-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
