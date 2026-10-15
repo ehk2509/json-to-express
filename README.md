@@ -1715,6 +1715,10 @@ dist is a static SPA. Set VITE_API_BASE_URL at build time when the deployed API 
 
 The admin does not depend on sdk.enabled. Its small ESM API runtime is generated independently from the same normalized routes, methods, identifiers, query semantics, and custom endpoints.
 
+## Production compatibility and cross-release validation
+
+Releases are gated by a live Node/framework/database compatibility matrix, real beta.1/beta.2 persisted-data upgrades, 36-entity performance comparisons, per-target production dependency audits and Compose/Kubernetes deployment validation. See [production compatibility](docs/PRODUCTION-COMPATIBILITY.md). Fastify 5 requires Node 20+; Express retains legacy Node 18 support.
+
 ## Verification
 
 Unit/integration tests cover:
