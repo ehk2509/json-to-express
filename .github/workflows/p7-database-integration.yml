@@ -66,6 +66,19 @@ jobs:
           if(!fs.existsSync(result.backup+'.j2e.json')) throw Error('Backup missing');
           if(require('./.tmp/p7-after.json').steps.length) throw Error('Migration drift remains');
           NODE
+      - name: Restore PostgreSQL backup to isolated database and reject stale plan
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d j2e_p7 -c 'CREATE DATABASE j2e_p7_restore'
+          ARCHIVE=$(node -p "require('./.tmp/p7-applied.json').backup")
+          pg_restore --list "$ARCHIVE" > /dev/null
+          PGPASSWORD=postgres pg_restore --no-owner --no-acl -h 127.0.0.1 -U postgres -d j2e_p7_restore "$ARCHIVE"
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d j2e_p7_restore -tAc \
+            "SELECT count(*) FROM information_schema.columns WHERE table_name='products' AND column_name='p7Marker'" | grep -x 0
+          HASH=$(node -p "require('./.tmp/p7-plan-output.json').hash")
+          if node bin/json-to-express.js db apply .tmp/p7-spec.json --output .tmp/p7-postgres --approve "$HASH" --allow-review; then
+            echo 'Stale migration plan was accepted'
+            exit 1
+          fi
 
   mongodb:
     runs-on: ubuntu-latest
