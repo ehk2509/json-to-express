@@ -24,6 +24,9 @@ function printHelp() {
     '  j2e plan <spec.json> [--output <dir>] [--json]',
     '  j2e upgrade <spec.json> [--output <dir>] [options]',
     '  j2e recover --output <dir>  Recover an interrupted generation',
+    '  j2e db inspect|plan|status <spec.json> --output <dir> [--plan file]',
+    '  j2e db apply <spec.json> --output <dir> --approve <plan-hash> [--allow-review]',
+    '  j2e db rollback <spec.json> --output <dir> --approve <plan-hash> (MongoDB only)',
     '',
     'Options:',
     '  -o, --output <dir>     Output directory',
@@ -47,7 +50,7 @@ function printHelp() {
     '',
     'Plugins are declared in spec.plugins and resolved relative to the spec file.',
     'Install and run only plugins you trust; subprocess isolation is not an OS sandbox.',
-    'Note: schema flags acknowledge risk; they do not execute database migrations.'
+    'Note: --approve-schema alone does not execute database migrations; use j2e db.'
   ].join('\n'));
 }
 
@@ -81,6 +84,10 @@ async function main() {
   if (!args.length || args.includes('-h') || args.includes('--help')) return printHelp();
   if (args.includes('-v') || args.includes('--version')) return console.log(pkg.version);
   const command = args[0], specFile = args[1];
+  if (command === 'db') {
+    console.log(JSON.stringify(await require('../src/db-migrations').executeDb(args.slice(1)), null, 2));
+    return;
+  }
   if (command === 'plugin') {
     console.log(await pluginCommands.execute(args.slice(1)));
     return;

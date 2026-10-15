@@ -7,12 +7,16 @@ const {validateSpec, SpecificationError} = require('./validate-spec');
 const {CURRENT_SPEC_VERSION, upgradeSpec} = require('./spec-version');
 const {API_VERSION: PLUGIN_API_VERSION, KINDS: PLUGIN_KINDS} = require('./plugins');
 const pluginRegistry = require('./plugin-registry');
+const {executeDb} = require('./db-migrations');
+const {planDrift} = require('./migration-intelligence');
 
 module.exports = {
   CURRENT_SPEC_VERSION,
   PLUGIN_API_VERSION,
   PLUGIN_KINDS,
   pluginRegistry,
+  executeDb,
+  planDrift,
   SpecificationError,
   generateApplication,
   recoverTransaction,
