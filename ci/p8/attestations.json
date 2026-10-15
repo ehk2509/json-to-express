@@ -5,5 +5,6 @@
     "minOrganizations": 2,
     "minObservationHours": 72
   },
-  "attestations": []
+  "attestations": [],
+  "externalTargetCommit": "dc964d701dc7236bf9dc7a586b6c1e7e78e066f2"
 }
