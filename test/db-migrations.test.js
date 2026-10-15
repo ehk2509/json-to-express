@@ -6,7 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const {planDrift,digest}=require('../src/migration-intelligence');
-const {parseOptions,analyzeSql,assertPlan,verifyBackup,defaultBackupPath}=require('../src/db-migrations');
+const {parseOptions,analyzeSql,assertPlan,verifyBackup,defaultBackupPath,connectionFingerprint}=require('../src/db-migrations');
 const {planMongo}=require('../src/db-introspection');
 
 test('plans are deterministic and preserve column-level drift diagnostics',()=>{
@@ -57,12 +57,16 @@ test('MongoDB planner preserves extra live indexes and requires review for uniqu
 });
 
 test('apply and rollback require explicit hash approval',()=>{
+ const before=process.env.J2E_P7_TEST_URI;
+ process.env.J2E_P7_TEST_URI='mongodb://127.0.0.1:27017/p7-unit-test';
+ try {
  const output=path.resolve('generated','test');
  assert.throws(()=>parseOptions(['apply','spec.json','--output',output]),/approve/);
  assert.throws(()=>parseOptions(['plan','spec.json']),/output/);
  assert.throws(()=>parseOptions(['plan','spec.json','--output',output,'--bad']),/Unknown/);
- const spec={database:{type:'mongodb'}};
- const unsigned={version:1,engine:'mongodb',output,specFingerprint:digest(spec),liveFingerprint:'x',
+ const spec={database:{type:'mongodb',uriEnv:'J2E_P7_TEST_URI'}};
+ const unsigned={version:1,engine:'mongodb',output,specFingerprint:digest(spec),
+   connectionFingerprint:connectionFingerprint(spec),liveFingerprint:'x',
    changes:[],steps:[{action:'create-collection',collection:'x',risk:'review'}],
    requiresManual:false,requiresReview:true,requiresDestructive:false};
  const plan={...unsigned,hash:digest(unsigned)};
@@ -71,6 +75,13 @@ test('apply and rollback require explicit hash approval',()=>{
  assert.doesNotThrow(()=>assertPlan(plan,{...opts,'--allow-review':true},spec));
  assert.throws(()=>assertPlan({...plan,requiresManual:true},opts,spec),/checksum mismatch/);
  assert.throws(()=>assertPlan(plan,{...opts,'--approve':'wrong'},spec),/Approval hash/);
+ process.env.J2E_P7_TEST_URI='mongodb://127.0.0.1:27017/another-database';
+ assert.throws(()=>assertPlan(plan,{...opts,'--allow-review':true},spec),
+   /Migration plan target or specification changed/);
+ } finally {
+   if(before===undefined)delete process.env.J2E_P7_TEST_URI;
+   else process.env.J2E_P7_TEST_URI=before;
+ }
 });
 
 test('backup paths are adjacent to output and shared by apply and rollback',()=>{
