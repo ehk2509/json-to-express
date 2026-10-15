@@ -221,7 +221,7 @@ function normalizeSpec(inputSpec) {
     ...(oidcEnabled ? {jose: '^5.9.6'} : {}),
     ...(graphqlEnabled ? {
       graphql: '^16.10.0',
-      '@graphql-tools/schema': '^10.0.21',
+      '@graphql-tools/schema': '10.0.27',
       dataloader: '^2.2.3'
     } : {}),
     ...(valueOr(cors.enabled, false) ? {cors: '^2.8.5'} : {}),
