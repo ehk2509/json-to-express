@@ -159,3 +159,18 @@ npm run test:package
 
 The package test verifies the external flatfile sample is installable and
 can generate a project using the published tarball.
+
+## P9 pre-v1 compatibility gate
+
+The existing Plugin API v1 is now part of the frozen public interface
+described in [P9 generator contracts](GENERATOR-API.md) and checked by
+`ci/p9/contracts.json` and the P9 CI workflow. Plugins targeting API v1
+can rely on the documented kinds, context properties, lifecycle hooks,
+contribution shape and explicit override authorization remaining available
+within this contract line.
+
+A proposed incompatible change must introduce an explicit new apiVersion
+and migration documentation, plus cross-version integration tests; it must
+never be silently shipped behind an unchanged API v1. The freeze is a
+pre-v1 engineering guardrail, not a certification of third-party packages
+or a claim of a v1.0 release.

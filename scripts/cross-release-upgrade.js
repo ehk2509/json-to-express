@@ -10,7 +10,7 @@ const {
   startServer, stopServer, exerciseCrud, assertGeneratedEngine
 } = require('./compatibility-utils');
 
-const HISTORICAL = new Set(['0.2.0-beta.1', '0.2.0-beta.2']);
+const HISTORICAL = new Set(['0.2.0-beta.1', '0.2.0-beta.2', '0.2.0-beta.3']);
 
 function expectFailure(args) {
   const result = spawnSync(process.execPath, [ENTRY, ...args], {
@@ -48,7 +48,10 @@ async function main() {
     const legacy = historicalCli(root, version);
     run(process.execPath, [legacy, 'generate', filename, '--output', output]);
     const oldManifest = JSON.parse(fs.readFileSync(path.join(output, '.j2e-manifest.json')));
-    assert.equal(oldManifest.version, 1, 'Historical manifest format must be real, not synthetic');
+    const expectedManifestVersion = version === '0.2.0-beta.3' ? 2 : 1;
+    assert.equal(oldManifest.version, expectedManifestVersion,
+      'Historical manifest format must match the actual immutable release');
+    if (expectedManifestVersion === 2) assert.equal(oldManifest.schema.version, 1);
     fs.writeFileSync(marker, 'developer-owned; must survive every regeneration');
     install(output);
     if (database === 'postgresql') migrate(output);

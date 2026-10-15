@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "description": "External-workspace tests using the npm tarball; not independent external customer deployments.",
+  "cases": [
+    {
+      "id": "crud-express-mongodb",
+      "framework": "express",
+      "database": "mongodb",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/config/database.js"
+      ]
+    },
+    {
+      "id": "crud-express-postgresql",
+      "framework": "express",
+      "database": "postgresql",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "id": "crud-fastify-mongodb",
+      "framework": "fastify",
+      "database": "mongodb",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/fastify-native.js"
+      ]
+    },
+    {
+      "id": "crud-fastify-postgresql",
+      "framework": "fastify",
+      "database": "postgresql",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/fastify-native.js",
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "id": "helpdesk-mongo",
+      "framework": "express",
+      "database": "mongodb",
+      "specFile": "examples/consumers/helpdesk-mongo.json",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/controllers/TicketController.js"
+      ]
+    },
+    {
+      "id": "ledger-postgres",
+      "framework": "fastify",
+      "database": "postgresql",
+      "specFile": "examples/consumers/ledger-postgres.json",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/controllers/InvoiceController.js",
+        "prisma/schema.prisma"
+      ]
+    }
+  ]
+}

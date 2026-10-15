@@ -1,6 +1,6 @@
 {
   "name": "json-to-express",
-  "version": "0.2.0-beta.3",
+  "version": "0.2.0-beta.4",
   "description": "Generate runnable Express or native Fastify APIs from declarative JSON, with MongoDB/Mongoose or PostgreSQL/Prisma.",
   "main": "src/index.js",
   "bin": {
@@ -12,7 +12,9 @@
     "check": "node scripts/check-syntax.js",
     "validate:examples": "node bin/json-to-express.js validate examples/shop.json && node bin/json-to-express.js validate examples/e2e.json && node bin/json-to-express.js validate examples/e2e-postgres.json && node bin/json-to-express.js validate examples/e2e-s3.json",
     "test:package": "node scripts/verify-package.js",
-    "check:release": "node scripts/release-metadata.js check"
+    "check:release": "node scripts/release-metadata.js check",
+    "check:p9": "node scripts/p9-contract-check.js",
+    "test:p9-consumers": "node scripts/p9-consumer-contract.js"
   },
   "keywords": [
     "express",
@@ -48,7 +50,8 @@
     "LICENSE",
     "templates",
     "docs",
-    "registry"
+    "registry",
+    "ci"
   ],
   "repository": {
     "type": "git",

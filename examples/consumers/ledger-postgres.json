@@ -1,0 +1,32 @@
+{
+  "specVersion": "1.0",
+  "app": {
+    "name": "p9-ledger",
+    "framework": "fastify"
+  },
+  "database": {
+    "type": "postgresql"
+  },
+  "entities": {
+    "Invoice": {
+      "fields": {
+        "reference": {
+          "type": "string",
+          "required": true,
+          "unique": true
+        },
+        "amount": {
+          "type": "number",
+          "required": true
+        },
+        "paid": {
+          "type": "boolean",
+          "default": false
+        },
+        "issuedAt": {
+          "type": "date"
+        }
+      }
+    }
+  }
+}

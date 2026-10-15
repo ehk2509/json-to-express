@@ -4,10 +4,27 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
-### Added
-- P6 crash-recoverable regeneration: complete sibling staging, exclusive generator locks, journaled directory promotion, restart recovery and quarantined interrupted candidates.
-- `j2e recover --output <dir>` and fault-injection/SIGKILL/concurrency regression tests.
+Changes after beta.4 will be listed here.
 
+## [0.2.0-beta.4] - 2026-10-15
+
+### Added
+- P6 crash-recoverable regeneration: fully staged output, exclusive generator locks, journaled directory promotion, restart recovery, and SIGKILL/concurrency tests.
+- P7 reviewed PostgreSQL/MongoDB database migration intelligence: live drift inspection, versioned plans, backups, explicit approvals, and guarded rollback with live E2E.
+- P8 packaged-consumer validation on real database services, independent-pilot recruitment forms, and a fail-closed evidence/reviewer gate; **no independent production pilots have been verified yet**.
+- P9 pre-v1 contract snapshot and Node 18/20/22/24 compatibility checks for generator entrypoints, spec version, Plugin API v1, CLI, manifest versions, and file ownership.
+- Real historical persisted-data upgrade tests extended to immutable beta.3 for all Express/Fastify and MongoDB/PostgreSQL combinations.
+- Six published packaged consumer scenarios and a tested external database provider, validated via the installed npm tarball in a separate workspace.
+- Concise onboarding README, full archived reference, and focused API, upgrade, getting-started, and example guides.
+
+### Fixed
+- Pin the generated GraphQL schema dependency to the published @graphql-tools/schema@10.0.27, avoiding a floating minor release that currently resolves to an unavailable stable @graphql-tools/utils version.
+- Corrected a PostgreSQL/MongoDB backup filename assertion and retained the project ownership/rollback guards.
+
+### Notes
+- This release is a **public beta**. P9's pre-v1 stability checks do not constitute a v1.0 release or a long-term support guarantee.
+- Passing CI and simulated consumer tests do not prove external production adoption. The P8 independent-pilot evidence requirement remains open.
+- npm publication is gated by successful SHA-matched push-to-main CI and GitHub Actions OIDC provenance.
 
 ## [0.2.0-beta.3] - 2026-10-15
 

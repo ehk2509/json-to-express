@@ -101,3 +101,19 @@ j2e --version
 ~~~
 
 npm Trusted Publishing documentation: https://docs.npmjs.com/trusted-publishers/
+
+## P9 v1.0 release conditions
+
+P9 adds a pre-v1 public contract gate, real upgrade tests for immutable
+npm betas 0.2.0-beta.1 through 0.2.0-beta.3, and consumer tests that
+import the **installed npm tarball** from an external workspace. CI should
+execute `node scripts/p9-contract-check.js` and
+`node scripts/p9-consumer-contract.js` in addition to the existing
+release checks. Changes to the frozen baseline require explicit compatibility
+review, not a snapshot rewrite to bypass failed tests.
+
+The current pre-v1 beta must **not** be promoted to 1.0.0 just because the
+P9 engineering checks pass. The release gate additionally requires completed
+independent P8 production-pilot evidence and ratified long-term support
+terms (which specs, plugin versions, runtime combinations and migration paths
+the maintainers will support). See [P9 upgrade guarantees](UPGRADE-GUARANTEES.md).

@@ -31,8 +31,8 @@ transaction, workflows, SDK/admin and production-style Docker/Compose tests.
 ## Genuine cross-release upgrades
 
 The upgrade matrix uses the immutable npm packages
-json-to-express@0.2.0-beta.1 and json-to-express@0.2.0-beta.2, NOT synthetic
-manifests. For each predecessor and all four framework/database pairs:
+json-to-express@0.2.0-beta.1, json-to-express@0.2.0-beta.2 and json-to-express@0.2.0-beta.3, NOT synthetic
+manifests. For each predecessor and all four framework/database pairs (12 live upgrade jobs):
 
 1. Obtain and verify the historical npm package version.
 2. Generate, install and start the historical app with live storage.
@@ -97,3 +97,19 @@ See [External validation](EXTERNAL-VALIDATION.md). The production gate
 requires independent operator attestations and human review of evidence for
 three external projects spanning two organizations and both persistence
 engines/frameworks. CI may pass before those conditions are fulfilled.
+
+## P9 frozen public compatibility contracts
+
+P9 extends these tests to every published beta predecessor through
+0.2.0-beta.3, including both manifest v1 and manifest v2 histories. The
+versioned [generator/plugin contract baseline](GENERATOR-API.md), [safe upgrade
+policy](UPGRADE-GUARANTEES.md), and [packaged consumer matrix](EXAMPLES.md)
+are evaluated on every PR and push to main.
+
+The P9 consumer suite installs the actual npm tarball into a separate
+directory and generates all four framework/database combinations plus a
+bundled external provider. These are **synthetic consumer scenarios**, not
+independent external production validation.
+
+Formal v1.0 support and adoption guarantees remain gated on the external
+P8 pilot evidence and release review.

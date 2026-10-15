@@ -1,0 +1,52 @@
+name: P9 stability and packaged consumers
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p9-stability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frozen-contract:
+    name: frozen contract / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Guard spec, manifest, public entrypoint, plugin and CLI contracts
+        run: node scripts/p9-contract-check.js
+      - name: Exercise breaking-change rejection
+        run: node --test test/p9-contracts.test.js
+
+  packaged-consumer:
+    name: frozen packaged consumer matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test four API consumer stacks plus external plugin from installed npm tarball
+        env:
+          P9_CONSUMER_REPORT: reports/p9-consumer-contract.json
+        run: node scripts/p9-consumer-contract.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p9-packaged-consumer-evidence
+          path: reports/p9-consumer-contract.json
+          if-no-files-found: warn
+          retention-days: 60
