@@ -86,6 +86,22 @@ test('apply and rollback require explicit hash approval',()=>{
  }
 });
 
+test('MongoDB multi-host plans are bound to destination, not passwords',()=>{
+  const key='J2E_P7_URI_MULTINODE';
+  const original=process.env[key];
+  const spec={database:{type:'mongodb',uriEnv:key}};
+  try {
+    process.env[key]='mongodb://alice:secret@mongo-a:27017,mongo-b:27017/inventory?replicaSet=rs';
+    const one=connectionFingerprint(spec);
+    process.env[key]='mongodb://alice:newpassword@mongo-a:27017,mongo-b:27017/inventory?replicaSet=rs';
+    assert.equal(connectionFingerprint(spec),one);
+    process.env[key]='mongodb://alice:newpassword@mongo-a:27017,mongo-b:27017/other?replicaSet=rs';
+    assert.notEqual(connectionFingerprint(spec),one);
+  } finally {
+    if(original===undefined)delete process.env[key];
+    else process.env[key]=original;
+  }
+});
 test('backup paths are adjacent to output and shared by apply and rollback',()=>{
  const output=path.resolve('generated','demo');
  const location=defaultBackupPath({output},{hash:'a'.repeat(64),engine:'mongodb'});
