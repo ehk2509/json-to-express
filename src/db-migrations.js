@@ -10,6 +10,14 @@ const {localRequire,localBinary,run,requireEnv,expectedPostgres,inspectPostgres,
   expectedMongo,inspectMongo,planMongo,normalizeSpec}=require('./db-introspection');
 
 function sha(value) {return crypto.createHash('sha256').update(value).digest('hex');}
+function shaFile(filename) {
+  const hash=crypto.createHash('sha256'),fd=fs.openSync(filename,'r');
+  const buffer=Buffer.allocUnsafe(1024*1024);
+  try {let size;while((size=fs.readSync(fd,buffer,0,buffer.length,null))>0)
+    hash.update(buffer.subarray(0,size));}
+  finally {fs.closeSync(fd);}
+  return hash.digest('hex');
+}
 function readJson(filename) {return JSON.parse(fs.readFileSync(filename,'utf8'));}
 function writeExclusive(filename, value) {
   fs.mkdirSync(path.dirname(filename),{recursive:true});
@@ -84,8 +92,8 @@ async function buildPlan(spec,output) {
       if(live.schema.tables[table])knownTables[table]=live.schema.tables[table];
     comparison=planDrift(desired,{tables:knownTables});
   } else {
-    steps=planMongo(expectedMongo(spec,output),live.schema);
-    comparison={changes:steps};
+    comparison={changes:planMongo(expectedMongo(spec,output),live.schema)};
+    steps=comparison.changes.filter(step=>step.action==='create-index'||step.action==='create-collection');
   }
   const plan={
     version:1,engine:spec.database.type,output:path.resolve(output),
@@ -124,7 +132,7 @@ function backupEnvironment(uri, engine) {
 }
 function backupDatabase(spec,options,plan) {
   const filename=path.resolve(options['--backup']||path.join(options.output,
-    'backups','j2e-'+plan.hash.slice(0,14)+(plan.engine==='postgresql'?'.dump':'.archive')));
+    '..',path.basename(options.output)+'.j2e-backups','j2e-'+plan.hash.slice(0,14)+(plan.engine==='postgresql'?'.dump':'.archive')));
   if(fs.existsSync(filename)||fs.existsSync(filename+'.j2e.json'))
     throw new Error('Backup already exists: '+filename);
   fs.mkdirSync(path.dirname(filename),{recursive:true});
@@ -148,7 +156,7 @@ function backupDatabase(spec,options,plan) {
       throw new Error('Database backup was empty');
     fs.chmodSync(tmp,0o600);
     const receipt={version:1,engine:plan.engine,planHash:plan.hash,
-      bytes:fs.statSync(tmp).size,sha256:sha(fs.readFileSync(tmp)),
+      bytes:fs.statSync(tmp).size,sha256:shaFile(tmp),
       createdAt:new Date().toISOString()};
     fs.renameSync(tmp,filename);
     writeExclusive(filename+'.j2e.json',receipt);
@@ -161,7 +169,7 @@ function backupDatabase(spec,options,plan) {
 function verifyBackup(filename,plan) {
   const receipt=readJson(filename+'.j2e.json');
   if(receipt.version!==1||receipt.planHash!==plan.hash||receipt.engine!==plan.engine||
-      receipt.sha256!==sha(fs.readFileSync(filename)) ||
+      receipt.sha256!==shaFile(filename) ||
       receipt.bytes!==fs.statSync(filename).size)
     throw new Error('Backup integrity verification failed');
   return receipt;
@@ -177,6 +185,10 @@ async function applyPostgres(spec,options,plan,backup) {
   // SQL goes into Prisma's versioned migration directory, never executed ad hoc.
   const schemaDir=path.dirname(path.resolve(options.output,spec.database.prisma.schemaPath));
   const migrations=path.join(schemaDir,'migrations');
+  const verifier=path.join(options.output,'scripts','verify-migration-history.js');
+  run(process.execPath,[verifier],{cwd:options.output});
+  run(localBinary(options.output,'prisma'),
+    ['migrate','status','--schema',spec.database.prisma.schemaPath],{cwd:options.output});
   if(!fs.existsSync(path.join(migrations,'migration_lock.toml')))
     throw new Error('Initialize and deploy Prisma migrations before P7 apply');
   const dirname=new Date().toISOString().replace(/\D/g,'').slice(0,14)+'_j2e_'+plan.hash.slice(0,8);
@@ -193,8 +205,7 @@ async function applyPostgres(spec,options,plan,backup) {
     run(localBinary(options.output,'prisma'),
       ['migrate','deploy','--schema',spec.database.prisma.schemaPath],
       {cwd:options.output,timeout:300000});
-    const history=path.join(options.output,'scripts','verify-migration-history.js');
-    run(process.execPath,[history,'--record'],{cwd:options.output});
+    run(process.execPath,[verifier,'--record'],{cwd:options.output});
     return {migration:dirname,backup:backup.filename,
       rollback:'Restore verified backup to an isolated database, then perform a reviewed cutover.'};
   } catch(error) {
@@ -248,7 +259,7 @@ async function applyMongo(spec,options,plan,backup) {
 }
 async function rollbackMongo(spec,options,plan) {
   const filename=path.resolve(options['--backup']||path.join(options.output,'backups',
-    'j2e-'+plan.hash.slice(0,14)+'.archive'));
+    '..',path.basename(options.output)+'.j2e-backups','j2e-'+plan.hash.slice(0,14)+'.archive'));
   verifyBackup(filename,plan);
   const mongoose=localRequire(options.output)('mongoose');
   await mongoose.connect(requireEnv(spec));
