@@ -79,6 +79,29 @@ function publicReport({pilot, checks, timings, commit, tarballIntegrity, outcome
     timings
   };
 }
+const REVIEW_CHECKS = Object.freeze([
+  'independentOperator', 'deploymentReviewed', 'rollbackReviewed',
+  'incidentsReviewed', 'evidenceRedacted'
+]);
+function isApprovedReview(item) {
+  const review = item.review;
+  if (!review || review.decision !== 'approved' ||
+      typeof review.reviewer !== 'string' ||
+      !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$/.test(review.reviewer) ||
+      typeof item.operatorGithub !== 'string' ||
+      !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$/.test(item.operatorGithub) ||
+      review.reviewer.toLowerCase() === item.operatorGithub.toLowerCase() ||
+      typeof review.issue !== 'string' ||
+      !/^https:\/\/github\.com\/ehk2509\/json-to-express\/issues\/[1-9][0-9]*$/.test(review.issue) ||
+      typeof review.reviewedAt !== 'string' ||
+      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$/.test(review.reviewedAt) ||
+      Number.isNaN(Date.parse(review.reviewedAt)) ||
+      !review.checks || !REVIEW_CHECKS.every(check => review.checks[check] === true)) {
+    return false;
+  }
+  return true;
+}
+
 function assess({reports, attestations, requiredSha, policy}) {
   assert.ok(HEX_SHA.test(requiredSha), 'A complete exact target SHA is required');
   const requiredChecks = ['create', 'retrieve', 'validation', 'restartPersistence', 'delete', 'soak'];
@@ -99,6 +122,7 @@ function assess({reports, attestations, requiredSha, policy}) {
   if (![minProjects, minOrganizations, minObservationHours].every(x =>
     Number.isSafeInteger(x) && x > 0)) throw new Error('Invalid P8 acceptance policy');
   const accepted = [], organizations = new Set(), projects = new Set();
+  let pendingReviewCount = 0;
   for (const item of attestations) {
     requireKeys(item, ['project', 'organization', 'commit', 'runtime',
       'observedHours', 'incidentCount', 'rollbackDrill', 'operatorConfirmed',
@@ -112,6 +136,10 @@ function assess({reports, attestations, requiredSha, policy}) {
         typeof item.publicEvidence !== 'string' ||
         !/^https:\/\/[^/]+\//.test(item.publicEvidence)) {
       throw new Error('Unacceptable external P8 attestation for ' + String(item.project));
+    }
+    if (!isApprovedReview(item)) {
+      pendingReviewCount++;
+      continue; // Self-attestation alone NEVER qualifies as external validation.
     }
     const identifier = item.organization + '/' + item.project;
     if (projects.has(identifier)) throw new Error('Duplicate independent project: ' + identifier);
@@ -132,14 +160,16 @@ function assess({reports, attestations, requiredSha, policy}) {
     status: evidenceReady && smokeReady ? 'externally-validated' : 'awaiting-external-evidence',
     smokeReady, externalEvidenceReady: evidenceReady,
     simulatedCases: validated,
-    verifiedAttestationCount: accepted.length,
+    reviewedAttestationCount: accepted.length,
+    verifiedAttestationCount: accepted.length, // Compatibility with previous reports.
+    pendingReviewCount,
     independentOrganizationCount: organizations.size,
     frameworks: [...new Set(accepted.map(x => x.framework))].sort(),
     databases: [...new Set(accepted.map(x => x.database))].sort(),
     combinations: [...coverage].sort(),
-    // External attestations are self-reported; this validates structure/consistency
-    // and does not independently authenticate the operator or the public URL.
-    caveat: 'External attestations require manual independent verification before release.'
+    // The review object records a human assertion; this static program cannot
+    // authenticate a reviewer's GitHub identity or independently audit the URL.
+    caveat: 'Approval metadata is reviewed in code but reviewer identity and evidence require independent human audit.'
   };
 }
-module.exports = {validateCase, fingerprint, percentile, publicReport, assess};
+module.exports = {validateCase, fingerprint, percentile, publicReport, assess, isApprovedReview};
