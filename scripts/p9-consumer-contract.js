@@ -21,8 +21,10 @@ function run(cmd,args,cwd=ROOT) {
   return result.stdout;
 }
 function verifyCase({item,installed,cli,packageDir,root}) {
-  const spec=JSON.parse(fs.readFileSync(
-    path.join(packageDir,'templates',item.starter+'.json'),'utf8'));
+  const relativeSpec=item.specFile || path.posix.join('templates',item.starter+'.json');
+  assert.ok(/^(?:templates|examples\/consumers)\/[a-z0-9-]+\.json$/.test(relativeSpec),
+    'Consumer fixture path must be a packaged JSON example');
+  const spec=JSON.parse(fs.readFileSync(path.join(packageDir,relativeSpec),'utf8'));
   spec.app.name='p9-'+item.id;
   spec.app.framework=item.framework;
   spec.database.type=item.database;
@@ -91,14 +93,17 @@ function main() {
     const cli=path.join(packageDir,'bin/json-to-express.js');
     const matrix=JSON.parse(fs.readFileSync(path.join(ROOT,'ci/p9/consumer-matrix.json'),'utf8'));
     assert.equal(matrix.schemaVersion,1);
-    assert.equal(matrix.cases.length,4);
+    assert.equal(matrix.cases.length,6);
     const combos=new Set();
+    const ids=new Set();
     const results=[];
     for(const item of matrix.cases) {
-      assert.ok(!combos.has(item.framework+'/'+item.database),'Duplicate consumer coverage');
+      assert.ok(!ids.has(item.id),'Duplicate consumer case id');
+      ids.add(item.id);
       combos.add(item.framework+'/'+item.database);
       results.push(verifyCase({item,installed,cli,packageDir,root:temp}));
     }
+    assert.equal(combos.size,4,'Four framework/database combinations must be covered');
     results.push(testPlugin(installed,cli,packageDir,temp));
     const report={
       schemaVersion:1,milestone:'P9',kind:'packaged-consumer-contract',
