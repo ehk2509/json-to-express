@@ -27,6 +27,12 @@ try {
     'src/index.js',
     'src/plugins.js',
     'src/plugin-worker.js',
+    'src/plugin-registry.js',
+    'src/plugin-cli.js',
+    'registry/catalog.json',
+    'docs/PLUGIN-REGISTRY.md',
+    'examples/plugin-starter/package.json',
+    'examples/plugin-starter/index.js',
     'docs/PLUGINS.md',
     'examples/plugins/flatfile-provider.js',
     'examples/plugins/flatfile-spec.json',
@@ -80,7 +86,16 @@ try {
   assert.ok(fs.existsSync(path.join(customOutput, 'src', 'server.js')));
   const generatedPluginPkg = JSON.parse(fs.readFileSync(path.join(customOutput, 'package.json')));
   assert.equal(generatedPluginPkg.name, 'flatfile-notes');
-  console.log('Verified tarball, starter CLI, and external database provider.');
+  const catalog = run(process.execPath, [cli, 'plugin', 'catalog']);
+  assert.match(catalog, /Flatfile demo/);
+  const publisherStarter = path.join(installRoot, 'node_modules', 'json-to-express',
+    'examples', 'plugin-starter', 'package.json');
+  const publisherMetadata = JSON.parse(fs.readFileSync(publisherStarter, 'utf8'));
+  assert.equal(publisherMetadata.j2ePlugin.apiVersion, 1);
+  const packageInfo = require(path.join(installRoot, 'node_modules', 'json-to-express',
+    'src', 'plugin-registry.js'));
+  assert.equal(packageInfo.validatePackage(publisherMetadata).kind, 'generator');
+  console.log('Verified npm package, starters, external provider and plugin registry.');
 
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});

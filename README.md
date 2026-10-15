@@ -74,6 +74,12 @@ The output flag overrides generation.outputDir.
 
 Force does not delete the output directory. It only allows replacement of generator-owned files that were modified since the previous generation.
 
+## Plugin registry and community ecosystem
+
+Discover npm plugins with `j2e plugin search`, inspect API compatibility with `j2e plugin info`, then explicitly approve a pinned install with `j2e plugin add <package@version> --spec app.j2e.json`. Plugins install with npm scripts disabled, an integrity-verified lockfile and a blocking high-severity dependency audit. Listings and package metadata are **unverified**, not security endorsements. View the curated bundled samples with `j2e plugin catalog`, or review existing plugin declarations with `j2e plugin verify --spec app.j2e.json`.
+
+See [the community registry guide](docs/PLUGIN-REGISTRY.md) and [the plugin publisher starter](examples/plugin-starter/package.json).
+
 ## Extensibility API and external plugins
 
 Third-party plugins can add generators and implement database providers,
