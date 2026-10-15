@@ -1,0 +1,97 @@
+name: P7 database integration
+
+on:
+  pull_request:
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: j2e_p7
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d j2e_p7"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_p7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare PostgreSQL client
+        run: |
+          if ! pg_dump --version | grep -q '16'; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client-16
+          fi
+      - name: Generate initial app and migrate
+        run: |
+          node bin/json-to-express.js generate examples/e2e-postgres.json --output .tmp/p7-postgres
+          cd .tmp/p7-postgres
+          npm install --no-audit --no-fund
+          npm run db:migrate:init
+          npm run db:migrate:deploy
+      - name: Verify live introspection and apply reviewed schema change
+        run: |
+          node bin/json-to-express.js db inspect examples/e2e-postgres.json --output .tmp/p7-postgres > .tmp/p7-inspect.json
+          node -e "if(!require('./.tmp/p7-inspect.json').schema.tables.products)process.exit(1)"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const spec=require('./examples/e2e-postgres.json');
+          spec.entities.Product.fields.p7Marker={type:'string'};
+          fs.writeFileSync('.tmp/p7-spec.json',JSON.stringify(spec));
+          NODE
+          node bin/json-to-express.js upgrade .tmp/p7-spec.json --output .tmp/p7-postgres
+          node bin/json-to-express.js db plan .tmp/p7-spec.json --output .tmp/p7-postgres > .tmp/p7-plan-output.json
+          node - <<'NODE'
+          const plan=require('./.tmp/p7-plan-output.json');
+          if(!plan.steps.some(x=>x.statement&&x.statement.includes('p7Marker')))throw Error('DDL absent');
+          if(plan.requiresManual||plan.requiresDestructive)throw Error('Risk escalation needed');
+          NODE
+          HASH=$(node -p "require('./.tmp/p7-plan-output.json').hash")
+          node bin/json-to-express.js db apply .tmp/p7-spec.json --output .tmp/p7-postgres --approve "$HASH" --allow-review > .tmp/p7-applied.json
+          node bin/json-to-express.js db status .tmp/p7-spec.json --output .tmp/p7-postgres > .tmp/p7-after.json
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const result=require('./.tmp/p7-applied.json');
+          if(!fs.existsSync(result.backup+'.j2e.json')) throw Error('Backup missing');
+          if(require('./.tmp/p7-after.json').steps.length) throw Error('Migration drift remains');
+          NODE
+
+  mongodb:
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      MONGODB_URI: mongodb://127.0.0.1:27017/j2e_p7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate MongoDB application and inspect live indexes
+        run: |
+          node bin/json-to-express.js generate examples/e2e.json --output .tmp/p7-mongo
+          cd .tmp/p7-mongo
+          npm install --no-audit --no-fund
+          cd ../..
+          node bin/json-to-express.js db inspect examples/e2e.json --output .tmp/p7-mongo > .tmp/p7-mongo-inspect.json
+          node bin/json-to-express.js db plan examples/e2e.json --output .tmp/p7-mongo > .tmp/p7-mongo-plan.json
+          node - <<'NODE'
+          const plan=require('./.tmp/p7-mongo-plan.json');
+          if(plan.engine!=='mongodb')throw Error('Wrong database');
+          if(!plan.steps.some(s=>s.action==='create-collection'))throw Error('Collection creation not detected');
+          if(plan.requiresManual)throw Error('Unsupported operation planned');
+          NODE
