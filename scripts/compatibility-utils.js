@@ -87,14 +87,16 @@ async function exerciseCrud(started, id = null) {
       method: 'POST', headers: {'content-type': 'application/json'},
       body: JSON.stringify({title: 'Compatibility fixture', completed: false})
     });
-    assert.equal(created.status, 201, 'POST /api/tasks: ' + await created.text());
-    const row = await created.json();
+    const createdBody = await created.text();
+    assert.equal(created.status, 201, 'POST /api/tasks: ' + createdBody);
+    const row = JSON.parse(createdBody);
     id = row._id || row.id;
     assert.ok(id, 'new record ID');
   }
   const found = await fetch(base + '/' + id);
-  assert.equal(found.status, 200, 'GET /api/tasks/:id: ' + await found.text());
-  assert.equal((await found.json()).title, 'Compatibility fixture');
+  const foundBody = await found.text();
+  assert.equal(found.status, 200, 'GET /api/tasks/:id: ' + foundBody);
+  assert.equal(JSON.parse(foundBody).title, 'Compatibility fixture');
   const list = await fetch(base);
   assert.equal(list.status, 200);
   const rows = await list.json();
