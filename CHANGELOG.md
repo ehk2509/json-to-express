@@ -4,6 +4,11 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
+### Added
+- P6 crash-recoverable regeneration: complete sibling staging, exclusive generator locks, journaled directory promotion, restart recovery and quarantined interrupted candidates.
+- `j2e recover --output <dir>` and fault-injection/SIGKILL/concurrency regression tests.
+
+
 ## [0.2.0-beta.3] - 2026-10-15
 
 ### Added

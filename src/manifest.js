@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {compareSnapshots, policyErrors} = require('./evolution');
+const {withOutputLock, recoverLocked, recoverTransaction, swapProject,
+  assertCleanTransaction} = require('./transaction');
 
 const MANIFEST_NAME = '.j2e-manifest.json';
 const MANIFEST_VERSION = 2;
@@ -73,8 +75,9 @@ function readManifest(outputDir) {
 }
 
 // The pure inspection phase does not create directories or mutate files.
-function planGeneratedFiles(outputDir, files, snapshot) {
+function planGeneratedFiles(outputDir, files, snapshot, {locked = false} = {}) {
   assertSafeTarget(outputDir);
+  if (!locked) assertCleanTransaction(outputDir);
   const old = readManifest(outputDir);
   if (fs.existsSync(outputDir) && !fs.statSync(outputDir).isDirectory()) {
     throw new Error('Output target is not a directory: ' + outputDir);
@@ -137,31 +140,44 @@ function planGeneratedFiles(outputDir, files, snapshot) {
 }
 function writeGeneratedFiles(outputDir, files, options = {}) {
   if (!options.schemaSnapshot) throw new Error('Schema snapshot required for safe regeneration');
-  const plan = planGeneratedFiles(outputDir, files, options.schemaSnapshot);
-  const problems = policyErrors(plan.schemaChanges, options);
-  if (problems.length) throw new Error('Unsafe schema evolution: ' + problems.join('; '));
-  if (plan.blocking.modifiedFiles.length && !options.force) {
-    throw new Error('Refusing to overwrite developer-modified generated files: ' +
-      plan.blocking.modifiedFiles.join(', ') +
-      '. Re-run with --force to replace only these generator-owned files.');
-  }
-  fs.mkdirSync(outputDir, {recursive: true});
-  for (const action of plan.actions) {
-    if (action.status !== 'remove' && action.status !== 'stale-conflict') continue;
-    const destination = path.join(outputDir, action.path);
-    if (fs.existsSync(destination)) fs.rmSync(destination);
-  }
-  const manifest = {version: MANIFEST_VERSION, files: {}, schema: options.schemaSnapshot};
-  for (const [relativePath, content] of files) {
-    const destination = path.join(outputDir, relativePath);
-    fs.mkdirSync(path.dirname(destination), {recursive: true});
-    fs.writeFileSync(destination, content, 'utf8');
-    manifest.files[relativePath] = hash(content);
-  }
-  fs.writeFileSync(manifestPath(outputDir), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-  return manifest;
+  assertSafeTarget(outputDir);
+  return withOutputLock(outputDir, () => {
+    // An interrupted predecessor is resolved *before* reading its manifest.
+    // Recompute the plan under the same lock to prevent simultaneous writers
+    // racing on hashes, schema policy or unowned file checks.
+    const recovery = recoverLocked(outputDir);
+    const plan = planGeneratedFiles(outputDir, files, options.schemaSnapshot, {locked: true});
+    const problems = policyErrors(plan.schemaChanges, options);
+    if (problems.length) throw new Error('Unsafe schema evolution: ' + problems.join('; '));
+    if (plan.blocking.modifiedFiles.length && !options.force) {
+      throw new Error('Refusing to overwrite developer-modified generated files: ' +
+        plan.blocking.modifiedFiles.join(', ') +
+        '. Re-run with --force to replace only these generator-owned files.');
+    }
+    const manifest = {version: MANIFEST_VERSION, files: {}, schema: options.schemaSnapshot};
+    for (const [relativePath, content] of files) {
+      safeRelative(relativePath);
+      manifest.files[relativePath] = hash(content);
+    }
+    const manifestText = JSON.stringify(manifest, null, 2) + '\n';
+    swapProject(outputDir, manifestText, stage => {
+      for (const action of plan.actions) {
+        if (action.status !== 'remove' && action.status !== 'stale-conflict') continue;
+        const destination = path.join(stage, action.path);
+        if (fs.existsSync(destination)) fs.rmSync(destination);
+      }
+      for (const [relativePath, content] of files) {
+        const destination = path.join(stage, relativePath);
+        fs.mkdirSync(path.dirname(destination), {recursive: true});
+        fs.writeFileSync(destination, content, 'utf8');
+      }
+      fs.writeFileSync(path.join(stage, MANIFEST_NAME), manifestText, 'utf8');
+    }, {fault: options.transactionFault});
+    return manifest;
+  });
 }
+
 module.exports = {
   MANIFEST_NAME, MANIFEST_VERSION, hash, readManifest,
-  planGeneratedFiles, writeGeneratedFiles, assertSafeTarget
+  planGeneratedFiles, writeGeneratedFiles, assertSafeTarget, recoverTransaction
 };

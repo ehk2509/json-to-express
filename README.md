@@ -25,7 +25,7 @@ Two persistence targets now share the same normalized application model:
 
 ## Quick start
 
-**Public beta:** `0.2.0-beta.2`. Requires Node.js 18 or newer.
+**Public beta:** `0.2.0-beta.3`. Requires Node.js 18 or newer.
 
 Once the npm beta package has been published, install the CLI with:
 
@@ -133,6 +133,19 @@ j2e doctor app.j2e.json --strict
 Doctor checks Node/npm, packaged template integrity, JSON schema validity, Docker/Compose or Kubernetes tooling when configured, required runtime environment variables (presence only, never values), existing generated files, manifest conflicts and schema migration risks. JSON reports can be consumed by CI. Warnings are advisory by default; --strict treats warnings as failures.
 
 **Running your starter:** for Compose projects, enter <project>/server, copy .env.example to .env, set real credentials, and use docker compose up -d --build. For local runtime, install dependencies and configure a running database first. PostgreSQL projects require reviewed Prisma migrations (db:migrate:init for a new project and db:migrate:deploy against a configured database); j2e init intentionally does not execute database migrations. Never use placeholder JWT or API key secrets in production, and enable authentication before exposing endpoints publicly.
+
+## Transactional and recoverable regeneration
+
+Generation now stages a **complete** candidate output beside the existing
+project, then switches directory names under an exclusive per-output lock.
+If the process is interrupted, the next generation automatically recovers
+the previous manifest/tree or finalizes an already committed candidate.
+For explicit recovery without a spec, run
+`j2e recover --output generated/my-api`.
+The old project is retained until the new tree is committed; a candidate
+promoted immediately before a crash is quarantined instead of being silently
+discarded. Details, crash recovery, downtime and disk-space considerations:
+[Transactional generation](docs/TRANSACTIONAL-GENERATION.md).
 
 ## Safe deterministic regeneration
 

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const pkg = require('../package.json');
-const {generateApplication, planApplication, validateSpec} = require('../src');
+const {generateApplication, planApplication, validateSpec, recoverTransaction} = require('../src');
 const {initialize, parseInitArgs, TEMPLATES} = require('../src/onboarding');
 const {parseDoctorArgs, diagnose} = require('../src/doctor');
 const pluginCommands = require('../src/plugin-cli');
@@ -23,6 +23,7 @@ function printHelp() {
     '  j2e diff <spec.json> [--output <dir>] [--json]',
     '  j2e plan <spec.json> [--output <dir>] [--json]',
     '  j2e upgrade <spec.json> [--output <dir>] [options]',
+    '  j2e recover --output <dir>  Recover an interrupted generation',
     '',
     'Options:',
     '  -o, --output <dir>     Output directory',
@@ -124,6 +125,16 @@ async function main() {
       console.log(report.errors + ' error(s), ' + report.warnings + ' warning(s).');
     }
     if (!report.ok) process.exitCode = 1;
+    return;
+  }
+  if (command === 'recover') {
+    if (args.length !== 3 || !['-o', '--output'].includes(args[1]) ||
+        !args[2] || args[2].startsWith('-')) {
+      throw new Error('Usage: j2e recover --output <dir>');
+    }
+    const result = recoverTransaction(path.resolve(args[2]));
+    console.log('Recovery: ' + result.status);
+    if (result.quarantine) console.log('Interrupted generated tree preserved at: ' + result.quarantine);
     return;
   }
   if (!specFile || specFile.startsWith('-')) throw new Error('Missing specification file. Run j2e --help.');
