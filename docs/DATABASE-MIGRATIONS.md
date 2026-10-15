@@ -90,7 +90,7 @@ A reviewed rollback is supported for the indexes/empty collections created
 by a recorded migration:
 
 ```sh
-j2e db rollback app.j2e.json --output server --approve <exact-hash>
+j2e db rollback app.j2e.json --output server --approve <exact-hash> --allow-review
 ```
 
 Rollback verifies the original archive receipt and refuses to drop a newly
@@ -127,6 +127,6 @@ npm run check
 ```
 
 The unit tests cover deterministic drift, SQL risk classification, review
-tokens, backup integrity and MongoDB index safety. The CI database integration
-job exercises live PostgreSQL and MongoDB inspection as well as migration
-planning. Release only after the full compatibility suite passes.
+tokens, backup integrity and MongoDB index safety. The CI database integration job exercises PostgreSQL migration deployment,
+backup verification and restore-to-isolated-database, plus MongoDB
+inspection, backed-up index/collection creation and rollback. Release only after the full compatibility suite passes.
