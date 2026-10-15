@@ -231,7 +231,9 @@ async function withMongoLock(db,fn) {
 }
 async function applyMongo(spec,options,plan,backup) {
   const mongoose=localRequire(options.output)('mongoose');
-  await mongoose.connect(requireEnv(spec));
+  mongoose.set('autoIndex',false);
+  mongoose.set('autoCreate',false);
+  await mongoose.connect(requireEnv(spec),{autoIndex:false,autoCreate:false});
   try{
     return await withMongoLock(mongoose.connection.db,async()=>{
       const executed=[];
@@ -262,7 +264,9 @@ async function rollbackMongo(spec,options,plan) {
     '..',path.basename(options.output)+'.j2e-backups','j2e-'+plan.hash.slice(0,14)+'.archive'));
   verifyBackup(filename,plan);
   const mongoose=localRequire(options.output)('mongoose');
-  await mongoose.connect(requireEnv(spec));
+  mongoose.set('autoIndex',false);
+  mongoose.set('autoCreate',false);
+  await mongoose.connect(requireEnv(spec),{autoIndex:false,autoCreate:false});
   try{
     return await withMongoLock(mongoose.connection.db,async()=>{
       const history=mongoose.connection.db.collection('_j2e_migration_history');
