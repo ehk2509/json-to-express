@@ -72,7 +72,8 @@ function generateApplication(inputSpec, outputDir, options = {}) {
     force: options.force === true,
     approveSchema: options.approveSchema === true,
     allowDestructive: options.allowDestructive === true,
-    allowUnknownSchema: options.allowUnknownSchema === true
+    allowUnknownSchema: options.allowUnknownSchema === true,
+    transactionFault: options.transactionFault
   });
   return {
     outputDir: target,

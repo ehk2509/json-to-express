@@ -14,6 +14,7 @@ module.exports = {
   pluginRegistry,
   SpecificationError,
   generateApplication,
+  recoverTransaction,
   planApplication,
   normalizeSpec,
   upgradeSpec,
