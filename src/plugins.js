@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 
 const API_VERSION = 1;
@@ -51,9 +52,16 @@ function safeArtifactPath(filename) {
 function invokePlugin(declaration, spec, pluginRoot) {
   const root = path.resolve(pluginRoot || process.cwd());
   const candidate = declaration.module;
+  const managedRoot = path.join(root, '.j2e', 'plugins',
+    crypto.createHash('sha256').update(candidate).digest('hex').slice(0, 24));
+  if (!candidate.startsWith('.') && !path.isAbsolute(candidate) &&
+      fs.existsSync(managedRoot)) {
+    const installed = require('./plugin-registry').verifyInstalled(root, candidate, spec);
+    if (installed.kind !== declaration.kind) throw new Error('Installed plugin kind does not match spec');
+  }
   const modulePath = candidate.startsWith('.') || path.isAbsolute(candidate)
     ? require.resolve(path.resolve(root, candidate))
-    : require.resolve(candidate, {paths: [root]});
+    : require.resolve(candidate, {paths: [managedRoot, root]});
   if (!fs.existsSync(modulePath) || !fs.statSync(modulePath).isFile()) {
     throw new Error('Plugin module not found: ' + candidate);
   }
