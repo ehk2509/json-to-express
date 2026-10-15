@@ -160,7 +160,7 @@ async function install(specifier,specPath,{yes=false,confirm,input=process.stdin
     if(fs.readFileSync(file,'utf8')!==old)throw Error('Spec changed during download');
     fs.renameSync(stage,destination);moved=true;
     try{atomicSpec(file,next,old);}catch(e){fs.rmSync(destination,{recursive:true,force:true});throw e;}
-    return {...info,installed:true,updatedSpec:file,lifecycleScripts:false};
+    return {...info,installed:true,updatedSpec:file,scriptsExecuted:false};
   }finally{if(!moved)fs.rmSync(stage,{recursive:true,force:true});}
 }
 module.exports={parseVersion,compareVersion,validateName,parseSpecifier,registryDirectory,
