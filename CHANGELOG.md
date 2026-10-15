@@ -4,31 +4,27 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
-### Added
-- An open, versioned community registry catalog, npm plugin discovery, compatibility inspection and opt-in project-local installation with exact versions, SHA-512 integrity, disabled lifecycle scripts and dependency audits.
-- Plugin registry CLI commands (catalog, search, info, add, list and verify), publisher starter and community contribution guide.
-
+## [0.2.0-beta.3] - 2026-10-15
 
 ### Added
-- Release-gated Node/framework/database runtime compatibility and beta1/beta2 persisted-data upgrades.
-- 36-entity performance baselines, production dependency audits and Compose/Kubernetes deployment validation.
+- Intelligent regeneration via `j2e diff`, `j2e plan`, and guarded `j2e upgrade`, including file-ownership conflict detection and schema change classification.
+- Interactive `j2e init` and `j2e doctor` with CRUD, SaaS, and e-commerce starter templates, guided configuration, JSON reports, and non-interactive CI support.
+- Plugin API v1 for independent database providers, custom generators, middleware, authentication, and storage adapters, with lifecycle hooks, manifest-aware output safety, and bounded subprocess execution.
+- Plugin registry CLI (`catalog`, `search`, `info`, `add`, `list`, `verify`), curated examples, an npm publisher starter, and community contribution documentation.
+- Release-gated production compatibility evidence: 14 supported Node/framework/database combinations, eight genuine historical beta upgrade scenarios with persisted-data checks, large generated-app benchmarks, and deployment/dependency audits.
 
 ### Changed
-- Generated Fastify applications now advertise Node >=20 by default, matching Fastify 5; Express retains >=18 as its legacy default.
+- Version-independent beta release automation now validates immutable tags and source SHAs, serializes publication, checks changelog metadata, and preserves npm OIDC trusted publishing.
+- Generated Fastify 5 applications default to Node.js 20+; Express retains legacy Node.js 18+ compatibility.
+- Generated PostgreSQL dependencies use a targeted transitive dependency override to address the audited `deepmerge-ts` advisory.
 
+### Security
+- Registry installs require explicit consent, an exact npm version, SHA-512 integrity validation, compatibility checks, disabled lifecycle scripts, and a passing high-severity production dependency audit.
+- Generator-owned files remain protected by preflight validation; third-party plugins run in subprocesses for fault containment, **not** an OS-level security sandbox.
 
-### Added
-- Plugin API v1 for third-party generators, database providers, middleware, authentication and storage adapters with lifecycle hooks and bounded subprocess workers.
-- Explicit artifact-override permissions, safe regeneration integration and independent flatfile database-provider example.
-
-
-### Added
-- Interactive init and doctor CLI commands, non-interactive setup, and bundled CRUD/SaaS/e-commerce templates.
-- Tarball smoke coverage for installed starter generation and diagnostics.
-
-
-### Changed
-- Automate version-independent beta releases, immutable GitHub SHA/tag verification, concurrency fencing, changelog validation and dependency security audits.
+### Notes
+- This prerelease bundles the previously unreleased features developed after `0.2.0-beta.2`. Plugin APIs may still evolve before v1.0.
+- npm distribution uses GitHub Actions OIDC with provenance and the `beta` dist-tag.
 
 ## [0.2.0-beta.2] - 2026-10-14
 
