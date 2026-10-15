@@ -19,10 +19,17 @@ function shaFile(filename) {
   return hash.digest('hex');
 }
 function connectionFingerprint(spec) {
-  const parsed=new URL(requireEnv(spec));
-  // Pin the server, database, username and connection options, never the password.
-  return sha(JSON.stringify({protocol:parsed.protocol,host:parsed.host,
-    database:parsed.pathname,username:parsed.username,options:parsed.search}));
+  const uri=requireEnv(spec);
+  const matched=/^([a-z][a-z\d+.-]*:\/\/)([^/?#]+)(.*)$/i.exec(uri);
+  if(!matched)throw new Error('Invalid database connection URI');
+  // WHATWG URL rejects valid MongoDB multi-host URIs; parse the authority
+  // conservatively and omit the password before computing the target hash.
+  const authority=matched[2];
+  const at=authority.lastIndexOf('@');
+  const credentials=at<0?'':authority.slice(0,at);
+  const username=credentials.split(':')[0];
+  const hosts=at<0?authority:authority.slice(at+1);
+  return sha(JSON.stringify({protocol:matched[1],hosts,username,path:matched[3]}));
 }
 function readJson(filename) {return JSON.parse(fs.readFileSync(filename,'utf8'));}
 function writeExclusive(filename, value) {
