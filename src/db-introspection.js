@@ -139,11 +139,11 @@ function planMongo(expected, actual) {
     }
     if (existing) {
       for (const index of current) if (!target.indexes.some(i=>digest(i)===digest(index))) {
-        steps.push({action:'extra-index',collection,index,risk:'manual',
+        steps.push({action:'extra-index',collection,index,risk:'notice',
           description:'Existing index is preserved; review independently'});
       }
       if (existing.validator && Object.keys(existing.validator).length) {
-        steps.push({action:'existing-validator',collection,risk:'manual',
+        steps.push({action:'existing-validator',collection,risk:'notice',
           description:'Database validator is not managed by the generator'});
       }
     }
