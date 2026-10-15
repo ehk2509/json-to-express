@@ -81,6 +81,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Provide MongoDB Database Tools using an isolated container
+        run: |
+          mkdir -p .tmp/p7-tools
+          cat > .tmp/p7-tools/mongodump <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          test "$1" = '--config'
+          config="$2"
+          archive="${3#--archive=}"
+          exec docker run --rm --network host --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$config,target=/run/config.yaml,readonly" \
+            --mount "type=bind,source=$(dirname "$archive"),target=/run/backups" \
+            mongo:7 mongodump --config /run/config.yaml --archive="/run/backups/$(basename "$archive")"
+          SH
+          chmod +x .tmp/p7-tools/mongodump
+          echo "$PWD/.tmp/p7-tools" >> "$GITHUB_PATH"
       - name: Generate MongoDB application and inspect live indexes
         run: |
           node bin/json-to-express.js generate examples/e2e.json --output .tmp/p7-mongo
@@ -95,3 +111,7 @@ jobs:
           if(!plan.steps.some(s=>s.action==='create-collection'))throw Error('Collection creation not detected');
           if(plan.requiresManual)throw Error('Unsupported operation planned');
           NODE
+          HASH=$(node -p "require('./.tmp/p7-mongo-plan.json').hash")
+          node bin/json-to-express.js db apply examples/e2e.json --output .tmp/p7-mongo --approve "$HASH" --allow-review > .tmp/p7-mongo-applied.json
+          node bin/json-to-express.js db rollback examples/e2e.json --output .tmp/p7-mongo --approve "$HASH" --allow-review > .tmp/p7-mongo-rolled-back.json
+          node -e "if(require('./.tmp/p7-mongo-rolled-back.json').status!=='rolled-back')process.exit(1)"
