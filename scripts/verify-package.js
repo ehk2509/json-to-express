@@ -32,6 +32,8 @@ try {
     'registry/catalog.json',
     'docs/PLUGIN-REGISTRY.md',
     'examples/plugin-starter/package.json',
+    'examples/consumers/helpdesk-mongo.json',
+    'examples/consumers/ledger-postgres.json',
     'examples/plugin-starter/index.js',
     'docs/PLUGINS.md',
     'examples/plugins/flatfile-provider.js',
