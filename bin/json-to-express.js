@@ -40,6 +40,8 @@ function printHelp() {
     '  -h, --help             Show help',
     '  -v, --version          Show version',
     '',
+    'Plugins are declared in spec.plugins and resolved relative to the spec file.',
+    'Install and run only plugins you trust; subprocess isolation is not an OS sandbox.',
     'Note: schema flags acknowledge risk; they do not execute database migrations.'
   ].join('\n'));
 }
@@ -135,13 +137,16 @@ async function main() {
     }
   }
   const spec = readSpec(specFile);
+  const pluginOptions = {pluginRoot: path.dirname(path.resolve(specFile))};
   if (command === 'validate') {
-    validateSpec(spec);
+    if (spec.database && !['mongodb', 'postgresql'].includes(spec.database.type)) {
+      planApplication(spec, outputDir || path.resolve('generated', spec.app && spec.app.name || 'app'), pluginOptions);
+    } else validateSpec(spec);
     console.log('✓ Specification is valid.');
     return;
   }
   if (command === 'diff' || command === 'plan') {
-    const plan = planApplication(spec, outputDir);
+    const plan = planApplication(spec, outputDir, pluginOptions);
     if (flags.has('--json')) {
       console.log(JSON.stringify(command === 'diff'
         ? {outputDir: plan.outputDir, status: plan.status, summary: plan.summary, actions: plan.actions}
@@ -154,7 +159,8 @@ async function main() {
       force: flags.has('--force'),
       approveSchema: flags.has('--approve-schema'),
       allowDestructive: flags.has('--allow-destructive'),
-      allowUnknownSchema: flags.has('--allow-unknown-schema')
+      allowUnknownSchema: flags.has('--allow-unknown-schema'),
+      ...pluginOptions
     });
     console.log('✓ Generated ' + result.files.length + ' files in ' + result.outputDir);
     if (command === 'generate') {

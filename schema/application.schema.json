@@ -1628,6 +1628,44 @@
           }
         }
       }
+    },
+    "plugins": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "module",
+          "kind"
+        ],
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "kind": {
+            "enum": [
+              "generator",
+              "database",
+              "middleware",
+              "authentication",
+              "storage"
+            ]
+          },
+          "options": {
+            "type": "object"
+          },
+          "allowOverrides": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
