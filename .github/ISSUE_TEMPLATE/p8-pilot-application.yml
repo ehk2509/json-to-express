@@ -1,0 +1,74 @@
+name: "P8: Apply to run an independent pilot"
+description: "Volunteer to test a real independently operated json-to-express service"
+title: "[P8 pilot] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Thank you for volunteering.** This is an independent engineering pilot, not a request for production credentials.
+        Do NOT post private company names, contact details, passwords, tokens, connection strings, private deployment addresses, application logs or customer data.
+        Use a public GitHub pseudonym if you prefer; the maintainer can coordinate in this issue.
+        Read [the pilot playbook](https://github.com/ehk2509/json-to-express/blob/main/docs/P8-PILOT-PLAYBOOK.md).
+  - type: checkboxes
+    id: operator
+    attributes:
+      label: Operator and privacy agreement
+      options:
+        - label: "I operate or can independently deploy the target application; I am not submitting a maintainer-owned simulation."
+          required: true
+        - label: "I will use my own approved infrastructure and will share no secrets or private customer information."
+          required: true
+        - label: "I understand that pilot acceptance requires at least 72 hours of observation, a rollback drill, and human review."
+          required: true
+  - type: dropdown
+    id: stack
+    attributes:
+      label: Which stack do you plan to evaluate?
+      options:
+        - "Express + MongoDB"
+        - "Express + PostgreSQL"
+        - "Fastify + MongoDB"
+        - "Fastify + PostgreSQL"
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Current deployment stage
+      options:
+        - "Planning an independent pilot"
+        - "Disposable staging application already deployed"
+        - "Independent production application already deployed"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Public, non-sensitive use case
+      description: "Describe the general API scenario and approximate workload. Do not identify confidential systems."
+      placeholder: "Example: Internal inventory API with CRUD, 5 entities and hourly writes"
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: Version/commit you plan to pin
+      description: "Public semver or 40-character commit SHA. This may be updated as the pilot starts."
+      placeholder: "0.2.0-beta.3 or full git commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Can you publish a redacted technical evidence summary?
+      options:
+        - "Yes, public report and anonymized metrics"
+        - "Possibly, after internal review"
+        - "No, only private results"
+    validations:
+      required: true
+  - type: textarea
+    id: needs
+    attributes:
+      label: Expected blockers or questions
+      description: "Optional. Describe required help without exposing private details."
