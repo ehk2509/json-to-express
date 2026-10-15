@@ -72,6 +72,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Verify current P8 pilot cohort register and public instructions
+        run: node scripts/p8-cohort-check.js
+      - name: Verify immutable GitHub release tag matches pinned pilot source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$(node -p "require('./ci/p8/cohort.json').tag")"
+          EXPECTED="$(node -p "require('./ci/p8/cohort.json').commit")"
+          ACTUAL="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+          test "$ACTUAL" = "$EXPECTED" || {
+            echo "P8 cohort release tag is not pinned to the recorded SHA" >&2
+            exit 1
+          }
       - uses: actions/download-artifact@v4
         with:
           pattern: p8-*-report
