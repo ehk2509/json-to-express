@@ -156,9 +156,8 @@ test('External pilot cohort commit remains pinned when main and CI advance',()=>
   assert.equal(moved.status,'externally-validated');
   assert.equal(moved.targetCommit,SHA);
   assert.equal(moved.smokeCommit,laterCommit);
-  const unpinned=assess({reports:reports.map(report=>({...report,commit:laterCommit})),
-    attestations:approved,requiredSha:laterCommit,policy});
-  assert.equal(unpinned.externalEvidenceReady,false);
+  assert.throws(()=>assess({reports:reports.map(report=>({...report,commit:laterCommit})),
+    attestations:approved,requiredSha:laterCommit,policy}),/Unacceptable external P8 attestation/);
   assert.throws(()=>assess({reports,attestations:approved,requiredSha:'bad',policy}),
     /exact CI smoke SHA/);
 });
