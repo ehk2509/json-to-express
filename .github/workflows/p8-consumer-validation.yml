@@ -72,6 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Verify current P8 pilot cohort register and public instructions
         run: node scripts/p8-cohort-check.js
       - name: Verify immutable GitHub release tag matches pinned pilot source
@@ -87,6 +90,22 @@ jobs:
             echo "P8 cohort release tag is not pinned to the recorded SHA" >&2
             exit 1
           }
+      - name: Smoke-test the public exact-version npx preview without writing an app
+        env:
+          NPM_CONFIG_UPDATE_NOTIFIER: "false"
+          NPM_CONFIG_AUDIT: "false"
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./ci/p8/cohort.json').release")"
+          DIRECTORY="$(mktemp -d)"
+          trap 'rm -rf "$DIRECTORY"' EXIT
+          cd "$DIRECTORY"
+          timeout 240 npx --yes --package="json-to-express@$VERSION" j2e init demo-api \
+            --template crud --framework fastify --database postgresql \
+            --deployment none --yes --dry-run > preview.log
+          grep -qi 'dry run' preview.log
+          test ! -e demo-api
       - uses: actions/download-artifact@v4
         with:
           pattern: p8-*-report
