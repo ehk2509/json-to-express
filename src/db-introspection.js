@@ -107,7 +107,19 @@ function expectedMongo(spec, output) {
     const file=path.join(path.resolve(output),spec.generation.paths.source,
       spec.generation.paths.models,entity.name+'.js');
     const model=req(file);
-    const indexes=model.schema.indexes().map(([fields,options])=>mongoIndexSpec(fields,options));
+    const indexes=[];
+    const seen=new Map();
+    for(const [fields,options] of model.schema.indexes()) {
+      const index=mongoIndexSpec(fields,options);
+      const key=digest(index.keys);
+      if(seen.has(key)) {
+        if(digest(seen.get(key).options)!==digest(index.options))
+          throw new Error('Conflicting MongoDB index declarations: '+model.collection.name);
+        continue; // Mongoose often lists the same unique index twice.
+      }
+      seen.set(key,index);
+      indexes.push(index);
+    }
     collections[model.collection.name]={indexes,indexedFields:entity.fields.map(f=>f.name)};
   }
   return {collections};
