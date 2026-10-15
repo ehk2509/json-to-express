@@ -106,8 +106,8 @@ test('backup paths are adjacent to output and shared by apply and rollback',()=>
  const output=path.resolve('generated','demo');
  const location=defaultBackupPath({output},{hash:'a'.repeat(64),engine:'mongodb'});
  assert.equal(path.dirname(path.dirname(location)),path.dirname(output));
- assert.match(location,/\\.archive$/);
- assert.match(defaultBackupPath({output},{hash:'a'.repeat(64),engine:'postgresql'}),/\\.dump$/);
+ assert.match(location,/\.archive$/);
+ assert.match(defaultBackupPath({output},{hash:'a'.repeat(64),engine:'postgresql'}),/\.dump$/);
 });
 test('backup receipts reject tampering before rollback',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'j2e-p7-receipt-'));

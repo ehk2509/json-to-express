@@ -81,3 +81,19 @@ upgrade jobs must prove data continuity; failed security audits block
 distribution; baseline measurements and performance budgets must be reported.
 The published npm tarball remains independently tested and signed via OIDC.
 Do not claim compatibility for a failing matrix combination.
+
+
+## P8 — Independent consumer acceptance
+
+P8 adds an isolated consumer CI workflow that installs the packed CLI into
+a fresh workspace, generates real apps, and verifies persistence, restart,
+invalid-input handling and CRUD under a short read workload with MongoDB 7
+and PostgreSQL 16. Reports are bound to the exact commit and uploaded as
+artifacts. This differs from the internal runtime compatibility matrix but
+remains a **maintainer-authored simulation**, not genuine external production
+evidence.
+
+See [External validation](EXTERNAL-VALIDATION.md). The production gate
+requires independent operator attestations and human review of evidence for
+three external projects spanning two organizations and both persistence
+engines/frameworks. CI may pass before those conditions are fulfilled.

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "policy": {
+    "minProjects": 3,
+    "minOrganizations": 2,
+    "minObservationHours": 72
+  },
+  "attestations": []
+}

@@ -1859,3 +1859,18 @@ MIT
 provide live database drift analysis, explicit reviewed plans, mandatory backups
 and controlled migration execution. See [Database migrations](docs/DATABASE-MIGRATIONS.md)
 for prerequisites, commands, safety limitations and restoration procedures.
+
+
+## P8 — Independent consumer testing and external production validation
+
+The [P8 validation guide](docs/EXTERNAL-VALIDATION.md) describes isolated
+npm-tarball consumer tests on real MongoDB and PostgreSQL, SHA-bound report
+artifacts, and the stricter external-adopter evidence required before production
+validation can be claimed. The checked-in consumer scenarios are synthetic;
+their passing CI results do **not** establish independent production adoption.
+
+Run a trusted disposable-database scenario with
+node scripts/p8-consumer-smoke.js --case <case.json> --report <report.json>.
+CI publishes separate readiness reports. Genuine production acceptance
+requires independently operated pilot deployments, reviewed evidence,
+restart/persistence checks, a rollback drill and 72-hour observation.
