@@ -91,15 +91,14 @@ test('npm search results remain unverified and filter unrelated keyword matches'
 
 test('real local npm tarball install is pinned, ignores lifecycle scripts and activates existing plugin API',async t=>{
   const root=workspace(t);
-  const spy=path.join(root,'unexpected-lifecycle-execution');
   const {pkg,client}=fixturePackage(t,root,{scripts:{preinstall:
-    'node -e "require(\\'fs\\').writeFileSync('+JSON.stringify(spy)+',\\'ran\\')"'}});
+    'node -e "process.exit(17)"'}});
   const specPath=path.join(root,'app.j2e.json');
   fs.writeFileSync(specPath,JSON.stringify(spec()));
   const result=await registry.install(pkg.name+'@'+pkg.version,specPath,{yes:true,client});
   assert.equal(result.scriptsExecuted,false);
   assert.equal(result.installed,true);
-  assert.equal(fs.existsSync(spy),false,'npm lifecycle scripts must be disabled');
+  // Preinstall would fail with exit 17 if npm ignored the --ignore-scripts safety flag.
   const parsed=JSON.parse(fs.readFileSync(specPath));
   assert.deepEqual(parsed.plugins,[{module:pkg.name,kind:'generator'}]);
   assert.equal(registry.verifyInstalled(root,pkg.name,parsed).kind,'generator');
