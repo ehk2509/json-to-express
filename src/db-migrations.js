@@ -130,9 +130,12 @@ function backupEnvironment(uri, engine) {
   if(url.searchParams.has('sslmode')) env.PGSSLMODE=url.searchParams.get('sslmode');
   return env;
 }
+function defaultBackupPath(options,plan) {
+  return path.join(path.dirname(options.output),path.basename(options.output)+'.j2e-backups',
+    'j2e-'+plan.hash.slice(0,14)+(plan.engine==='postgresql'?'.dump':'.archive'));
+}
 function backupDatabase(spec,options,plan) {
-  const filename=path.resolve(options['--backup']||path.join(options.output,
-    '..',path.basename(options.output)+'.j2e-backups','j2e-'+plan.hash.slice(0,14)+(plan.engine==='postgresql'?'.dump':'.archive')));
+  const filename=path.resolve(options['--backup']||defaultBackupPath(options,plan));
   if(fs.existsSync(filename)||fs.existsSync(filename+'.j2e.json'))
     throw new Error('Backup already exists: '+filename);
   fs.mkdirSync(path.dirname(filename),{recursive:true});
@@ -260,8 +263,7 @@ async function applyMongo(spec,options,plan,backup) {
   }finally{await mongoose.disconnect();}
 }
 async function rollbackMongo(spec,options,plan) {
-  const filename=path.resolve(options['--backup']||path.join(options.output,
-    '..',path.basename(options.output)+'.j2e-backups','j2e-'+plan.hash.slice(0,14)+'.archive'));
+  const filename=path.resolve(options['--backup']||defaultBackupPath(options,plan));
   verifyBackup(filename,plan);
   const mongoose=localRequire(options.output)('mongoose');
   mongoose.set('autoIndex',false);
@@ -323,4 +325,4 @@ async function executeDb(args) {
       :applyMongo(spec,options,saved,backup);
   }finally{unlock();}
 }
-module.exports={executeDb,parseOptions,analyzeSql,buildPlan,assertPlan,backupDatabase,verifyBackup};
+module.exports={executeDb,parseOptions,analyzeSql,buildPlan,assertPlan,defaultBackupPath,backupDatabase,verifyBackup};
