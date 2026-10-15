@@ -1,6 +1,7 @@
 'use strict';
 
 const {generateApplication, planApplication} = require('./generator');
+const {recoverTransaction} = require('./transaction');
 const {normalizeSpec} = require('./normalize-spec');
 const {validateSpec, SpecificationError} = require('./validate-spec');
 const {CURRENT_SPEC_VERSION, upgradeSpec} = require('./spec-version');
