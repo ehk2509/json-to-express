@@ -27,6 +27,7 @@ try {
     'src/index.js',
     'src/plugins.js',
     'src/plugin-worker.js',
+    'docs/PLUGINS.md',
     'examples/plugins/flatfile-provider.js',
     'examples/plugins/flatfile-spec.json',
     'src/onboarding.js',
