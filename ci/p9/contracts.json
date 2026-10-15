@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "phase": "pre-v1-stability",
+  "contractName": "j2e-generator-plugin-v1",
+  "specVersion": "1.0",
+  "manifestReadVersions": [
+    1,
+    2
+  ],
+  "manifestWriteVersion": 2,
+  "pluginApiVersion": 1,
+  "pluginKinds": [
+    "generator",
+    "database",
+    "middleware",
+    "authentication",
+    "storage"
+  ],
+  "pluginHooks": [
+    "validate",
+    "beforeGenerate",
+    "generate",
+    "afterGenerate"
+  ],
+  "pluginContextKeys": [
+    "spec",
+    "options",
+    "apiVersion",
+    "kind"
+  ],
+  "pluginContributionKeys": [
+    "files",
+    "overrides"
+  ],
+  "publicExports": [
+    "CURRENT_SPEC_VERSION",
+    "PLUGIN_API_VERSION",
+    "PLUGIN_KINDS",
+    "pluginRegistry",
+    "executeDb",
+    "planDrift",
+    "SpecificationError",
+    "generateApplication",
+    "recoverTransaction",
+    "planApplication",
+    "normalizeSpec",
+    "upgradeSpec",
+    "validateSpec"
+  ],
+  "publicFunctions": [
+    "executeDb",
+    "planDrift",
+    "generateApplication",
+    "recoverTransaction",
+    "planApplication",
+    "normalizeSpec",
+    "upgradeSpec",
+    "validateSpec"
+  ],
+  "cliCommands": [
+    "init",
+    "doctor",
+    "plugin",
+    "validate",
+    "generate",
+    "diff",
+    "plan",
+    "upgrade",
+    "recover",
+    "db"
+  ],
+  "cliOptions": [
+    "--output",
+    "--force",
+    "--approve-schema",
+    "--allow-destructive",
+    "--allow-unknown-schema",
+    "--json",
+    "--dry-run",
+    "--strict",
+    "--yes"
+  ],
+  "requiredManifestKeys": [
+    "version",
+    "files",
+    "schema"
+  ],
+  "requiredPlanKeys": [
+    "outputDir",
+    "status",
+    "actions",
+    "schemaChanges",
+    "summary",
+    "schemaFingerprint",
+    "blocking"
+  ],
+  "requiredResultKeys": [
+    "outputDir",
+    "files",
+    "spec",
+    "manifest"
+  ],
+  "supportedFrameworks": [
+    "express",
+    "fastify"
+  ],
+  "supportedDatabases": [
+    "mongodb",
+    "postgresql"
+  ],
+  "historicalUpgrades": [
+    "0.2.0-beta.1",
+    "0.2.0-beta.2",
+    "0.2.0-beta.3"
+  ]
+}
