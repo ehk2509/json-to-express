@@ -10,6 +10,8 @@ with a reviewed rollback drill and no unresolved blocking incidents.
 **Current state:** recruitment is open; **zero external pilots are certified**.
 Internal CI jobs and generated examples are not external production evidence.
 
+- [Try the no-database preview](P8-GET-STARTED.md) before volunteering
+- [Join the interest thread](https://github.com/ehk2509/json-to-express/issues/57) without making a 72-hour commitment
 - [Apply to run a pilot](https://github.com/ehk2509/json-to-express/issues/new?template=p8-pilot-application.yml)
 - [Submit redacted pilot evidence](https://github.com/ehk2509/json-to-express/issues/new?template=p8-pilot-evidence.yml)
 - [P8 technical acceptance framework](EXTERNAL-VALIDATION.md)
