@@ -220,7 +220,23 @@ function assertCleanTransaction(outputDir) {
   }
 }
 function recoverTransaction(outputDir) {
-  return withOutputLock(outputDir, () => recoverLocked(outputDir));
+  // Recovery is a destructive operation; enforce the same output-root and
+  // symlink safety policy used by the generator even without a spec file.
+  const {target} = locations(outputDir);
+  if (target === path.parse(target).root || target === process.cwd() ||
+      (process.env.HOME && target === path.resolve(process.env.HOME))) {
+    throw new Error('Refusing to recover unsafe output directory: ' + target);
+  }
+  let current = target;
+  for (;;) {
+    if (exists(current) && fs.lstatSync(current).isSymbolicLink()) {
+      throw new Error('Refusing symbolic link in recovery output path: ' + current);
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return withOutputLock(target, () => recoverLocked(target));
 }
 function swapProject(outputDir, manifestText, writeStage, {fault} = {}) {
   const {target, parent, journal} = locations(outputDir);
