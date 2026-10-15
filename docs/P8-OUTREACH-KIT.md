@@ -10,9 +10,17 @@ posts were already published.
 
 **Low-friction preview:** https://github.com/ehk2509/json-to-express/blob/main/docs/P8-GET-STARTED.md
 
-**Pinned pilot source:** `dc964d701dc7236bf9dc7a586b6c1e7e78e066f2`.
-`0.2.0-beta.3` was released from a different commit, so the public beta is
-for general exploration, not interchangeable with the P8 cohort.
+**Pinned pilot source:** `9be050be812d027c72eade61a0f47b295d1efcae`.
+The first cohort uses the published and CI-tested
+[`json-to-express@0.2.0-beta.4`](https://www.npmjs.com/package/json-to-express/v/0.2.0-beta.4)
+release. Developers can now preview it without cloning:
+
+```sh
+npx --yes --package=json-to-express@0.2.0-beta.4 j2e init demo-api --template crud --framework fastify --database postgresql --deployment none --yes --dry-run
+```
+
+Pin the exact version for reproducibility; the moving npm `@beta` tag may
+advance later. This command does not create an app or connect to a database.
 
 ## Short developer post (X / Bluesky / Discord)
 
