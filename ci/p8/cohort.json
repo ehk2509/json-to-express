@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "release": "0.2.0-beta.4",
+  "tag": "v0.2.0-beta.4",
+  "commit": "9be050be812d027c72eade61a0f47b295d1efcae",
+  "releaseUrl": "https://github.com/ehk2509/json-to-express/releases/tag/v0.2.0-beta.4",
+  "npmUrl": "https://www.npmjs.com/package/json-to-express/v/0.2.0-beta.4",
+  "evidenceType": "independent-operator-review",
+  "requiredProjects": 3,
+  "requiredOrganizations": 2,
+  "minimumObservationHours": 72
+}
