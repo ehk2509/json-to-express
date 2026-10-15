@@ -7,7 +7,7 @@ const crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {planDrift,digest}=require('./migration-intelligence');
 const {localRequire,localBinary,run,requireEnv,expectedPostgres,inspectPostgres,
-  expectedMongo,inspectMongo,planMongo,normalizeSpec}=require('./db-introspection');
+  expectedMongo,inspectMongo,planMongo,mongoIndexSpec,normalizeSpec}=require('./db-introspection');
 
 function sha(value) {return crypto.createHash('sha256').update(value).digest('hex');}
 function shaFile(filename) {
@@ -292,9 +292,7 @@ async function rollbackMongo(spec,options,plan) {
       for(const step of [...record.steps].reverse()) {
         if(step.action==='create-index') {
           const indexes=await mongoose.connection.db.collection(step.collection).indexes();
-          const found=indexes.find(index=>digest({keys:index.key,options:
-            Object.fromEntries(['unique','sparse','expireAfterSeconds','partialFilterExpression','collation']
-              .filter(k=>index[k]!==undefined).map(k=>[k,index[k]]))})===digest(step.index));
+          const found=indexes.find(index=>digest(mongoIndexSpec(index.key,index))===digest(step.index));
           if(!found)throw new Error('Applied index changed; manual recovery required');
           await mongoose.connection.db.collection(step.collection).dropIndex(found.name);
         }else if(step.action==='create-collection'){
