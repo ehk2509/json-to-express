@@ -66,3 +66,17 @@ test('P9 compatibility cohort includes every frozen immutable predecessor',()=>{
     assert.ok(code.includes("'"+version+"'"),'Cross-release test missing '+version);
   }
 });
+
+test('P9 generated GraphQL dependencies are pinned to a resolvable stable minor',()=>{
+  const {normalizeSpec}=require('../src');
+  const input={specVersion:'1.0',app:{name:'graphql-p9'},
+    database:{type:'mongodb'},
+    api:{graphql:{enabled:true}},
+    entities:{Note:{fields:{title:{type:'string',required:true}}}}};
+  const graphql=normalizeSpec(input);
+  assert.equal(graphql.app.package.dependencies['@graphql-tools/schema'],'10.0.27',
+    'A floating ^10 range may resolve to a release requiring unavailable @graphql-tools/utils');
+  assert.equal(graphql.app.package.dependencies.graphql,'^16.10.0');
+  const without=normalizeSpec({...input,api:{graphql:{enabled:false}}});
+  assert.equal(without.app.package.dependencies['@graphql-tools/schema'],undefined);
+});
