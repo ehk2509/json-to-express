@@ -1,0 +1,94 @@
+name: P8 packaged consumer validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p8-consumers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-consumer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: warehouse-orders
+            database: mongodb
+          - case: billing-invoices
+            database: postgresql
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: j2e_p8
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d j2e_p8"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MONGODB_URI: mongodb://127.0.0.1:27017/j2e_p8
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/j2e_p8
+      P8_PORT: 3957
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate consumer simulator source and reporting tests
+        run: node --test test/p8-validation.test.js
+      - name: Run installed-tarball API contract, restart and read workload
+        run: >
+          node scripts/p8-consumer-smoke.js
+          --case ci/p8/cases/${{ matrix.case }}.json
+          --report reports/${{ matrix.case }}.json
+      - name: Store immutable simulated-consumer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p8-${{ matrix.case }}-report
+          path: reports/${{ matrix.case }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  evidence-readiness:
+    needs: isolated-consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p8-*-report
+          path: reports
+          merge-multiple: true
+      - name: Assess reproducible smoke and independent production evidence separately
+        run: >
+          node scripts/p8-assess.js
+          --sha "${{ github.sha }}"
+          --index ci/p8/attestations.json
+          --report reports/warehouse-orders.json
+          --report reports/billing-invoices.json
+          --output reports/p8-readiness.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p8-validation-readiness
+          path: reports/p8-readiness.json
+          if-no-files-found: warn
+          retention-days: 90
