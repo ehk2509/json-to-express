@@ -94,7 +94,10 @@ async function inspectPostgres(spec, output) {
 function mongoIndexSpec(fields, options = {}) {
   const keep=['unique','sparse','expireAfterSeconds','partialFilterExpression','collation'];
   const result={keys:fields,options:{}};
-  for (const key of keep) if (options[key] !== undefined) result.options[key]=options[key];
+  for (const key of keep) {
+    if ((key==='unique'||key==='sparse') && options[key]!==true) continue;
+    if (options[key] !== undefined) result.options[key]=options[key];
+  }
   return result;
 }
 function expectedMongo(spec, output) {
@@ -171,4 +174,4 @@ function planMongo(expected, actual) {
   return steps;
 }
 module.exports={localRequire,localBinary,run,requireEnv,expectedPostgres,inspectPostgres,
-  expectedMongo,inspectMongo,planMongo,normalizeSpec};
+  expectedMongo,inspectMongo,planMongo,mongoIndexSpec,normalizeSpec};
