@@ -1,6 +1,6 @@
 # Getting started with json-to-express
 
-**Status:** public beta `0.2.0-beta.3`; the current repository contains
+**Status:** public beta `0.2.0-beta.4`; the current repository contains
 additional development features. **v1.0 has not been declared.** Node.js 20+
 is recommended; Express supports Node 18 only as a legacy target, and Fastify
 5 requires Node 20+.
