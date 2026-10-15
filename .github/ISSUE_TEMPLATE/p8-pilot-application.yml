@@ -54,7 +54,7 @@ body:
     attributes:
       label: Version/commit you plan to pin
       description: "Public semver or 40-character commit SHA. This may be updated as the pilot starts."
-      placeholder: "0.2.0-beta.3 or full git commit SHA"
+      placeholder: "0.2.0-beta.4 or full git commit SHA"
     validations:
       required: true
   - type: dropdown

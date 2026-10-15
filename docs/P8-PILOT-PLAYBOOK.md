@@ -26,27 +26,34 @@ The maintainer is not recruiting on behalf of external third parties.
 The first cohort currently targets commit:
 
 ```text
-dc964d701dc7236bf9dc7a586b6c1e7e78e066f2
+9be050be812d027c72eade61a0f47b295d1efcae
 ```
 
-This immutable source commit passed full CI and the packaged-consumer P8
-workflow. **The npm beta dist-tag can point to a different code SHA**. In
-particular `v0.2.0-beta.3` was tagged on a different earlier commit; do not
-assume it is identical to this candidate.
+This immutable commit passed full CI, the P8/P9 packaged consumer checks,
+and was released as [v0.2.0-beta.4](https://github.com/ehk2509/json-to-express/releases/tag/v0.2.0-beta.4).
+The npm package `json-to-express@0.2.0-beta.4` is verified published with
+signed provenance. **Pin the exact version**; do not use moving `@beta` in a
+formal pilot.
 
-To reproduce the exact cohort revision in an approved, isolated environment:
+For a read-only first preview without a clone, see the
+[one-command npm quickstart](P8-GET-STARTED.md).
+
+To audit the exact source commit in an approved, isolated environment:
 
 ```sh
 git clone https://github.com/ehk2509/json-to-express.git
 cd json-to-express
-git checkout --detach dc964d701dc7236bf9dc7a586b6c1e7e78e066f2
+git checkout --detach 9be050be812d027c72eade61a0f47b295d1efcae
 git rev-parse HEAD
 npm test
 npm pack
 # Use the resulting .tgz only in an approved isolated pilot workspace.
 ```
 
-Record the exact SHA and `npm pack --json` integrity value in the pilot report.
+Record the exact SHA and the actual installed npm tarball integrity value
+(e.g. `npm view json-to-express@0.2.0-beta.4 dist.integrity`) in the pilot report.
+An independently rebuilt `npm pack` tarball need not have identical byte-level
+integrity to the registry artifact.
 Before anyone claims validation of a newer release, create a new cohort or
 explicitly retest the new release. A changing CI branch head does not reset the
 72-hour observation window for a **fixed** pilot commit; its suitability for
@@ -130,7 +137,7 @@ The machine gate expects an object like:
   "organization": "independent-org",
   "project": "sample-api",
   "operatorGithub": "external-developer",
-  "commit": "dc964d701dc7236bf9dc7a586b6c1e7e78e066f2",
+  "commit": "9be050be812d027c72eade61a0f47b295d1efcae",
   "runtime": {"framework": "express", "database": "mongodb"},
   "observedHours": 96,
   "incidentCount": 0,
