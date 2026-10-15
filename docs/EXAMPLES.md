@@ -16,9 +16,15 @@ The harness uses the public `crud` starter from the installed tarball.
 | `crud-fastify-mongodb` | Native Fastify | MongoDB | `src/fastify-native.js` |
 | `crud-fastify-postgresql` | Native Fastify | PostgreSQL | `prisma/schema.prisma` |
 
-A seventh case uses the actual installed §flatfile§ external database provider `flatfile` external database provider
-in `examples/plugins` to verify that the released plugin entrypoint and
-custom project generator remain functional.
+Two additional specifications are distributed in the npm package:
+[helpdesk-mongo](../examples/consumers/helpdesk-mongo.json), an Express/MongoDB
+issue tracker, and [ledger-postgres](../examples/consumers/ledger-postgres.json),
+a Fastify/PostgreSQL invoice service. Both are validated from the installed
+npm tarball rather than the local repository checkout.
+
+A seventh case loads the actual installed `flatfile` external database provider
+from `examples/plugins` to verify the plugin entrypoint and the custom
+project generator remain functional.
 
 All seven perform generation, artifact verification, manifest v2 checks
 and safe repeat generation; each checks planned changes are empty after a
@@ -43,8 +49,9 @@ The second command:
    consumer directory.
 3. Uses `require('json-to-express')` from that installed directory and its
    shipped `bin/json-to-express.js`, not the source checkout.
-4. Imports `templates/crud.json` from the installed package for the four
-   framework/database combinations, plus the installed custom provider example.
+4. Imports `templates/crud.json` for four framework/database combinations,
+   the two published domain-specific specifications, and the installed
+   custom database provider example.
 5. Verifies public plans, CLI validation, generated files and stable
    regeneration.
 6. Deletes the disposable consumer directories.
@@ -67,5 +74,5 @@ production operators can participate through the
 An example passing in CI is an engineering smoke test, not proof of
 an independent customer.
 
-The two domain-specific examples are public and intended as starting points,
-not production-ready systems. Review security, permissions and migration plans.
+The two domain-specific examples are intended as starting points, not
+production-ready systems. Review security, permissions and migration plans.
