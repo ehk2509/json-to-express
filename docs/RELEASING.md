@@ -6,8 +6,8 @@ The release workflow is .github/workflows/publish-beta.yml. Keep this exact
 filename because npm Trusted Publishing checks the workflow identity.
 
 1. Update the package.json version to a new semver prerelease ending in
-   -beta.N, for example 0.2.0-beta.3.
-2. Add a dated ## [0.2.0-beta.3] - YYYY-MM-DD entry as the newest release in
+   -beta.N, for example 0.2.0-beta.5.
+2. Add a dated ## [0.2.0-beta.5] - YYYY-MM-DD entry as the newest release in
    CHANGELOG.md, below the optional Unreleased section. Include meaningful
    release bullets; do not reuse versions or edit old release entries.
 3. Open a PR and wait for the complete CI suite, including release-security
@@ -105,7 +105,7 @@ npm Trusted Publishing documentation: https://docs.npmjs.com/trusted-publishers/
 ## P9 v1.0 release conditions
 
 P9 adds a pre-v1 public contract gate, real upgrade tests for immutable
-npm betas 0.2.0-beta.1 through 0.2.0-beta.3, and consumer tests that
+npm betas 0.2.0-beta.1 through 0.2.0-beta.5, and consumer tests that
 import the **installed npm tarball** from an external workspace. CI should
 execute `node scripts/p9-contract-check.js` and
 `node scripts/p9-consumer-contract.js` in addition to the existing
