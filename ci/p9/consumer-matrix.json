@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "description": "External-workspace tests using the npm tarball; not independent external customer deployments.",
+  "cases": [
+    {
+      "id": "crud-express-mongodb",
+      "framework": "express",
+      "database": "mongodb",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/config/database.js"
+      ]
+    },
+    {
+      "id": "crud-express-postgresql",
+      "framework": "express",
+      "database": "postgresql",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "prisma/schema.prisma"
+      ]
+    },
+    {
+      "id": "crud-fastify-mongodb",
+      "framework": "fastify",
+      "database": "mongodb",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/fastify-native.js"
+      ]
+    },
+    {
+      "id": "crud-fastify-postgresql",
+      "framework": "fastify",
+      "database": "postgresql",
+      "starter": "crud",
+      "expectedFiles": [
+        "package.json",
+        "src/server.js",
+        "src/fastify-native.js",
+        "prisma/schema.prisma"
+      ]
+    }
+  ]
+}
