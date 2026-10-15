@@ -1,0 +1,89 @@
+name: "P8: Submit independent pilot evidence"
+description: "Submit a redacted production validation report for human review"
+title: "[P8 evidence] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form collects **self-reported** technical evidence for human review, not an automatic production certification.
+        Never disclose customer data, keys, credentials, database URIs, private endpoints, IP addresses, or internal security details.
+        A reviewer will inspect the linked redacted evidence and record a separate approval decision.
+        See [P8 pilot playbook](https://github.com/ehk2509/json-to-express/blob/main/docs/P8-PILOT-PLAYBOOK.md).
+  - type: input
+    id: application
+    attributes:
+      label: Initial P8 application issue
+      placeholder: "https://github.com/ehk2509/json-to-express/issues/123"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Exact deployed source commit
+      description: "Use the 40-character SHA, not just a tag name."
+      placeholder: "0123456789abcdef0123456789abcdef01234567"
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - "Express + MongoDB"
+        - "Express + PostgreSQL"
+        - "Fastify + MongoDB"
+        - "Fastify + PostgreSQL"
+    validations:
+      required: true
+  - type: input
+    id: observation
+    attributes:
+      label: Observation window (UTC)
+      description: "Start and end date/time; minimum 72 hours of independently operated deployment."
+      placeholder: "2026-10-20 12:00 UTC to 2026-10-24 12:00 UTC"
+    validations:
+      required: true
+  - type: dropdown
+    id: incident
+    attributes:
+      label: Unresolved blocking incidents
+      options:
+        - "Zero unresolved blocking incidents"
+        - "One or more unresolved blocking incidents"
+    validations:
+      required: true
+  - type: dropdown
+    id: rollback
+    attributes:
+      label: Backup/rollback drill
+      options:
+        - "Completed successfully with redacted supporting evidence"
+        - "Incomplete or failed"
+        - "Not applicable (explain below)"
+    validations:
+      required: true
+  - type: input
+    id: report
+    attributes:
+      label: Public link to redacted technical report
+      description: "A reviewable HTTPS URL; share only de-identified evidence."
+      placeholder: "https://github.com/.../blob/.../pilot-report.md"
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Verified behavior and measurements
+      description: "Summarize CRUD/validation/auth, persistence, restart, migrations, operational incidents and aggregated request/latency metrics."
+      placeholder: "Observed 96h, 0 blocking incidents, tested restart persistence and recovery drill..."
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Submission acknowledgement
+      options:
+        - label: "I operate this independent pilot, and my report contains no sensitive information."
+          required: true
+        - label: "I understand this self-report is not approved until an independent reviewer verifies it."
+          required: true
