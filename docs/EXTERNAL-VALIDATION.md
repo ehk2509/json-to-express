@@ -141,10 +141,13 @@ process. Applications and operator self-attestations **do not count** as
 validated external deployments.
 
 The first cohort is pinned to source commit
-`dc964d701dc7236bf9dc7a586b6c1e7e78e066f2`
+`9be050be812d027c72eade61a0f47b295d1efcae`
 (see `ci/p8/attestations.json` `externalTargetCommit`).
-That SHA must be checked out directly. **Do not assume that an npm beta
-tag resolves to the same source revision.**
+This commit is the published `v0.2.0-beta.4` tag and
+`json-to-express@0.2.0-beta.4` package. Prefer the exact-version
+[no-database preview](P8-GET-STARTED.md) for newcomers, or check out the
+exact SHA when auditing source. **Do not use the moving npm `@beta` tag**
+for formal release-bound evidence.
 
 The automated gate requires a separate `review` object with an approved
 decision, distinct operator/reviewer GitHub handles, a link to an issue in
