@@ -47,6 +47,16 @@ the release is skipped instead of creating a new tag. Existing tags at
 the expected commit are verified before and after GitHub Release creation.
 Release notes are generated automatically from the changelog.
 
+After an accepted `npm publish`, registry processing can take several
+minutes. The npm job uses a read-only, cache-bypassing verifier
+(`scripts/npm-registry-visibility.js`) with a 15-minute visibility deadline
+and 10-second polling interval; the overall job has a 20-minute limit.
+Transient HTTP 404/429/5xx and network errors are retried, while mismatched
+metadata or invalid successful responses fail closed. Reruns first check
+whether the exact version already exists and never republish it. If the
+visibility deadline expires, inspect the registry before attempting another
+publication; an npm publish may already have been accepted.
+
 The npm job receives the verified release version, tag and SHA, checks out
 that exact commit, validates the tag's object SHA, and uses GitHub OIDC to
 publish the public npm beta with provenance. It never republishes an

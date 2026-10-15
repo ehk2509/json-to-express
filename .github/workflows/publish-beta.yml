@@ -103,6 +103,7 @@ jobs:
             --jq 'select(.isDraft == false and .isPrerelease == true) | .tagName' | grep -Fx "$TAG"
 
   npm-beta:
+    timeout-minutes: 20
     needs: github-release
     if: >-
       needs.github-release.result == 'success' &&
@@ -152,13 +153,7 @@ jobs:
           # npm exchanges the GitHub OIDC identity for short-lived credentials.
           # No NODE_AUTH_TOKEN or NPM_TOKEN is used; provenance is automatic.
           npm publish --tag beta --access public
-          for attempt in {1..12}; do
-            ACTUAL="$(npm view "$PACKAGE@$VERSION" version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
-            if [[ "$ACTUAL" == "$VERSION" ]]; then
-              echo "Registry confirmed $PACKAGE@$VERSION"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Published package not yet visible on npm registry" >&2
-          exit 1
+          # npm may accept signed provenance and return success before the
+          # public registry finishes processing. Poll for up to 15 minutes,
+          # bypassing npm CLI metadata caching; never publish a second time.
+          node scripts/npm-registry-visibility.js "$PACKAGE" "$VERSION"
