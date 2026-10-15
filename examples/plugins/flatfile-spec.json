@@ -1,0 +1,25 @@
+{
+  "specVersion": "1.0",
+  "app": {
+    "name": "flatfile-notes"
+  },
+  "database": {
+    "type": "flatfile"
+  },
+  "entities": {
+    "Note": {
+      "fields": {
+        "title": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "module": "./flatfile-provider.js",
+      "kind": "database"
+    }
+  ]
+}

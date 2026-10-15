@@ -43,7 +43,8 @@
     "scripts",
     "README.md",
     "LICENSE",
-    "templates"
+    "templates",
+    "docs"
   ],
   "repository": {
     "type": "git",

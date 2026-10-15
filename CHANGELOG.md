@@ -5,6 +5,11 @@ All notable project changes are tracked here. Versions prior to this beta were d
 ## [Unreleased]
 
 ### Added
+- Plugin API v1 for third-party generators, database providers, middleware, authentication and storage adapters with lifecycle hooks and bounded subprocess workers.
+- Explicit artifact-override permissions, safe regeneration integration and independent flatfile database-provider example.
+
+
+### Added
 - Interactive init and doctor CLI commands, non-interactive setup, and bundled CRUD/SaaS/e-commerce templates.
 - Tarball smoke coverage for installed starter generation and diagnostics.
 

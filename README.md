@@ -74,6 +74,22 @@ The output flag overrides generation.outputDir.
 
 Force does not delete the output directory. It only allows replacement of generator-owned files that were modified since the previous generation.
 
+## Extensibility API and external plugins
+
+Third-party plugins can add generators and implement database providers,
+middleware modules, authentication adapters or storage adapters without
+editing json-to-express core. They use a versioned Plugin API v1, generated
+file contributions, explicit artifact overrides and pre-commit lifecycle
+hooks. A complete-project provider can support a new database backend.
+
+**Security:** plugins are executable Node.js packages. Each plugin runs in
+a bounded subprocess for fault containment, **not an OS sandbox**. Only
+install trusted plugin code.
+
+See [Plugin API documentation](docs/PLUGINS.md) and
+[the standalone flatfile database-provider example](examples/plugins/flatfile-provider.js).
+
+
 ## Interactive CLI and starter applications
 
 Start with a guided setup in a terminal (framework, database, authentication, deployment):
