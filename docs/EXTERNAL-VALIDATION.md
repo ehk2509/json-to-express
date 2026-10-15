@@ -130,3 +130,31 @@ Current repository evidence is **engineering readiness only** until independent
 operators supply and reviewers verify production attestations. Never describe
 a CI simulation, beta download, GitHub star, or generated local application
 as an externally proven production deployment.
+
+## Independent pilot recruitment and review (follow-up)
+
+The [P8 pilot playbook](P8-PILOT-PLAYBOOK.md) now provides public
+[application](https://github.com/ehk2509/json-to-express/issues/new?template=p8-pilot-application.yml)
+and [evidence](https://github.com/ehk2509/json-to-express/issues/new?template=p8-pilot-evidence.yml)
+issue forms, operator checklists, a redaction policy and an independent review
+process. Applications and operator self-attestations **do not count** as
+validated external deployments.
+
+The first cohort is pinned to source commit
+`dc964d701dc7236bf9dc7a586b6c1e7e78e066f2`
+(see `ci/p8/attestations.json` `externalTargetCommit`).
+That SHA must be checked out directly. **Do not assume that an npm beta
+tag resolves to the same source revision.**
+
+The automated gate requires a separate `review` object with an approved
+decision, distinct operator/reviewer GitHub handles, a link to an issue in
+this repository, UTC review timestamp and five explicit checklist approvals:
+independent operation, deployment, rollback, incidents and privacy.
+Only reviewed attestations count; pending/rejected/self-reviewed submissions
+do not qualify.
+
+The tool validates review metadata, **not the external authenticity** of a
+GitHub account or public report. A human maintainer must verify those
+independently and request code review before incorporating evidence. A
+validated historical cohort remains pinned to its own commit if newer CI
+changes land on `main`; newer releases need their own release review.

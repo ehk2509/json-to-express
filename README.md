@@ -1874,3 +1874,17 @@ node scripts/p8-consumer-smoke.js --case <case.json> --report <report.json>.
 CI publishes separate readiness reports. Genuine production acceptance
 requires independently operated pilot deployments, reviewed evidence,
 restart/persistence checks, a rollback drill and 72-hour observation.
+
+### Join P8: independent deployment pilots
+
+P8 is recruiting independent operators willing to evaluate
+`json-to-express` on their own approved infrastructure.
+
+[Apply to run a pilot](https://github.com/ehk2509/json-to-express/issues/new?template=p8-pilot-application.yml)
+or see the [pilot playbook](docs/P8-PILOT-PLAYBOOK.md).
+The acceptance goal is three independent projects across at least two
+organizations, covering both frameworks and database engines, with
+72+ hours of observation, a reviewed backup/rollback drill and zero
+unresolved blocking incidents. The source commit is pinned in the
+playbook. **No independent pilot is counted until its evidence is
+reviewed.** Never share secrets, private endpoints or customer data.

@@ -36,7 +36,9 @@ function run(options) {
   }
   const reports=options.reports.map(file=>JSON.parse(fs.readFileSync(file,'utf8')));
   const result=assess({reports,attestations:index.attestations,
-    requiredSha:options['--sha'],policy:index.policy});
+    requiredSha:options['--sha'],
+    externalTargetCommit:index.externalTargetCommit || options['--sha'],
+    policy:index.policy});
   fs.mkdirSync(path.dirname(options['--output']),{recursive:true});
   fs.writeFileSync(options['--output'],JSON.stringify(result,null,2)+'\n');
   process.stdout.write(JSON.stringify(result,null,2)+'\n');
