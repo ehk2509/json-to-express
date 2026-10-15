@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "id": "billing-invoices",
+  "spec": {
+    "specVersion": "1.0",
+    "app": {
+      "name": "p8-billing-invoices",
+      "framework": "fastify"
+    },
+    "database": {
+      "type": "postgresql",
+      "uriEnv": "DATABASE_URL"
+    },
+    "entities": {
+      "Invoice": {
+        "fields": {
+          "invoiceCode": {
+            "type": "string",
+            "required": true,
+            "unique": true
+          },
+          "amount": {
+            "type": "number",
+            "required": true
+          }
+        }
+      }
+    }
+  },
+  "probe": {
+    "route": "/api/invoices",
+    "payload": {
+      "invoiceCode": "P8-INVOICE-01",
+      "amount": 129.95
+    },
+    "assertField": "invoiceCode",
+    "assertValue": "P8-INVOICE-01"
+  }
+}
