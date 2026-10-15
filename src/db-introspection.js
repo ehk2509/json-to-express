@@ -117,7 +117,7 @@ async function inspectMongo(spec, output) {
     const collections={};
     const listed=await mongoose.connection.db.listCollections({}, {nameOnly:false}).toArray();
     for (const item of listed) {
-      if (item.name.startsWith('system.')) continue;
+      if (item.name.startsWith('system.') || item.name.startsWith('_j2e_migration_')) continue;
       const indexes=await mongoose.connection.db.collection(item.name).indexes();
       collections[item.name]={indexes:indexes.filter(x=>x.name!=='_id_').map(
         x=>mongoIndexSpec(x.key,x)),validator:item.options && item.options.validator || null};
