@@ -28,7 +28,10 @@
     "code-generation",
     "backend",
     "mongodb",
-    "object-storage"
+    "object-storage",
+    "plugin-registry",
+    "plugin-api",
+    "community-plugins"
   ],
   "author": "Elyes Hkiri",
   "license": "MIT",
@@ -44,7 +47,8 @@
     "README.md",
     "LICENSE",
     "templates",
-    "docs"
+    "docs",
+    "registry"
   ],
   "repository": {
     "type": "git",

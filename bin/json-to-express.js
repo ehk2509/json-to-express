@@ -6,6 +6,7 @@ const pkg = require('../package.json');
 const {generateApplication, planApplication, validateSpec} = require('../src');
 const {initialize, parseInitArgs, TEMPLATES} = require('../src/onboarding');
 const {parseDoctorArgs, diagnose} = require('../src/doctor');
+const pluginCommands = require('../src/plugin-cli');
 
 function printHelp() {
   console.log([
@@ -14,6 +15,9 @@ function printHelp() {
     'Usage:',
     '  j2e init [name] [--template crud|saas|ecommerce] [--yes] [options]',
     '  j2e doctor [spec.json] [--output <dir>] [--json] [--strict]',
+    '  j2e plugin catalog | search [term] | info <name[@version]>',
+    '  j2e plugin add <package@exact-version> --spec app.j2e.json [--yes]',
+    '  j2e plugin list|verify --spec app.j2e.json [--json]',
     '  j2e validate <spec.json>',
     '  j2e generate <spec.json> [--output <dir>] [--force]',
     '  j2e diff <spec.json> [--output <dir>] [--json]',
@@ -76,6 +80,10 @@ async function main() {
   if (!args.length || args.includes('-h') || args.includes('--help')) return printHelp();
   if (args.includes('-v') || args.includes('--version')) return console.log(pkg.version);
   const command = args[0], specFile = args[1];
+  if (command === 'plugin') {
+    console.log(await pluginCommands.execute(args.slice(1)));
+    return;
+  }
   if (command === 'init') {
     const options = parseInitArgs(args.slice(1));
     const result = await initialize(options);

@@ -5,6 +5,11 @@ All notable project changes are tracked here. Versions prior to this beta were d
 ## [Unreleased]
 
 ### Added
+- An open, versioned community registry catalog, npm plugin discovery, compatibility inspection and opt-in project-local installation with exact versions, SHA-512 integrity, disabled lifecycle scripts and dependency audits.
+- Plugin registry CLI commands (catalog, search, info, add, list and verify), publisher starter and community contribution guide.
+
+
+### Added
 - Release-gated Node/framework/database runtime compatibility and beta1/beta2 persisted-data upgrades.
 - 36-entity performance baselines, production dependency audits and Compose/Kubernetes deployment validation.
 
