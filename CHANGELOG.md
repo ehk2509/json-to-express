@@ -5,6 +5,14 @@ All notable project changes are tracked here. Versions prior to this beta were d
 ## [Unreleased]
 
 ### Added
+- Release-gated Node/framework/database runtime compatibility and beta1/beta2 persisted-data upgrades.
+- 36-entity performance baselines, production dependency audits and Compose/Kubernetes deployment validation.
+
+### Changed
+- Generated Fastify applications now advertise Node >=20 by default, matching Fastify 5; Express retains >=18 as its legacy default.
+
+
+### Added
 - Plugin API v1 for third-party generators, database providers, middleware, authentication and storage adapters with lifecycle hooks and bounded subprocess workers.
 - Explicit artifact-override permissions, safe regeneration integration and independent flatfile database-provider example.
 

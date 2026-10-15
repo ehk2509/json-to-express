@@ -1,0 +1,9 @@
+{
+  "note": "These are conservative CI guardrails, not claims about historical wall times. Each run measures the immutable npm beta as its historical baseline on the same runner.",
+  "historicalVersion": "0.2.0-beta.2",
+  "entities": 36,
+  "iterations": 2,
+  "minimumFiles": 38,
+  "absoluteMaxMs": 5000,
+  "maxRatio": 5
+}

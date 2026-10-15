@@ -19,6 +19,11 @@ module.exports = function packageSource(spec) {
     scripts: config.scripts,
     engines: {node: config.nodeEngine},
     dependencies,
-    devDependencies
+    devDependencies,
+    // Prisma 6.x / @prisma/config currently pins an affected deepmerge-ts.
+    // This audited override patches GHSA-ggr8-5vv4-36mx without downgrading Prisma.
+    ...(spec.database.type === 'postgresql'
+      ? {overrides: {'deepmerge-ts': '^8.0.2'}}
+      : {})
   }, null, 2) + '\n';
 };
