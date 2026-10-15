@@ -26,9 +26,18 @@ function report(id,framework,database) {
 function attestation(organization,project,framework,database) {
   return {
     organization,project,commit:SHA,
+    operatorGithub:'external-contributor',
     runtime:{framework,database},observedHours:80,
     incidentCount:0,rollbackDrill:true,operatorConfirmed:true,
-    publicEvidence:'https://example.org/p8/evidence/'+organization+'/'+project
+    publicEvidence:'https://example.org/p8/evidence/'+organization+'/'+project,
+    review:{
+      decision:'approved',
+      reviewer:'independent-reviewer',
+      issue:'https://github.com/ehk2509/json-to-express/issues/1234',
+      reviewedAt:'2026-10-15T10:00:00Z',
+      checks:{independentOperator:true,deploymentReviewed:true,
+        rollbackReviewed:true,incidentsReviewed:true,evidenceRedacted:true}
+    }
   };
 }
 const reports=[report('orders','express','mongodb'),
@@ -102,4 +111,28 @@ test('Production evidence gate requires multiple independent organizations and t
   assert.throws(()=>assess({reports:[{...reports[0],checks:{...reports[0].checks,
     restartPersistence:false}},reports[1]],attestations:evidence,
     requiredSha:SHA,policy}),/Invalid or failing/);
+});
+
+test('Unreviewed or self-reviewed pilots NEVER qualify for external acceptance',()=>{
+  const reviewed=[
+    attestation('org-one','billing','fastify','postgresql'),
+    attestation('org-one','warehouse','express','mongodb'),
+    attestation('org-two','orders','express','postgresql')
+  ];
+  const unreviewed=reviewed.map(({review,...rest})=>rest);
+  const initial=assess({reports,attestations:unreviewed,requiredSha:SHA,policy});
+  assert.equal(initial.externalEvidenceReady,false);
+  assert.equal(initial.pendingReviewCount,3);
+  assert.equal(initial.verifiedAttestationCount,0);
+  const selfReviewed=reviewed.map(item=>({...item,review:{...item.review,reviewer:item.operatorGithub}}));
+  const refused=assess({reports,attestations:selfReviewed,requiredSha:SHA,policy});
+  assert.equal(refused.status,'awaiting-external-evidence');
+  assert.equal(refused.pendingReviewCount,3);
+  assert.equal(refused.verifiedAttestationCount,0);
+  const wrongRepo=reviewed.map(item=>({...item,review:{...item.review,
+    issue:'https://github.com/evil/repo/issues/1'}}));
+  assert.equal(assess({reports,attestations:wrongRepo,requiredSha:SHA,policy}).verifiedAttestationCount,0);
+  const incomplete=reviewed.map(item=>({...item,review:{...item.review,
+    checks:{...item.review.checks,rollbackReviewed:false}}}));
+  assert.equal(assess({reports,attestations:incomplete,requiredSha:SHA,policy}).verifiedAttestationCount,0);
 });
