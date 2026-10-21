@@ -6,6 +6,19 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.6 will be listed here.
 
+### Fixed
+- Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.
+- Database-unavailable errors return `503 Service unavailable` with `Retry-After` instead of 500.
+- Plugins that log with `console.log` no longer fail with "returned invalid JSON": plugin stdout is redirected to stderr and shown with a `[plugin <module>]` prefix.
+- Express local auth no longer rejects email addresses containing the letter "s" (the generated email pattern had lost its escapes).
+- Delete policies now apply through the whole relation graph on Express, as they already did on native Fastify: a cascade runs the cascaded records' own policies, so a `restrict` two levels down refuses the delete and grandchildren are no longer orphaned. Express PostgreSQL soft deletes now honour `restrict` on single references.
+- A delete refused by `restrict` no longer leaves earlier cascades and nullifies applied on MongoDB servers without transactions (standalone): a read-only pass checks the whole graph before anything is written. Express MongoDB deletes now use a transaction whenever the server supports one.
+- On MongoDB, soft-deleted dependents no longer block a `restrict` on native Fastify either, matching Express.
+- PostgreSQL create and update return `400` with `details: ["<field> references a missing record"]` for missing or soft-deleted reference targets, matching MongoDB, instead of `404` or silently accepting a soft-deleted target.
+
+### Security
+- Plugin contributions under `.git/`, `node_modules/` or `.j2e/` are rejected, so a plugin cannot plant git hooks or packages through the managed writer.
+
 ## [0.2.0-beta.6] - 2026-10-21
 
 ### Changed

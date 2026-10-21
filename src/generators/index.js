@@ -120,6 +120,8 @@ function buildFiles(spec) {
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-auth.js'), fastifyAuthSource(spec));
   }
+  // Entity controllers (Express routes, and GraphQL resolvers on Fastify too) delete through this engine.
+  files.set(paths.relationDelete, spec.database.type === 'postgresql' ? fastifyPostgresDeleteSource(spec) : fastifyMongoDeleteSource(spec));
   files.set(paths.database, databaseSource(spec));
   files.set(paths.errorHandler, errorHandlerSource(spec));
   files.set(paths.validation, validationSource(spec));

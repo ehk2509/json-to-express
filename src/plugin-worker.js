@@ -2,6 +2,11 @@
 
 const fs = require('node:fs');
 
+// stdout is the protocol channel: route plugin logging (console.log etc.) to stderr
+// so a debug statement cannot corrupt the JSON contribution.
+const writeProtocol = process.stdout.write.bind(process.stdout);
+process.stdout.write = (chunk, encoding, callback) => process.stderr.write(chunk, encoding, callback);
+
 (async () => {
   const request = JSON.parse(fs.readFileSync(0, 'utf8'));
   const plugin = require(request.modulePath);
@@ -32,7 +37,7 @@ const fs = require('node:fs');
     files: result.files || {},
     overrides: result.overrides || []
   };
-  process.stdout.write(JSON.stringify(output));
+  writeProtocol(JSON.stringify(output));
 })().catch(error => {
   // Keep plugin diagnostic readable without exposing stack paths or spec JSON.
   process.stderr.write('plugin worker: ' + String(error && error.message || error).slice(0, 400) + '\n');

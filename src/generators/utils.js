@@ -40,6 +40,7 @@ function filePaths(spec, entityName) {
     observability: path.posix.join(source, p.config, 'observability.js'),
     cache: path.posix.join(source, p.config, 'cache.js'),
     storage: path.posix.join(source, p.config, 'storage.js'),
+    relationDelete: path.posix.join(source, p.config, 'relation-delete.js'),
     workflowEngine: path.posix.join(source, p.workflows, 'engine.js'),
     eventBus: path.posix.join(source, p.workflows, 'events.js'),
     outbox: path.posix.join(source, p.workflows, 'outbox.js'),

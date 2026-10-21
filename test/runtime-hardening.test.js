@@ -188,3 +188,142 @@ test('generated storage verifies file signatures and serves downloads defensivel
   assert.match(html['Content-Security-Policy'], /sandbox/);
   assert.match(helpers.downloadHeaders({key: 'a/b.png', mimeType: 'image/png', originalName: 'b.png'})['Content-Disposition'], /^inline;/);
 });
+
+function outageSpec(database, options) {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'outage-api'},
+    database: {type: database, ...(options ? {options} : {})},
+    entities: {Item: {fields: {name: {type: 'string'}}}}
+  });
+}
+
+test('generated database clients bound connection and query time, keeping explicit overrides', () => {
+  const mongo = buildFiles(outageSpec('mongodb')).get('src/config/database.js');
+  assert.match(mongo, /mongoose\.connect\(uri, \{"serverSelectionTimeoutMS":5000,"timeoutMS":10000\}\)/);
+  const overridden = buildFiles(outageSpec('mongodb', {timeoutMS: 30000, maxPoolSize: 5})).get('src/config/database.js');
+  assert.match(overridden, /mongoose\.connect\(uri, \{"serverSelectionTimeoutMS":5000,"timeoutMS":30000,"maxPoolSize":5\}\)/);
+
+  const postgres = buildFiles(outageSpec('postgresql')).get('src/config/database.js');
+  const withTimeouts = new Function(postgres.slice(postgres.indexOf('function withTimeouts'), postgres.indexOf('const databaseUrl')) + '\nreturn withTimeouts;')();
+  const url = new URL(withTimeouts('postgresql://u:p@db:5432/app?schema=public'));
+  assert.deepEqual(Object.fromEntries(url.searchParams), {schema: 'public', connect_timeout: '5', pool_timeout: '5', socket_timeout: '10'});
+  assert.equal(new URL(withTimeouts('postgresql://u:p@db/app?socket_timeout=60')).searchParams.get('socket_timeout'), '60');
+  assert.equal(withTimeouts('not a url'), 'not a url');
+  assert.match(postgres, /new PrismaClient\(\{datasources: \{db: \{url: databaseUrl\}\}\}\)/);
+});
+
+test('generated readiness ping gives up on a hung database', async () => {
+  const source = buildFiles(outageSpec('mongodb')).get('src/config/database.js');
+  const fakeMongoose = {connection: {readyState: 1, db: {admin: () => ({ping: () => new Promise(() => {})})}}};
+  const connectDatabase = load(source, {mongoose: fakeMongoose});
+  const started = Date.now();
+  await assert.rejects(connectDatabase.ping(), /ping timed out after 2000ms/);
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('generated error handlers answer database outages with 503 and Retry-After', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const handler = load(buildFiles(outageSpec(database)).get('src/middleware/error-handler.js'), {});
+    for (const error of [
+      Object.assign(new Error('x'), {name: 'MongoServerSelectionError'}),
+      Object.assign(new Error('x'), {name: 'MongoOperationTimeoutError'}),
+      Object.assign(new Error('Operation `items.find()` buffering timed out after 10000ms'), {name: 'MongooseError'}),
+      Object.assign(new Error('x'), {code: 'P1001'}),
+      Object.assign(new Error('x'), {code: 'P2024'}),
+      Object.assign(new Error('x'), {name: 'PrismaClientInitializationError'})
+    ]) {
+      const sent = {headers: {}};
+      handler(error, {}, {setHeader(name, value) { sent.headers[name] = value; }, status(code) { sent.code = code; return this; }, json(body) { sent.body = body; return this; }}, () => {});
+      assert.equal(sent.code, 503, database + ' ' + (error.name || error.code));
+      assert.equal(sent.headers['Retry-After'], '5');
+      assert.deepEqual(sent.body, {error: 'Service unavailable'});
+    }
+  }
+  const fastify = outageSpec('postgresql');
+  fastify.app.framework = 'fastify';
+  assert.match(buildFiles(fastify).get('src/fastify-native.js'), /return reply\.code\(503\)\.header\("Retry-After", "5"\)\.send\(\{error: "Service unavailable"\}\)/);
+});
+
+test('generated local auth accepts ordinary email addresses on both frameworks', () => {
+  for (const framework of ['express', 'fastify']) {
+    const files = buildFiles(normalizeSpec({
+      specVersion: '1.0',
+      app: {name: 'mail-api', framework},
+      database: {type: 'mongodb'},
+      auth: {enabled: true, strategies: ['jwt'], jwt: {secretEnv: 'JWT_SECRET'}, local: {enabled: true}},
+      entities: {Note: {fields: {title: {type: 'string'}}}}
+    }));
+    const source = [...files.values()].find(content => typeof content === 'string' && content.includes('function validEmail'));
+    const validEmail = new Function(source.match(/function validEmail[^\n]*/)[0] + '\nreturn validEmail;')();
+    for (const email of ['bob@shop.com', 'sales@example.co.uk', 'first.last+tag@sub.domain.org']) assert.equal(validEmail(email), true, `${framework}: ${email}`);
+    for (const email of ['no-at-sign', 'a b@ex.com', 'a@nodot', '@ex.com']) assert.equal(validEmail(email), false, `${framework}: ${email}`);
+  }
+});
+
+function relationSpec(framework, database) {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'rel-api', framework},
+    database: {type: database},
+    entities: {
+      Author: {fields: {name: {type: 'string'}}},
+      Book: {fields: {author: {type: 'reference', ref: 'Author', required: true, onDelete: 'cascade'}}},
+      Review: {fields: {book: {type: 'reference', ref: 'Book', required: true, onDelete: 'cascade'}}},
+      Shelf: {fields: {books: {type: 'reference', ref: 'Book', many: true, onDelete: 'restrict'}}}
+    }
+  });
+}
+
+test('generated MongoDB delete engine refuses a deep restrict before writing when there is no transaction', async () => {
+  const source = buildFiles(relationSpec('express', 'mongodb')).get('src/config/relation-delete.js');
+  const relationDelete = load(source, {});
+  const data = {Author: [{_id: 'a1'}], Book: [{_id: 'b1', author: 'a1'}], Review: [{_id: 'r1', book: 'b1'}], Shelf: [{_id: 's1', books: ['b1']}]};
+  const matches = (doc, filter) => Object.entries(filter).every(([key, value]) => value === null ? doc[key] == null : Array.isArray(doc[key]) ? doc[key].includes(value) : doc[key] === value);
+  const query = run => ({session() { return this; }, select() { return this; }, then(resolve, reject) { return Promise.resolve().then(run).then(resolve, reject); }});
+  const models = Object.fromEntries(Object.keys(data).map(name => [name, {
+    findOne: filter => query(() => data[name].find(doc => matches(doc, filter)) || null),
+    find: filter => query(() => data[name].filter(doc => matches(doc, filter))),
+    countDocuments: filter => query(() => data[name].filter(doc => matches(doc, filter)).length),
+    updateMany: async () => {},
+    findOneAndDelete: async filter => { data[name] = data[name].filter(doc => !matches(doc, filter)); }
+  }]));
+  await assert.rejects(relationDelete(models, 'Author', 'a1', null), error => error.statusCode === 409 && /Shelf\.books/.test(error.message));
+  assert.deepEqual([data.Author.length, data.Book.length, data.Review.length], [1, 1, 1]);
+  data.Shelf = [];
+  await relationDelete(models, 'Author', 'a1', null);
+  assert.deepEqual([data.Author.length, data.Book.length, data.Review.length], [0, 0, 0]);
+});
+
+test('generated Express controllers delete through the shared relation engine and PostgreSQL checks references', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const files = buildFiles(relationSpec('express', database));
+    assert.ok(files.has('src/config/relation-delete.js'), database);
+    const author = files.get('src/controllers/AuthorController.js');
+    assert.match(author, /relationDelete\(/);
+    assert.doesNotMatch(author, /deleteMany/);
+    if (database === 'mongodb') assert.match(author, /const relationModels = \{Author, Book, Review, Shelf\};/);
+    else assert.match(files.get('src/controllers/BookController.js'), /const missing = await missingReferences\(req\.body \|\| \{\}\);/);
+  }
+  const native = buildFiles(relationSpec('fastify', 'postgresql')).get('src/fastify-crud.js');
+  assert.match(native, /if \(postgres && \["create", "update"\]\.includes\(action\)\) \{/);
+});
+
+test('generated MongoDB delete engine ignores soft-deleted dependents for restrict', async () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name: 'soft-api'}, database: {type: 'mongodb'},
+    entities: {
+      Category: {fields: {name: {type: 'string'}}},
+      Product: {softDelete: {enabled: true, field: 'deletedAt'}, fields: {category: {type: 'reference', ref: 'Category', onDelete: 'restrict'}}}
+    }
+  });
+  const relationDelete = load(buildFiles(spec).get('src/config/relation-delete.js'), {});
+  const filters = [];
+  const query = value => ({session() { return this; }, then(resolve) { return Promise.resolve(value).then(resolve); }});
+  const models = {
+    Category: {findOne: () => query({_id: 'c1'}), findOneAndDelete: async () => {}},
+    Product: {countDocuments: filter => { filters.push(filter); return query(0); }}
+  };
+  await relationDelete(models, 'Category', 'c1', {});
+  assert.deepEqual(filters, [{category: 'c1', deletedAt: null}]);
+});

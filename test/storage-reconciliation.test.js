@@ -178,7 +178,7 @@ test('Express PostgreSQL and MongoDB controllers use transactional cleanup inten
     const files=buildFiles(normalizeSpec(raw));
     const source=files.get('src/controllers/AssetController.js');
     assert.match(source,/storage.enqueueCleanupIntent\(storage.planReplaced/);
-    assert.match(source,/storage.enqueueCleanupIntent\(storage.planEntity/);
+    assert.match(source,/storage.enqueueCleanupIntent\(affected/);
     assert.match(source,/storage.finishCleanupIntent/);
     assert.match(source,/withTransaction\(/);
     if (database === 'mongodb') assert.match(source,/mongoCanTransact\(\)/);

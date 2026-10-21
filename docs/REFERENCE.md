@@ -352,6 +352,8 @@ Global error responses can be strings or JSON values:
 
 Entities can also define notFoundResponse.
 
+When the database is unreachable, the connection pool is exhausted or a database call times out, generated APIs respond `503 {"error": "Service unavailable"}` with `Retry-After: 5` instead of a 500, so clients and load balancers can retry.
+
 ## MongoDB
 
 ~~~json
@@ -368,7 +370,7 @@ Entities can also define notFoundResponse.
 }
 ~~~
 
-database.options is forwarded to mongoose.connect.
+database.options is forwarded to mongoose.connect. Generated apps default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` so requests fail with 503 instead of waiting indefinitely while MongoDB is down or unresponsive; values in database.options override these defaults.
 
 ## PostgreSQL + Prisma target
 
@@ -465,6 +467,8 @@ The Prisma CRUD target supports:
 - generated request validation
 - OpenAPI UUID contracts
 - Prisma unique/FK/not-found error mapping
+
+Unless the connection URL already sets them, the generated Prisma client adds `connect_timeout=5`, `pool_timeout=5` and `socket_timeout=10` (seconds) so an unresponsive PostgreSQL server fails requests with 503 rather than hanging them. Prisma CLI commands (migrations) use the URL unchanged.
 
 ### PostgreSQL-specific boundaries
 
@@ -745,7 +749,9 @@ Set "many": true for to-many relations:
 
 MongoDB stores many references as ObjectId arrays. PostgreSQL/Prisma emits an implicit many-to-many join relation with generated inverse fields; create uses connect[], updates replace the relation through set[], and populated operations use Prisma include/select.
 
-Supported delete policies remain restrict, nullify, and cascade. For PostgreSQL to-many relations these policies are enforced by the generated application inside a transaction because Prisma implicit many-to-many join tables do not expose referential actions directly.
+Supported delete policies remain restrict, nullify, and cascade. The generated application enforces them through the whole relation graph (`src/config/relation-delete.js` on Express, `src/fastify-*-delete.js` on Fastify): a cascaded record's own inbound policies run too, so a `restrict` anywhere below refuses the whole delete with 409. PostgreSQL deletes always run in a transaction. MongoDB deletes use one whenever the server supports it; on a standalone server a read-only pass checks every `restrict` in the graph before anything is written, so only a concurrent write can leave a refused delete partially applied.
+
+PostgreSQL create and update check reference targets before writing, so a missing or soft-deleted target returns the validation error status with `details: ["<field> references a missing record"]`, as on MongoDB.
 
 MongoDB has no foreign keys, so generated Mongoose models validate that every referenced id exists (and is not soft-deleted) on create and on updates that run validators (`runValidators`, enabled by default). A missing reference returns the validation error status with `details: ["<field> references a missing record"]`. The check is not transactional: a referenced record deleted concurrently can still leave a dangling id.
 
@@ -1226,6 +1232,7 @@ The legacy `app.health` endpoint remains supported for compatibility, while obse
 - readiness verifies the database before returning ready
 - MongoDB readiness uses an admin ping
 - PostgreSQL readiness executes `SELECT 1`
+- the database check gives up after 2 seconds, so a hung database reports not-ready instead of hanging the probe
 - outbox status can expose pending/processing/dead counts without putting those values into high-cardinality metric labels
 
 Docker and Compose healthchecks prefer the generated readiness endpoint. Kubernetes manifests emit distinct readiness and liveness probes when observability health is enabled.

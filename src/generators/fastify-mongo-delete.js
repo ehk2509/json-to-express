@@ -2,7 +2,9 @@
 
 const {js} = require('./utils');
 
-// Source for recursive, session-bound native MongoDB referential deletions.
+// Source for recursive, session-bound MongoDB referential deletions, shared by Express and native Fastify.
+// Without a transaction a read-only pass first walks the whole graph, so a restrict anywhere refuses
+// the delete before any cascade or nullify has written.
 module.exports = function mongoDeleteSource(spec) {
   const entities = Object.fromEntries(spec.entities.map(entity => [entity.name, {
     softDelete: entity.softDelete,
@@ -20,14 +22,14 @@ module.exports = function mongoDeleteSource(spec) {
     'const inbound = ' + js(inbound) + ';',
     'function conflict(message) {const error = new Error(message);error.statusCode=409;return error;}',
     'module.exports = async function mongoDelete(models, rootName, rootId, session) {',
-    '  async function remove(name, id, active, seen, forceHard, values) {',
+    '  async function remove(name, id, active, seen, forceHard, values, dry) {',
     '    const entry = entities[name];',
     '    const model = models[name];',
     '    if (!entry || !model) throw new Error("Unknown MongoDB delete model: " + name);',
     '    const where = {_id: id, ...(!forceHard && entry.softDelete.enabled ? {[entry.softDelete.field]: null} : {})};',
     '    const current = await model.findOne(where).session(session || null);',
     '    if (!current) {if (active) {const error = new Error("Not found");error.statusCode=404;throw error;} return;}',
-    '    for (const field of entry.fileFields) {const value = current[field]; if (Array.isArray(value)) values.push(...value.filter(Boolean)); else if (value) values.push(value);}',
+    '    if (!dry) for (const field of entry.fileFields) {const value = current[field]; if (Array.isArray(value)) values.push(...value.filter(Boolean)); else if (value) values.push(value);}',
     '    const key = name + ":" + String(id);',
     '    if (seen.has(key)) throw conflict("Cyclic relationship cascade");',
     '    seen.add(key);',
@@ -38,21 +40,25 @@ module.exports = function mongoDeleteSource(spec) {
     '      const filter = {[relation.field]: id};',
     '      if (!forceHard && childEntry.softDelete.enabled) filter[childEntry.softDelete.field] = null;',
     '      if (relation.onDelete === "restrict") {',
-    '        if (await child.countDocuments(filter).session(session || null)) throw conflict("Delete restricted by " + relation.model + "." + relation.field);',
+    '        // Soft-deleted dependents never block: there is no foreign key, and they are already gone for clients.',
+    '        const live = childEntry.softDelete.enabled ? {...filter, [childEntry.softDelete.field]: null} : filter;',
+    '        if (await child.countDocuments(live).session(session || null)) throw conflict("Delete restricted by " + relation.model + "." + relation.field);',
     '      } else if (relation.onDelete === "nullify") {',
-    '        await child.updateMany(filter, relation.many ? {$pull: {[relation.field]: id}} : {$set: {[relation.field]: null}}, session ? {session} : {});',
+    '        if (!dry) await child.updateMany(filter, relation.many ? {$pull: {[relation.field]: id}} : {$set: {[relation.field]: null}}, session ? {session} : {});',
     '      } else if (relation.onDelete === "cascade") {',
     '        const dependents = await child.find(filter).select("_id").session(session || null);',
-    '        for (const dependent of dependents) await remove(relation.model, dependent._id, false, seen, forceHard, values);',
+    '        for (const dependent of dependents) await remove(relation.model, dependent._id, false, seen, forceHard, values, dry);',
     '      } else throw conflict("Unsupported delete policy for " + relation.model + "." + relation.field);',
     '    }',
-    '    if (entry.softDelete.enabled && !forceHard) {',
+    '    if (!dry && entry.softDelete.enabled && !forceHard) {',
     '      await model.findOneAndUpdate(where, {$set: {[entry.softDelete.field]: new Date()}}, {new:true, ...(session ? {session} : {})});',
-    '    } else await model.findOneAndDelete(where, session ? {session} : {});',
+    '    } else if (!dry) await model.findOneAndDelete(where, session ? {session} : {});',
     '    seen.delete(key);',
     '  }',
     '  const values = [];',
-    '  await remove(rootName, rootId, true, new Set(), !entities[rootName].softDelete.enabled, values);',
+    '  const forceHard = !entities[rootName].softDelete.enabled;',
+    '  if (!session) await remove(rootName, rootId, true, new Set(), forceHard, [], true);',
+    '  await remove(rootName, rootId, true, new Set(), forceHard, values, false);',
     '  return values;',
     '};',
     ''

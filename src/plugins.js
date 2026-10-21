@@ -37,6 +37,8 @@ function validateDeclarations(plugins) {
   return plugins;
 }
 
+const RESERVED_ROOTS = ['.git', 'node_modules', '.j2e'];
+
 function safeArtifactPath(filename) {
   if (typeof filename !== 'string' || !filename || filename.length > 240 ||
       filename.includes('\\') || filename.includes('\0') ||
@@ -45,6 +47,10 @@ function safeArtifactPath(filename) {
       filename === '.' || filename === '..' || filename.startsWith('../') ||
       filename.split('/').some(segment => segment === '..' || segment === '.' || !segment)) {
     throw new Error('Unsafe plugin output path: ' + String(filename));
+  }
+  // Files here execute or are trusted later (git hooks, installed packages, generator state).
+  if (RESERVED_ROOTS.includes(filename.split('/')[0].toLowerCase())) {
+    throw new Error('Plugin output path is reserved: ' + filename);
   }
   return filename;
 }
@@ -85,6 +91,8 @@ function invokePlugin(declaration, spec, pluginRoot) {
     const message = (result.stderr || '').trim().slice(0, 500);
     throw new Error('Plugin ' + candidate + ' failed: ' + (message || 'exit ' + result.status));
   }
+  const logs = (result.stderr || '').trim();
+  if (logs) process.stderr.write(logs.slice(0, 4096).split('\n').map(line => '[plugin ' + candidate + '] ' + line).join('\n') + '\n');
   let response;
   try {response = JSON.parse(result.stdout);}
   catch (_) {throw new Error('Plugin ' + candidate + ' returned invalid JSON');}

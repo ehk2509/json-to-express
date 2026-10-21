@@ -78,6 +78,7 @@ module.exports = function fastifyNativeSource(spec) {
   ];
   lines.push(
     '  fastify.setErrorHandler((error, request, reply) => {',
+    '    if ' + '(error && (["P1001", "P1002", "P1008", "P1017", "P2024"].includes(error.code) || error.name === "PrismaClientInitializationError" || /^Mongo(ose)?(ServerSelection|Network|NetworkTimeout|NotConnected|OperationTimeout|TopologyClosed)Error$/.test(error.name) || /buffering timed out/.test(error.message || "")))' + ' return reply.code(503).header("Retry-After", "5").send({error: "Service unavailable"});',
     ...(spec.database.type === 'mongodb' ? [
       '    if (error.name === "ValidationError") return reply.code(400).send({error: "Invalid request", details: Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : item.kind === "reference" ? " references a missing record" : " has an invalid value"))});',
       '    if (error.name === "CastError") return reply.code(400).send({error: "Invalid identifier"});'
