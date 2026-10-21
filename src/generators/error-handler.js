@@ -31,7 +31,7 @@ module.exports = function errorHandlerSource(spec) {
     'module.exports = function errorHandler(error, req, res, next) {',
     ...(spec.observability.enabled ? ['  observability.logger.error("http.request.error", {requestId: req.id, error: error && error.message, code: error && error.code});'] : []),
     ...targetErrors,
-    "  if (error && error.statusCode) return res.status(error.statusCode).json({error: error.message});",
+    "  if (error && error.statusCode) return res.status(error.statusCode).json({error: error.message, ...(error.details ? {details: error.details} : {})});",
     ...(spec.observability.enabled
       ? ['  // Error already emitted through structured observability logging.']
       : ['  console.error(error);']),

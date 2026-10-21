@@ -34,7 +34,7 @@ function oldObject(key){
 async function make(port,name) {
   const form=new FormData();
   form.set(nameField,name);
-  form.set(field,new Blob([target==='postgres'?new Uint8Array([137,80,78,71]):'content'],{type:mime}),name+'.txt');
+  form.set(field,new Blob([target==='postgres'?new Uint8Array([137,80,78,71,13,10,26,10]):'content'],{type:mime}),name+'.txt');
   const res=await fetch(prefixUrl(port)+'/api/assets',{method:'POST',body:form});
   if(res.status!==201)throw new Error('Expected 201 from '+port+': '+res.status+' '+await res.text());
   return res.json();

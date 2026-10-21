@@ -78,8 +78,12 @@ module.exports = function fastifyNativeSource(spec) {
   ];
   lines.push(
     '  fastify.setErrorHandler((error, request, reply) => {',
+    ...(spec.database.type === 'mongodb' ? [
+      '    if (error.name === "ValidationError") return reply.code(400).send({error: "Invalid request", details: Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : item.kind === "reference" ? " references a missing record" : " has an invalid value"))});',
+      '    if (error.name === "CastError") return reply.code(400).send({error: "Invalid identifier"});'
+    ] : []),
     '    const status = error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500;',
-    '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message});',
+    '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message, ...(status < 500 && error.details ? {details: error.details} : {})});',
     '  });'
   );
   lines.push('};', 'module.exports.matches = (method, pathname) => (method === "GET" && ' + js(nativeGetPaths) + '.includes(pathname))' + (spec.storage.enabled && spec.storage.signedUrls.enabled ? ' || (method === "GET" && pathname.startsWith(' + js(spec.storage.signedUrls.path.split(':token')[0]) + ') && pathname.length > ' + spec.storage.signedUrls.path.split(':token')[0].length + ' && !pathname.slice(' + spec.storage.signedUrls.path.split(':token')[0].length + ').includes("/"))' : '') + (spec.api.graphql.enabled ? ' || (["GET", "POST"].includes(method) && pathname === ' + js(spec.api.graphql.path) + ')' : '') + ';', '');

@@ -6,6 +6,16 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.5 will be listed here.
 
+### Fixed
+- An unresponsive Redis no longer hangs requests: every cache call is bounded by `cache.redis.commandTimeoutMs` (new, default 500 ms), Redis is skipped for 5 s after a failure, and invalidations missed during an outage are flushed before cached data is served again.
+- Workflow `create`/`updateById` data is validated like REST bodies; PostgreSQL previously persisted values that violated `min`, `required`, enums and other field rules.
+- Workflow `findById`/`updateById`/`deleteById` ignore soft-deleted records and return 404 for missing ones on every target (MongoDB previously continued with `null`, still emitting events and enqueueing jobs); `deleteById` soft-deletes soft-delete entities.
+- Native Fastify maps Mongoose validation and cast errors to 400 and includes error `details`.
+
+### Security
+- Uploads whose content does not match the declared PNG, JPEG, GIF, WebP, PDF or text type are rejected.
+- Local file downloads send `nosniff` and a sandbox CSP, and only serve images, PDF and plain text inline.
+
 ## [0.2.0-beta.5] - 2026-10-21
 
 ### Security

@@ -32,7 +32,11 @@ module.exports = function cacheSource(spec) {
     'const memoryVersions = new Map();',
     ...(config.provider === 'redis' ? [
       'let redis = null;',
-      'let redisConnectPromise = null;'
+      'let redisConnectPromise = null;',
+      '// A hung Redis must not hang requests: bound every call, then skip Redis briefly after a failure.',
+      'const REDIS_COOLDOWN_MS = 5000;',
+      'let redisUnavailableUntil = 0;',
+      'let missedInvalidation = false;'
     ] : []),
     '',
     'function report(event, error, fields = {}) {',
@@ -84,13 +88,35 @@ module.exports = function cacheSource(spec) {
       '  await redisConnectPromise;',
       '  return redis;',
       '}',
+      '',
+      'async function redisCall(label, operation) {',
+      '  if (Date.now() < redisUnavailableUntil) throw new Error("Redis unavailable (cooling down)");',
+      '  let timer;',
+      '  const timeout = new Promise((resolve, reject) => {',
+      '    timer = setTimeout(() => reject(new Error("Redis " + label + " timed out after " + config.redis.commandTimeoutMs + "ms")), config.redis.commandTimeoutMs);',
+      '  });',
+      '  try {',
+      '    if (missedInvalidation && label !== "flush") await Promise.race([flushMissedInvalidations(), timeout]);',
+      '    return await Promise.race([client().then(operation), timeout]);',
+      '  } catch (error) {',
+      '    redisUnavailableUntil = Date.now() + REDIS_COOLDOWN_MS;',
+      '    throw error;',
+      '  } finally { clearTimeout(timer); }',
+      '}',
+      '',
+      '// Writes during an outage could not bump versions; invalidate everything once Redis answers again.',
+      'async function flushMissedInvalidations() {',
+      '  missedInvalidation = false;',
+      '  try { await Promise.all(Object.keys(affectedEntities).map(entity => redisCall("flush", redis => redis.incr(versionKey(entity))))); }',
+      '  catch (error) { missedInvalidation = true; throw error; }',
+      '}',
       ''
     ] : []),
     'async function getVersion(entity) {',
     '  try {',
     ...(config.provider === 'redis'
       ? [
-        '    const value = await (await client()).get(versionKey(entity));',
+        '    const value = await redisCall("version", redis => redis.get(versionKey(entity)));',
         '    return value || "0";'
       ]
       : ['    return String(memoryVersions.get(entity) || 0);']),
@@ -101,7 +127,7 @@ module.exports = function cacheSource(spec) {
     '  try {',
     ...(config.provider === 'redis'
       ? [
-        '    const value = await (await client()).get(key);',
+        '    const value = await redisCall("read", redis => redis.get(key));',
         '    return value === null ? null : JSON.parse(value);'
       ]
       : [
@@ -117,7 +143,7 @@ module.exports = function cacheSource(spec) {
     'async function write(key, value, ttlSeconds) {',
     '  try {',
     ...(config.provider === 'redis'
-      ? ['    await (await client()).setEx(key, ttlSeconds, JSON.stringify(value));']
+      ? ['    await redisCall("write", redis => redis.setEx(key, ttlSeconds, JSON.stringify(value)));']
       : [
         '    if (memoryEntries.size >= config.memory.maxEntries && !memoryEntries.has(key)) {',
         '      const oldest = memoryEntries.keys().next().value;',
@@ -133,10 +159,14 @@ module.exports = function cacheSource(spec) {
     'async function bump(entity) {',
     '  try {',
     ...(config.provider === 'redis'
-      ? ['    await (await client()).incr(versionKey(entity));']
+      ? ['    await redisCall("invalidate", redis => redis.incr(versionKey(entity)));']
       : ['    memoryVersions.set(entity, (memoryVersions.get(entity) || 0) + 1);']),
     '    return true;',
-    '  } catch (error) { report("cache.invalidate_failed", error, {entity}); return false; }',
+    '  } catch (error) {',
+    ...(config.provider === 'redis' ? ['    missedInvalidation = true;'] : []),
+    '    report("cache.invalidate_failed", error, {entity});',
+    '    return false;',
+    '  }',
     '}',
     '',
     'async function invalidateEntity(entity) {',

@@ -416,7 +416,8 @@ function normalizeSpec(inputSpec) {
       },
       redis: {
         urlEnv: valueOr(cacheRedisConfig.urlEnv, 'REDIS_URL'),
-        connectTimeoutMs: valueOr(cacheRedisConfig.connectTimeoutMs, 5000)
+        connectTimeoutMs: valueOr(cacheRedisConfig.connectTimeoutMs, 5000),
+        commandTimeoutMs: valueOr(cacheRedisConfig.commandTimeoutMs, 500)
       }
     },
     observability: {
