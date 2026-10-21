@@ -260,3 +260,51 @@ test('generated local auth accepts ordinary email addresses on both frameworks',
     for (const email of ['no-at-sign', 'a b@ex.com', 'a@nodot', '@ex.com']) assert.equal(validEmail(email), false, `${framework}: ${email}`);
   }
 });
+
+function relationSpec(framework, database) {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'rel-api', framework},
+    database: {type: database},
+    entities: {
+      Author: {fields: {name: {type: 'string'}}},
+      Book: {fields: {author: {type: 'reference', ref: 'Author', required: true, onDelete: 'cascade'}}},
+      Review: {fields: {book: {type: 'reference', ref: 'Book', required: true, onDelete: 'cascade'}}},
+      Shelf: {fields: {books: {type: 'reference', ref: 'Book', many: true, onDelete: 'restrict'}}}
+    }
+  });
+}
+
+test('generated MongoDB delete engine refuses a deep restrict before writing when there is no transaction', async () => {
+  const source = buildFiles(relationSpec('express', 'mongodb')).get('src/config/relation-delete.js');
+  const relationDelete = load(source, {});
+  const data = {Author: [{_id: 'a1'}], Book: [{_id: 'b1', author: 'a1'}], Review: [{_id: 'r1', book: 'b1'}], Shelf: [{_id: 's1', books: ['b1']}]};
+  const matches = (doc, filter) => Object.entries(filter).every(([key, value]) => value === null ? doc[key] == null : Array.isArray(doc[key]) ? doc[key].includes(value) : doc[key] === value);
+  const query = run => ({session() { return this; }, select() { return this; }, then(resolve, reject) { return Promise.resolve().then(run).then(resolve, reject); }});
+  const models = Object.fromEntries(Object.keys(data).map(name => [name, {
+    findOne: filter => query(() => data[name].find(doc => matches(doc, filter)) || null),
+    find: filter => query(() => data[name].filter(doc => matches(doc, filter))),
+    countDocuments: filter => query(() => data[name].filter(doc => matches(doc, filter)).length),
+    updateMany: async () => {},
+    findOneAndDelete: async filter => { data[name] = data[name].filter(doc => !matches(doc, filter)); }
+  }]));
+  await assert.rejects(relationDelete(models, 'Author', 'a1', null), error => error.statusCode === 409 && /Shelf\.books/.test(error.message));
+  assert.deepEqual([data.Author.length, data.Book.length, data.Review.length], [1, 1, 1]);
+  data.Shelf = [];
+  await relationDelete(models, 'Author', 'a1', null);
+  assert.deepEqual([data.Author.length, data.Book.length, data.Review.length], [0, 0, 0]);
+});
+
+test('generated Express controllers delete through the shared relation engine and PostgreSQL checks references', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const files = buildFiles(relationSpec('express', database));
+    assert.ok(files.has('src/config/relation-delete.js'), database);
+    const author = files.get('src/controllers/AuthorController.js');
+    assert.match(author, /relationDelete\(/);
+    assert.doesNotMatch(author, /deleteMany/);
+    if (database === 'mongodb') assert.match(author, /const relationModels = \{Author, Book, Review, Shelf\};/);
+    else assert.match(files.get('src/controllers/BookController.js'), /const missing = await missingReferences\(req\.body \|\| \{\}\);/);
+  }
+  const native = buildFiles(relationSpec('fastify', 'postgresql')).get('src/fastify-crud.js');
+  assert.match(native, /if \(postgres && \["create", "update"\]\.includes\(action\)\) \{/);
+});

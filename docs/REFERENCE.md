@@ -749,7 +749,9 @@ Set "many": true for to-many relations:
 
 MongoDB stores many references as ObjectId arrays. PostgreSQL/Prisma emits an implicit many-to-many join relation with generated inverse fields; create uses connect[], updates replace the relation through set[], and populated operations use Prisma include/select.
 
-Supported delete policies remain restrict, nullify, and cascade. For PostgreSQL to-many relations these policies are enforced by the generated application inside a transaction because Prisma implicit many-to-many join tables do not expose referential actions directly.
+Supported delete policies remain restrict, nullify, and cascade. The generated application enforces them through the whole relation graph (`src/config/relation-delete.js` on Express, `src/fastify-*-delete.js` on Fastify): a cascaded record's own inbound policies run too, so a `restrict` anywhere below refuses the whole delete with 409. PostgreSQL deletes always run in a transaction. MongoDB deletes use one whenever the server supports it; on a standalone server a read-only pass checks every `restrict` in the graph before anything is written, so only a concurrent write can leave a refused delete partially applied.
+
+PostgreSQL create and update check reference targets before writing, so a missing or soft-deleted target returns the validation error status with `details: ["<field> references a missing record"]`, as on MongoDB.
 
 MongoDB has no foreign keys, so generated Mongoose models validate that every referenced id exists (and is not soft-deleted) on create and on updates that run validators (`runValidators`, enabled by default). A missing reference returns the validation error status with `details: ["<field> references a missing record"]`. The check is not transactional: a referenced record deleted concurrently can still leave a dangling id.
 

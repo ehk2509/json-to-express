@@ -29,25 +29,14 @@ function inboundRelations(entity, spec) {
   return relations;
 }
 
-function relationDeleteLines(entity, spec) {
-  const lines = [];
-  for (const relation of inboundRelations(entity, spec)) {
-    const source = relation.source;
-    const field = relation.field;
-    const filterParts = [js(field.name) + ': targetId'];
-    if (source.softDelete.enabled) filterParts.push(js(source.softDelete.field) + ': null');
-    const filter = '{' + filterParts.join(', ') + '}';
-    if (field.onDelete === 'restrict') {
-      lines.push('      const dependent' + source.name + field.name + ' = await ' + source.name + '.countDocuments(' + filter + ').session(session || null);');
-      lines.push('      if (dependent' + source.name + field.name + ' > 0) { const error = new Error("Delete restricted by ' + source.name + '.' + field.name + '"); error.statusCode = 409; throw error; }');
-    } else if (field.onDelete === 'nullify') {
-      const update = field.many ? '{$pull: {' + js(field.name) + ': targetId}}' : '{$set: {' + js(field.name) + ': null}}';
-      lines.push('      await ' + source.name + '.updateMany(' + filter + ', ' + update + ').session(session || null);');
-    } else if (field.onDelete === 'cascade') {
-      lines.push('      await ' + source.name + '.deleteMany(' + filter + ').session(session || null);');
-    }
+// Every entity a delete of this one can reach through cascades, restricts or nullifies, itself included.
+function deleteGraph(entity, spec) {
+  const names = [entity.name];
+  for (let index = 0; index < names.length; index += 1) {
+    const target = spec.entities.find(item => item.name === names[index]);
+    for (const {source} of inboundRelations(target, spec)) if (!names.includes(source.name)) names.push(source.name);
   }
-  return lines;
+  return names;
 }
 
 function controllerSource(entity, spec) {
@@ -63,15 +52,16 @@ function controllerSource(entity, spec) {
   if (entity.hooks) imports.push('const hooks = require(' + js(relativeRequire(paths.controller, entity.hooks.module)) + ');');
   if (spec.cache.enabled) imports.push('const cache = require(' + js(relativeRequire(paths.controller, filePaths(spec).cache)) + ');');
   if (hasFiles) imports.push('const storage = require(' + js(relativeRequire(paths.controller, filePaths(spec).storage)) + ');');
-  for (const relation of inboundRelations(entity, spec)) {
-    if (!imports.some(line => line.startsWith('const ' + relation.source.name + ' ='))) {
-      const sourcePath = filePaths(spec, relation.source.name).model;
-      imports.push('const ' + relation.source.name + ' = require(' + js(relativeRequire(paths.controller, sourcePath)) + ');');
-    }
+  const graph = deleteGraph(entity, spec);
+  const hasInbound = graph.length > 1;
+  if (entity.operations.delete.enabled) {
+    for (const name of graph.slice(1)) imports.push('const ' + name + ' = require(' + js(relativeRequire(paths.controller, filePaths(spec, name).model)) + ');');
+    imports.push('const relationDelete = require(' + js(relativeRequire(paths.controller, filePaths(spec).relationDelete)) + ');');
   }
 
   const helper = [
-    ...(hasFiles ? [
+    ...(entity.operations.delete.enabled ? ['const relationModels = {' + graph.join(', ') + '};'] : []),
+    ...(hasFiles || hasInbound ? [
       'let mongoIsReplicaSet;',
       'async function mongoCanTransact() {',
       '  if (mongoIsReplicaSet !== undefined) return mongoIsReplicaSet;',
@@ -214,24 +204,23 @@ function controllerSource(entity, spec) {
 
   const remove=entity.operations.delete;
   if(remove.enabled){
+    const lookup = '{_id: targetId' + (entity.softDelete.enabled ? ', ' + js(entity.softDelete.field) + ': null' : '') + '}';
     const lines=['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete'),
-      '    const targetId = '+id+';','    const outcome = await withTransaction('+(hasFiles ? '('+remove.transaction+' || await mongoCanTransact())' : remove.transaction)+', async session => {',
-      ...relationDeleteLines(entity,spec),'      const filter = {_id: targetId};'];
-    if(entity.softDelete.enabled){
-      lines.push('      filter['+js(entity.softDelete.field)+'] = null;',
-        '      let query = '+entity.name+'.findOneAndUpdate(filter, {$set: {'+js(entity.softDelete.field)+': new Date()}}, {new: true});');
-    } else {
-      lines.push('      let query = '+entity.name+'.findOneAndDelete(filter);');
-    }
-    lines.push('      if (session) query = query.session(session);','      const item = await query;');
-    if (hasFiles) lines.push('      const intent = session && item ? await storage.enqueueCleanupIntent(storage.planEntity('+js(entity.name)+', item), session) : null;','      return {item,intent};');
+      '    const targetId = '+id+';',
+      // Inbound policies cascade through the whole graph, so use a transaction whenever the server has one.
+      '    const outcome = await withTransaction('+(hasFiles || hasInbound ? '('+remove.transaction+' || await mongoCanTransact())' : remove.transaction)+', async session => {',
+      '      let item = await '+entity.name+'.findOne('+lookup+').session(session || null);',
+      '      if (!item) return {item};',
+      '      const affected = await relationDelete(relationModels, '+js(entity.name)+', targetId, session);'];
+    if (entity.softDelete.enabled) lines.push('      item = await '+entity.name+'.findById(targetId).session(session || null);');
+    if (hasFiles) lines.push('      const intent = session ? await storage.enqueueCleanupIntent(affected, session) : null;','      return {item, affected, intent};');
     else lines.push('      return {item};');
     lines.push('    });',
       '    const item = outcome.item;',
       '    if (!item) return res.status('+remove.notFoundStatus+').json('+payload(entity.notFoundResponse)+');');
     if (hasFiles) {
       lines.push('    if (outcome.intent) await storage.finishCleanupIntent(outcome.intent);');
-      lines.push('    else await storage.cleanupEntity(' + js(entity.name) + ', item);');
+      lines.push('    else await storage.cleanupAfterCommit(outcome.affected);');
     }
     lines.push(...hookLines(entity,'after','delete','item'));
     if(remove.status===204) lines.push('    res.status(204).end();'); else {

@@ -50,36 +50,6 @@ function fieldMeta(entity) {
   return Object.fromEntries(entity.fields.map(field => [field.name, {type: field.type, many: Boolean(field.many)}]));
 }
 
-function inboundManyRelations(entity, spec) {
-  const relations = [];
-  for (const source of spec.entities) {
-    for (const field of source.fields) {
-      if (field.type === 'reference' && field.many && field.ref === entity.name) {
-        relations.push({source, field});
-      }
-    }
-  }
-  return relations;
-}
-
-function relationDeleteLines(entity, spec) {
-  const lines = [];
-  for (const {source, field} of inboundManyRelations(entity, spec)) {
-    const sourceDelegate = lowerFirst(source.name);
-    const where = '{' + js(field.name) + ': {some: {id: targetId}}}';
-    if (field.onDelete === 'restrict') {
-      lines.push('      const dependent' + source.name + field.name + ' = await db.' + sourceDelegate + '.count({where: ' + where + '});');
-      lines.push('      if (dependent' + source.name + field.name + ' > 0) { const error = new Error("Delete restricted by ' + source.name + '.' + field.name + '"); error.statusCode = 409; throw error; }');
-    } else if (field.onDelete === 'nullify') {
-      lines.push('      const related' + source.name + field.name + ' = await db.' + sourceDelegate + '.findMany({where: ' + where + ', select: {id: true}});');
-      lines.push('      for (const related of related' + source.name + field.name + ') await db.' + sourceDelegate + '.update({where: {id: related.id}, data: {' + js(field.name) + ': {disconnect: {id: targetId}}}});');
-    } else if (field.onDelete === 'cascade') {
-      lines.push('      await db.' + sourceDelegate + '.deleteMany({where: ' + where + '});');
-    }
-  }
-  return lines;
-}
-
 module.exports = function prismaControllerSource(entity, spec) {
   const paths = filePaths(spec, entity.name);
   const hasFiles = entity.fields.some(field => field.type === 'file');
@@ -93,11 +63,37 @@ module.exports = function prismaControllerSource(entity, spec) {
   if (entity.hooks) imports.push('const hooks = require(' + js(relativeRequire(paths.controller, entity.hooks.module)) + ');');
   if (spec.cache.enabled) imports.push('const cache = require(' + js(relativeRequire(paths.controller, filePaths(spec).cache)) + ');');
   if (hasFiles) imports.push('const storage = require(' + js(relativeRequire(paths.controller, filePaths(spec).storage)) + ');');
+  if (entity.operations.delete.enabled) imports.push('const relationDelete = require(' + js(relativeRequire(paths.controller, filePaths(spec).relationDelete)) + ');');
   const functions = [];
   const exports = [];
 
+  const referenceTargets = Object.fromEntries(entity.fields.filter(field => field.type === 'reference').map(field => {
+    const target = spec.entities.find(item => item.name === field.ref);
+    return [field.name, {delegate: lowerFirst(field.ref), many: Boolean(field.many), softDelete: target.softDelete.enabled ? target.softDelete.field : null}];
+  }));
+  const validationBase = payload(spec.app.responses.validationError);
+  const referenceError = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: missing}' : validationBase;
+  const referenceCheck = Object.keys(referenceTargets).length ? [
+    '    const missing = await missingReferences(req.body || {});',
+    '    if (missing.length) return res.status(' + spec.app.statusCodes.validationError + ').json(' + referenceError + ');'
+  ] : [];
   const helper = [
     'const fieldMeta = ' + js(fieldMeta(entity)) + ';',
+    ...(referenceCheck.length ? [
+      'const referenceTargets = ' + js(referenceTargets) + ';',
+      '// A missing connect target would surface as P2025 (404); soft-deleted targets would be accepted. Check first.',
+      'async function missingReferences(body) {',
+      '  const missing = [];',
+      '  for (const [field, target] of Object.entries(referenceTargets)) {',
+      '    if (body[field] === undefined || body[field] === null) continue;',
+      '    const ids = [...new Set((target.many ? (Array.isArray(body[field]) ? body[field] : []) : [body[field]]).map(String))];',
+      '    if (!ids.length) continue;',
+      '    const where = {id: {in: ids}, ...(target.softDelete ? {[target.softDelete]: null} : {})};',
+      '    if (await prisma[target.delegate].count({where}) !== ids.length) missing.push(field + " references a missing record");',
+      '  }',
+      '  return missing;',
+      '}'
+    ] : []),
     'const queryFields = ' + js({sort: queryFields(spec, entity, 'sort'), select: queryFields(spec, entity, 'select')}) + ';',
     'function coerce(field, value) {',
     '  const type = fieldMeta[field] && fieldMeta[field].type;',
@@ -182,7 +178,7 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const create = entity.operations.create;
   if (create.enabled) {
-    const lines = ['async function create(req, res, next) {','  try {',...hookLines(entity,'before','create',null,delegate),...inputTransformLines(entity, 'create')];
+    const lines = ['async function create(req, res, next) {','  try {',...hookLines(entity,'before','create',null,delegate),...referenceCheck,...inputTransformLines(entity, 'create')];
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) { data[' + js(entity.audit.createdBy) + '] = req.auth.userId; data[' + js(entity.audit.updatedBy) + '] = req.auth.userId; }');
     lines.push(...selectionExpression(create));
     lines.push('    const item = await withTransaction(' + create.transaction + ', db => db.' + delegateName + '.create({data, ...selection}));');
@@ -195,7 +191,7 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const update = entity.operations.update;
   if (update.enabled) {
-    const lines = ['async function update(req, res, next) {','  try {',...hookLines(entity,'before','update',null,delegate),...inputTransformLines(entity, 'update')];
+    const lines = ['async function update(req, res, next) {','  try {',...hookLines(entity,'before','update',null,delegate),...referenceCheck,...inputTransformLines(entity, 'update')];
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) data[' + js(entity.audit.updatedBy) + '] = req.auth.userId;');
     lines.push('    const lookup = {id: ' + id + '};');
     if (entity.softDelete.enabled) lines.push('    lookup[' + js(entity.softDelete.field) + '] = null;');
@@ -224,21 +220,18 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const remove = entity.operations.delete;
   if (remove.enabled) {
-    const requiresRelationTransaction = inboundManyRelations(entity, spec).length > 0;
     const lines = ['async function remove(req, res, next) {','  try {',...hookLines(entity,'before','delete',null,delegate),'    const targetId = ' + id + ';'];
-    lines.push('    const outcome = await withTransaction(' + (remove.transaction || requiresRelationTransaction || hasFiles) + ', async db => {');
+    // Delete policies run in the application through the whole graph (database cascades would skip
+    // restrict checks on implicit many-to-many joins and do not fire on soft delete), so always transact.
+    lines.push('    const outcome = await withTransaction(true, async db => {');
     lines.push('      const lookup = {id: targetId};');
     if (entity.softDelete.enabled) lines.push('      lookup[' + js(entity.softDelete.field) + '] = null;');
-    lines.push('      const existing = await db.' + delegateName + '.findFirst({where: lookup});');
-    lines.push('      if (!existing) return null;');
-    lines.push(...relationDeleteLines(entity, spec));
-    if (entity.softDelete.enabled) {
-      lines.push('      const removed = await db.' + delegateName + '.update({where: {id: targetId}, data: {' + js(entity.softDelete.field) + ': new Date()}});');
-    } else {
-      lines.push('      const removed = await db.' + delegateName + '.delete({where: {id: targetId}});');
-    }
+    lines.push('      let removed = await db.' + delegateName + '.findFirst({where: lookup});');
+    lines.push('      if (!removed) return null;');
+    lines.push('      const affected = await relationDelete(db, ' + js(entity.name) + ', targetId);');
+    if (entity.softDelete.enabled) lines.push('      removed = await db.' + delegateName + '.findUnique({where: {id: targetId}});');
     if (hasFiles) {
-      lines.push('      const intent = await storage.enqueueCleanupIntent(storage.planEntity(' + js(entity.name) + ', existing), db);');
+      lines.push('      const intent = await storage.enqueueCleanupIntent(affected, db);');
       lines.push('      return {removed, intent};');
     } else lines.push('      return {removed};');
     lines.push('    });');

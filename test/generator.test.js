@@ -1172,7 +1172,8 @@ test('generates PostgreSQL many-to-many relations across API SDK OpenAPI and adm
   assert.match(controller, /\{some: \{id: value\}\}/);
 
   const tagController = fs.readFileSync(path.join(output, 'src/controllers/TagController.js'), 'utf8');
-  assert.match(tagController, /disconnect: \{id: targetId\}/);
+  assert.match(tagController, /relationDelete\(db, "Tag", targetId\)/);
+  assert.match(fs.readFileSync(path.join(output, 'src/config/relation-delete.js'), 'utf8'), /disconnect: \[\{id\}\]/);
   assert.match(tagController, /withTransaction\(true/);
 
   const openapi = JSON.parse(fs.readFileSync(path.join(output, 'openapi.json'), 'utf8'));
@@ -1665,7 +1666,7 @@ test('generates secure local multipart storage across runtime OpenAPI SDK and ad
   const controller = fs.readFileSync(path.join(output, 'src/controllers/AssetController.js'), 'utf8');
   assert.match(controller, /storage\.commitUploads\(req\)/);
   assert.match(controller, /storage\.cleanupReplaced/);
-  assert.match(controller, /storage\.cleanupEntity/);
+  assert.match(controller, /storage\.cleanupAfterCommit\(outcome\.affected\)/);
   assert.match(controller, /storage\.enrich/);
 
   const app = fs.readFileSync(path.join(output, 'src/app.js'), 'utf8');
