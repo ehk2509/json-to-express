@@ -6,7 +6,7 @@ module.exports = function errorHandlerSource(spec) {
   const validationBase = payload(spec.app.responses.validationError);
   const validationPayload = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: error.message}' : validationBase;
   // Mongoose messages embed raw values and internal wording; expose per-field messages only.
-  const mongooseDetails = 'Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : " has an invalid value"))';
+  const mongooseDetails = 'Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : item.kind === "reference" ? " references a missing record" : " has an invalid value"))';
   const mongoosePayload = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: ' + mongooseDetails + '}' : validationBase;
   const uniqueBase = payload(spec.app.responses.uniqueConstraint);
   const uniquePayload = uniqueBase.endsWith('}') ? uniqueBase.slice(0, -1) + ', fields: error.keyValue || error.meta && error.meta.target}' : uniqueBase;

@@ -1866,3 +1866,45 @@ test('generated environment guard explains how to provide missing variables', ()
   delete process.env.J2E_TEST_UNSET_URI;
   assert.throws(validateEnvironment, /J2E_TEST_UNSET_URI\. Copy \.env\.example to \.env/);
 });
+
+test('generated Mongoose models reject references to missing or soft-deleted records', async () => {
+  const {buildFiles} = require('../src/generators');
+  const files = buildFiles(normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'mongo-refs'},
+    database: {type: 'mongodb'},
+    entities: {
+      Author: {softDelete: {enabled: true, field: 'deletedAt'}, fields: {name: {type: 'string'}}},
+      Book: {fields: {
+        author: {type: 'reference', ref: 'Author', required: true},
+        editors: {type: 'reference', ref: 'Author', many: true}
+      }}
+    }
+  }));
+  const source = files.get('src/models/Book.js');
+  assert.match(source, /author: \{ type: mongoose\.Schema\.Types\.ObjectId, ref: "Author", validate: referenceExists\("\.\/Author", "Author", \{"enabled":true,"field":"deletedAt"\}\)/);
+  assert.doesNotMatch(files.get('src/models/Author.js'), /referenceExists/);
+
+  const existing = new Set(['a1', 'a2']);
+  let lastFilter;
+  const fakeAuthor = {async countDocuments(filter) { lastFilter = filter; return filter._id.$in.filter(id => existing.has(id)).length; }};
+  const helper = source.slice(source.indexOf('function referenceExists'), source.indexOf('const BookSchema'));
+  const referenceExists = new Function('require', helper + '\nreturn referenceExists;')(() => fakeAuthor);
+  const rule = referenceExists('./Author', 'Author', {enabled: true, field: 'deletedAt'});
+
+  assert.equal(rule.type, 'reference');
+  assert.equal(await rule.validator('a1'), true);
+  assert.deepEqual(lastFilter, {_id: {$in: ['a1']}, deletedAt: null});
+  assert.equal(await rule.validator('missing'), false);
+  assert.equal(await rule.validator(['a1', 'a2', 'a1']), true);
+  assert.equal(await rule.validator(['a1', 'missing']), false);
+  assert.equal(await rule.validator(null), true);
+  assert.equal(await rule.validator([]), true);
+  assert.equal(rule.message({path: 'author'}), 'author references a missing Author');
+
+  const errorHandler = loadGeneratedModule(files.get('src/middleware/error-handler.js'));
+  let sent;
+  const res = {status(code) { sent = {code}; return this; }, json(body) { sent.body = body; return this; }};
+  errorHandler(Object.assign(new Error('x'), {name: 'ValidationError', errors: {author: {path: 'author', kind: 'reference'}}}), {}, res, () => {});
+  assert.deepEqual(sent.body.details, ['author references a missing record']);
+});

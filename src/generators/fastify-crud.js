@@ -312,7 +312,7 @@ module.exports = function nativeCrudSource(spec) {
     '          if (postgres ? error.code === "P2002" : error.code === 11000) return reply.code(409).send({error: "Unique constraint violated", fields: error.keyValue || (error.meta && error.meta.target)});',
     '          if (postgres && error.code === "P2003") return reply.code(409).send({error: "Relation constraint violated"});',
     '          if (!postgres && error.name === "CastError") return reply.code(400).send({error: "Invalid identifier"});',
-    '          if (!postgres && error.name === "ValidationError") return reply.code(400).send({error: "Invalid request", details: Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : " has an invalid value"))});',
+    '          if (!postgres && error.name === "ValidationError") return reply.code(400).send({error: "Invalid request", details: Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : item.kind === "reference" ? " references a missing record" : " has an invalid value"))});',
     '          if (error.statusCode && error.statusCode < 500) return reply.code(error.statusCode).send({error: error.message});',
     '          throw error;',
     '        }',

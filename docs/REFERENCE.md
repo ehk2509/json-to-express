@@ -743,6 +743,8 @@ MongoDB stores many references as ObjectId arrays. PostgreSQL/Prisma emits an im
 
 Supported delete policies remain restrict, nullify, and cascade. For PostgreSQL to-many relations these policies are enforced by the generated application inside a transaction because Prisma implicit many-to-many join tables do not expose referential actions directly.
 
+MongoDB has no foreign keys, so generated Mongoose models validate that every referenced id exists (and is not soft-deleted) on create and on updates that run validators (`runValidators`, enabled by default). A missing reference returns the validation error status with `details: ["<field> references a missing record"]`. The check is not transactional: a referenced record deleted concurrently can still leave a dangling id.
+
 List filters can target a many-reference field by related id. PostgreSQL translates those filters to relation some/none predicates; MongoDB uses normal array membership matching.
 
 Operations can declare the same field in populate for either target. OpenAPI exposes identifier arrays, the TypeScript SDK emits string[] inputs and Array<string | Entity> outputs, and the generated admin UI automatically renders a multi-select relation control.
