@@ -6,6 +6,10 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.6 will be listed here.
 
+### Fixed
+- Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.
+- Database-unavailable errors return `503 Service unavailable` with `Retry-After` instead of 500.
+
 ## [0.2.0-beta.6] - 2026-10-21
 
 ### Changed

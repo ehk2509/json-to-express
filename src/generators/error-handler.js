@@ -2,6 +2,9 @@
 
 const {filePaths, js, payload, relativeRequire} = require('./utils');
 
+// Outages (unreachable database, exhausted pool, client-side timeouts) are retryable: 503, not 500.
+const DATABASE_UNAVAILABLE = '(error && (["P1001", "P1002", "P1008", "P1017", "P2024"].includes(error.code) || error.name === "PrismaClientInitializationError" || /^Mongo(ose)?(ServerSelection|Network|NetworkTimeout|NotConnected|OperationTimeout|TopologyClosed)Error$/.test(error.name) || /buffering timed out/.test(error.message || "")))';
+
 module.exports = function errorHandlerSource(spec) {
   const validationBase = payload(spec.app.responses.validationError);
   const validationPayload = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: error.message}' : validationBase;
@@ -30,6 +33,7 @@ module.exports = function errorHandlerSource(spec) {
     ...(spec.observability.enabled ? ['const observability = require(' + js(relativeRequire(paths.errorHandler, paths.observability)) + ');', ''] : []),
     'module.exports = function errorHandler(error, req, res, next) {',
     ...(spec.observability.enabled ? ['  observability.logger.error("http.request.error", {requestId: req.id, error: error && error.message, code: error && error.code});'] : []),
+    '  if ' + DATABASE_UNAVAILABLE + ' { res.setHeader("Retry-After", "5"); return res.status(503).json({error: "Service unavailable"}); }',
     ...targetErrors,
     "  if (error && error.statusCode) return res.status(error.statusCode).json({error: error.message, ...(error.details ? {details: error.details} : {})});",
     ...(spec.observability.enabled

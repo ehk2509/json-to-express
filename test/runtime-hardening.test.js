@@ -188,3 +188,59 @@ test('generated storage verifies file signatures and serves downloads defensivel
   assert.match(html['Content-Security-Policy'], /sandbox/);
   assert.match(helpers.downloadHeaders({key: 'a/b.png', mimeType: 'image/png', originalName: 'b.png'})['Content-Disposition'], /^inline;/);
 });
+
+function outageSpec(database, options) {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'outage-api'},
+    database: {type: database, ...(options ? {options} : {})},
+    entities: {Item: {fields: {name: {type: 'string'}}}}
+  });
+}
+
+test('generated database clients bound connection and query time, keeping explicit overrides', () => {
+  const mongo = buildFiles(outageSpec('mongodb')).get('src/config/database.js');
+  assert.match(mongo, /mongoose\.connect\(uri, \{"serverSelectionTimeoutMS":5000,"timeoutMS":10000\}\)/);
+  const overridden = buildFiles(outageSpec('mongodb', {timeoutMS: 30000, maxPoolSize: 5})).get('src/config/database.js');
+  assert.match(overridden, /mongoose\.connect\(uri, \{"serverSelectionTimeoutMS":5000,"timeoutMS":30000,"maxPoolSize":5\}\)/);
+
+  const postgres = buildFiles(outageSpec('postgresql')).get('src/config/database.js');
+  const withTimeouts = new Function(postgres.slice(postgres.indexOf('function withTimeouts'), postgres.indexOf('const databaseUrl')) + '\nreturn withTimeouts;')();
+  const url = new URL(withTimeouts('postgresql://u:p@db:5432/app?schema=public'));
+  assert.deepEqual(Object.fromEntries(url.searchParams), {schema: 'public', connect_timeout: '5', pool_timeout: '5', socket_timeout: '10'});
+  assert.equal(new URL(withTimeouts('postgresql://u:p@db/app?socket_timeout=60')).searchParams.get('socket_timeout'), '60');
+  assert.equal(withTimeouts('not a url'), 'not a url');
+  assert.match(postgres, /new PrismaClient\(\{datasources: \{db: \{url: databaseUrl\}\}\}\)/);
+});
+
+test('generated readiness ping gives up on a hung database', async () => {
+  const source = buildFiles(outageSpec('mongodb')).get('src/config/database.js');
+  const fakeMongoose = {connection: {readyState: 1, db: {admin: () => ({ping: () => new Promise(() => {})})}}};
+  const connectDatabase = load(source, {mongoose: fakeMongoose});
+  const started = Date.now();
+  await assert.rejects(connectDatabase.ping(), /ping timed out after 2000ms/);
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('generated error handlers answer database outages with 503 and Retry-After', () => {
+  for (const database of ['mongodb', 'postgresql']) {
+    const handler = load(buildFiles(outageSpec(database)).get('src/middleware/error-handler.js'), {});
+    for (const error of [
+      Object.assign(new Error('x'), {name: 'MongoServerSelectionError'}),
+      Object.assign(new Error('x'), {name: 'MongoOperationTimeoutError'}),
+      Object.assign(new Error('Operation `items.find()` buffering timed out after 10000ms'), {name: 'MongooseError'}),
+      Object.assign(new Error('x'), {code: 'P1001'}),
+      Object.assign(new Error('x'), {code: 'P2024'}),
+      Object.assign(new Error('x'), {name: 'PrismaClientInitializationError'})
+    ]) {
+      const sent = {headers: {}};
+      handler(error, {}, {setHeader(name, value) { sent.headers[name] = value; }, status(code) { sent.code = code; return this; }, json(body) { sent.body = body; return this; }}, () => {});
+      assert.equal(sent.code, 503, database + ' ' + (error.name || error.code));
+      assert.equal(sent.headers['Retry-After'], '5');
+      assert.deepEqual(sent.body, {error: 'Service unavailable'});
+    }
+  }
+  const fastify = outageSpec('postgresql');
+  fastify.app.framework = 'fastify';
+  assert.match(buildFiles(fastify).get('src/fastify-native.js'), /return reply\.code\(503\)\.header\("Retry-After", "5"\)\.send\(\{error: "Service unavailable"\}\)/);
+});
