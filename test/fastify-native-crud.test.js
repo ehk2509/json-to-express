@@ -450,3 +450,50 @@ test('native Fastify validation enforces min/max and length bounds', () => {
   ]);
   assert.deepEqual(Array.from(context.validate(fields, {title: 'abc', priority: 3}, false)), []);
 });
+
+function loadListHelpers(database) {
+  const input = spec(database);
+  input.entities.User = {fields: {name: {type: 'string', unique: true}}};
+  input.entities.Todo.fields.priority = {type: 'number'};
+  input.entities.Todo.fields.done = {type: 'boolean'};
+  input.entities.Todo.fields.owner = {type: 'reference', ref: 'User'};
+  input.entities.Todo.operations = {list: {query: {filters: ['priority', 'done', 'owner'], operators: ['eq', 'gte', 'lte', 'in']}}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  const config = source.match(/^const config = (.*);$/m)[1];
+  const helpers = source.slice(source.indexOf('function validId('), source.indexOf('async function populateRecord'));
+  const context = {};
+  vm.runInNewContext('const postgres = ' + (database === 'postgresql') + ';\n' + helpers + '\nthis.listConditions = listConditions; this.validate = validate; this.config = ' + config + ';', context);
+  const entry = context.config.find(item => item.name === 'Todo');
+  return {source, entry, context, list: values => context.listConditions(entry, {config: entry.operations.list.query, values}, {})};
+}
+
+test('native Fastify list filters coerce values and apply operators like the Express target', () => {
+  const ownerMongo = 'a'.repeat(24);
+  const mongo = loadListHelpers('mongodb');
+  let result = mongo.list({priority__gte: '2', priority__lte: '5', done: 'true', owner: ownerMongo});
+  assert.deepEqual(JSON.parse(JSON.stringify(result.conditions)), {priority: {$gte: 2, $lte: 5}, done: true, owner: ownerMongo});
+  assert.deepEqual(Array.from(result.invalid), []);
+  result = mongo.list({priority__gte: 'abc', done: 'maybe', owner: 'nope', priority__in: '1,x'});
+  assert.deepEqual(Array.from(result.invalid).sort(), ['done', 'owner', 'priority__gte', 'priority__in']);
+
+  const ownerUuid = '00000000-0000-4000-8000-000000000000';
+  const postgres = loadListHelpers('postgresql');
+  result = postgres.list({priority__in: '1,3', owner: ownerUuid});
+  assert.deepEqual(JSON.parse(JSON.stringify(result.conditions)), {priority: {in: [1, 3]}, ownerId: ownerUuid});
+});
+
+test('native Fastify validates references and maps unique, relation and cast errors', () => {
+  const {source, entry, context} = loadListHelpers('mongodb');
+  assert.deepEqual(Array.from(context.validate(entry.fields, {title: 'ok', owner: 'not-an-id'}, false)), ['owner has an invalid value']);
+  assert.deepEqual(Array.from(context.validate(entry.fields, {title: 'ok', owner: 'a'.repeat(24)}, false)), []);
+  assert.match(source, /postgres \? error.code === "P2002" : error.code === 11000\) return reply.code\(409\)/);
+  assert.match(source, /error.code === "P2003"\) return reply.code\(409\)/);
+  assert.match(source, /error.name === "CastError"\) return reply.code\(400\)/);
+});
+
+test('native Fastify Mongo deletes only open transactions when the server supports them', () => {
+  const input = spec();
+  input.entities.Archive = {fields: {todo: {type: 'reference', ref: 'Todo', onDelete: 'restrict'}}};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  assert.match(source, /transactional\(op.transaction \|\| \(\(entry.inbound.length > 0 \|\| storageEnabled\) && await mongoCanTransact\(\)\)/);
+});
