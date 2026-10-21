@@ -9,6 +9,10 @@ Changes after beta.6 will be listed here.
 ### Fixed
 - Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.
 - Database-unavailable errors return `503 Service unavailable` with `Retry-After` instead of 500.
+- Plugins that log with `console.log` no longer fail with "returned invalid JSON": plugin stdout is redirected to stderr and shown with a `[plugin <module>]` prefix.
+
+### Security
+- Plugin contributions under `.git/`, `node_modules/` or `.j2e/` are rejected, so a plugin cannot plant git hooks or packages through the managed writer.
 
 ## [0.2.0-beta.6] - 2026-10-21
 

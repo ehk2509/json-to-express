@@ -199,3 +199,29 @@ test('CLI resolves provider modules relative to their specification directory', 
   }
   assert.ok(fs.existsSync(path.join(output, 'src/server.js')));
 });
+
+test('plugin logging goes to stderr instead of corrupting the JSON protocol', t => {
+  const {root, output} = fixture(t);
+  const mod = moduleAt(root, 'logging',
+    "module.exports={apiVersion:1,id:'test.logging',kind:'generator',generate(){" +
+    "console.log('debug: building');console.info('info line');process.stdout.write('raw write\\n');" +
+    "return {files:{'extensions/logged.txt':'ok'}}}};");
+  const spec = baseSpec(); spec.plugins = [declaration(mod, 'generator')];
+  const writes = [];
+  const original = process.stderr.write;
+  process.stderr.write = chunk => { writes.push(String(chunk)); return true; };
+  try { generateApplication(spec, output); } finally { process.stderr.write = original; }
+  assert.equal(fs.readFileSync(path.join(output, 'extensions/logged.txt'), 'utf8'), 'ok');
+  const forwarded = writes.join('');
+  assert.match(forwarded, /\[plugin .*logging\.js\] debug: building/);
+  assert.match(forwarded, /raw write/);
+});
+
+test('plugins cannot contribute files under .git, node_modules or .j2e', () => {
+  for (const reserved of ['.git/hooks/post-checkout', '.GIT/config', 'node_modules/evil/index.js', 'Node_Modules/x.js', '.j2e/plugins/x']) {
+    assert.throws(() => safeArtifactPath(reserved), /reserved/, reserved);
+  }
+  for (const allowed of ['.github/workflows/ci.yml', 'src/node_modules.md', 'docs/.gitkeep', 'extensions/.j2e-notes']) {
+    assert.equal(safeArtifactPath(allowed), allowed);
+  }
+});

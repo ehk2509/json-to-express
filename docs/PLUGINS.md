@@ -72,6 +72,11 @@ module.exports = {
   functions and open connections cannot cross the subprocess boundary.
 - Contributions contain files keyed by relative artifact paths. The host
   writes the files through the same ownership-aware manifest as core.
+  Paths under `.git/`, `node_modules/` and `.j2e/` (any letter case) are
+  reserved and rejected.
+- Anything a plugin writes to stdout, including `console.log`, is redirected
+  to stderr so it cannot corrupt the JSON protocol. The host prints those
+  lines prefixed with `[plugin <module>]`.
 - A plugin can replace a core-generated artifact only when both its
   contribution.overrides and its spec declaration allowOverrides list that
   exact file path. Without both, collisions fail closed.
@@ -125,7 +130,8 @@ This is **process isolation, not a security sandbox**.
 - Plugin code is still ordinary Node.js code. It may access filesystem,
   network, local credentials or subprocesses under the user's OS permissions.
   A hostile plugin can write files directly or escape the child-process
-  resource constraints. Use only reviewed, trusted local packages.
+  resource constraints; for example, a detached grandchild process survives
+  the worker timeout. Use only reviewed, trusted local packages.
 - Never store or pass raw user secrets in plugin configuration or spec defaults.
   Keep credentials in runtime environment variables, secret managers, or
   generated application deployment settings. Context is not automatically
