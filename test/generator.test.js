@@ -1908,3 +1908,91 @@ test('generated Mongoose models reject references to missing or soft-deleted rec
   errorHandler(Object.assign(new Error('x'), {name: 'ValidationError', errors: {author: {path: 'author', kind: 'reference'}}}), {}, res, () => {});
   assert.deepEqual(sent.body.details, ['author references a missing record']);
 });
+
+function securitySpec(database, extra = {}) {
+  return normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'secure-api', bodyLimit: '10kb', ...extra.app},
+    database: {type: database},
+    auth: {enabled: true, strategies: ['jwt'], jwt: {secretEnv: 'J2E_TEST_JWT'}},
+    entities: {
+      Note: {
+        softDelete: {enabled: true, field: 'deletedAt'},
+        operations: {
+          list: {query: {filters: ['title'], operators: ['eq', 'ne'], sortParam: 'sort', selectParam: 'select'}},
+          get: {selectParam: 'select'},
+          update: {validate: false}
+        },
+        fields: {
+          title: {type: 'string', required: true},
+          secret: {type: 'string', ...(database === 'mongodb' ? {options: {select: false}} : {})}
+        }
+      }
+    }
+  });
+}
+
+test('generated RBAC grants access when the caller holds any listed role', () => {
+  const {buildFiles} = require('../src/generators');
+  const auth = buildFiles(securitySpec('mongodb')).get('src/middleware/auth.js');
+  assert.match(auth, /roles\.length && !roles\.some\(role => identity\.roles\.includes\(role\)\)\) throw authError\("Forbidden", 403\)/);
+  assert.match(auth, /roles\.length && !roles\.some\(role => req\.auth\.roles\.includes\(role\)\)\) return res\.status\(403\)/);
+  assert.doesNotMatch(auth, /roles\.every/);
+});
+
+test('generated environment guard refuses change-me placeholder secrets', () => {
+  const {buildFiles} = require('../src/generators');
+  const validateEnvironment = loadGeneratedModule(buildFiles(securitySpec('mongodb')).get('src/config/environment.js'));
+  const previous = {uri: process.env.MONGODB_URI, jwt: process.env.J2E_TEST_JWT};
+  try {
+    process.env.MONGODB_URI = 'mongodb://127.0.0.1/test';
+    process.env.J2E_TEST_JWT = 'change-me';
+    assert.throws(validateEnvironment, /Replace the change-me placeholder in: J2E_TEST_JWT/);
+    process.env.J2E_TEST_JWT = 'a-real-long-random-secret-value';
+    assert.doesNotThrow(validateEnvironment);
+  } finally {
+    for (const [name, value] of [['MONGODB_URI', previous.uri], ['J2E_TEST_JWT', previous.jwt]]) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  }
+});
+
+test('generated Express routes accept only declared fields, even when validation is disabled', () => {
+  const {buildFiles} = require('../src/generators');
+  const files = buildFiles(securitySpec('postgresql'));
+  const validation = loadGeneratedModule(files.get('src/middleware/validation.js'));
+  const req = {body: {title: 'ok', secret: 's', id: 'other', deletedAt: '2020-01-01', createdAt: '1999-01-01', createdBy: 'mallory'}};
+  validation.body('Note', false)(req, {}, () => {});
+  assert.deepEqual(req.body, {title: 'ok', secret: 's'});
+  const unvalidated = {body: {title: 'x', deletedAt: 'now'}};
+  validation.fields('Note')(unvalidated, {}, () => {});
+  assert.deepEqual(unvalidated.body, {title: 'x'});
+  const routes = files.get('src/routes/NoteRoutes.js');
+  assert.match(routes, /router\.patch\("\/:id", auth\.authenticate\([^)]*\), validation\.fields\("Note"\), controller\.update\)/);
+});
+
+test('generated Mongoose controllers allowlist sort/select and reject non-string filters', () => {
+  const {buildFiles} = require('../src/generators');
+  const source = buildFiles(securitySpec('mongodb')).get('src/controllers/NoteController.js');
+  const helper = source.slice(source.indexOf('const queryFields'), source.indexOf('async function withTransaction'));
+  const fieldList = new Function(helper + '\nreturn fieldList;')();
+  assert.equal(fieldList('sort', '-title,createdAt'), '-title createdAt');
+  assert.equal(fieldList('select', 'title -_id'), 'title -_id');
+  assert.equal(fieldList('select', 'secret'), null);
+  assert.equal(fieldList('select', '+secret'), null);
+  assert.equal(fieldList('sort', 'secret'), null);
+  assert.equal(fieldList('select', 'title -createdAt'), null);
+  assert.equal(fieldList('sort', '[object Object]'), null);
+  assert.match(source, /typeof req\.query\[key\] !== "string"\) return res\.status\(400\)/);
+  assert.match(source, /const selectFields = fieldList\("select", req\.query\["select"\]\)/);
+});
+
+test('generated Prisma controllers allowlist sort/select and reject non-string filters', () => {
+  const {buildFiles} = require('../src/generators');
+  const source = buildFiles(securitySpec('postgresql')).get('src/controllers/NoteController.js');
+  const fields = JSON.parse(source.match(/^const queryFields = (.*);$/m)[1]);
+  assert.deepEqual(fields.sort, ['id', 'createdAt', 'updatedAt', 'title', 'secret']);
+  assert.match(source, /sortFields\.some\(field => !queryFields\.sort\.includes/);
+  assert.match(source, /selected\.some\(name => !queryFields\.select\.includes\(name\)\)/);
+  assert.match(source, /typeof req\.query\[key\] !== "string"\) return res\.status\(400\)/);
+});

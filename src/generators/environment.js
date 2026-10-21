@@ -47,12 +47,15 @@ module.exports = function environmentSource(spec) {
     'const definitions = ' + js(declared) + ';', '',
     'function validateEnvironment() {',
     '  const missing = [];',
+    '  const placeholders = [];',
     '  for (const [name, raw] of Object.entries(definitions)) {',
     "    const definition = typeof raw === 'string' ? {default: raw} : raw;",
     '    if (process.env[name] === undefined && definition.default !== undefined) process.env[name] = String(definition.default);',
     '    if (definition.required && !process.env[name]) missing.push(name);',
+    "    if (process.env[name] === 'change-me') placeholders.push(name);",
     '  }',
     "  if (missing.length) throw new Error('Missing required environment variables: ' + missing.join(', ') + '. Copy .env.example to .env for local development, or set them in the environment.');",
+    "  if (placeholders.length) throw new Error('Replace the change-me placeholder in: ' + placeholders.join(', ') + '. Use a long random value, e.g. node -e \"console.log(require(\\'crypto\\').randomBytes(32).toString(\\'hex\\'))\"');",
     '}', '',
     'module.exports = validateEnvironment;', ''
   ].join('\n');

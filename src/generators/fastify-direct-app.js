@@ -2,13 +2,22 @@
 
 const {filePaths, js, relativeRequire} = require('./utils');
 
+// Express-style size strings ("10kb", "2mb") to the byte count Fastify expects.
+function byteLimit(value) {
+  if (typeof value === 'number') return value;
+  const match = /^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i.exec(String(value).trim());
+  if (!match) throw new Error('Unsupported body limit: ' + value);
+  const units = {b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3};
+  return Math.floor(Number(match[1]) * units[(match[2] || 'b').toLowerCase()]);
+}
+
 module.exports = function directFastifyAppSource(spec) {
   const appPath = filePaths(spec).app;
   const root = require('node:path').posix.join(spec.generation.paths.source);
   const nativeModules = ['fastify-native', 'fastify-crud', 'fastify-endpoints', 'fastify-auth'];
   return [
     "'use strict';",
-    "const fastify = require('fastify')({logger: false" + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});',
+    "const fastify = require('fastify')({logger: false, bodyLimit: " + byteLimit(spec.app.express.json.limit) + (spec.storage.enabled && spec.storage.provider === 'local' && spec.storage.signedUrls.enabled ? ', maxParamLength: 2048' : '') + '});',
     'fastify.register(async function nativeScope(fastify) {',
     ...(spec.storage.enabled ? ["  await fastify.register(require('@fastify/multipart'));"] : []),
     ...(spec.app.production.rateLimit.enabled ? ['  await fastify.register(require("@fastify/rate-limit"), {max: ' + spec.app.production.rateLimit.max + ', timeWindow: ' + spec.app.production.rateLimit.windowMs + '});'] : []),

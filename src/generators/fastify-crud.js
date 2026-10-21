@@ -1,6 +1,6 @@
 'use strict';
 
-const {filePaths, js, joinUrl, relativeRequire} = require('./utils');
+const {filePaths, js, joinUrl, queryFields, relativeRequire} = require('./utils');
 
 // Every supported MongoDB/PostgreSQL CRUD operation uses native Fastify routes.
 // Unknown populate paths are rejected before generation to avoid silent data loss.
@@ -33,6 +33,7 @@ module.exports = function nativeCrudSource(spec) {
     softDelete: entity.softDelete,
     audit: entity.audit,
     base: joinUrl(spec.app.apiPrefix, entity.route),
+    sortable: queryFields(spec, entity, 'sort'),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
       type: field.type, required: field.required, many: Boolean(field.many), enum: field.enum || null,
       ...Object.fromEntries(['min', 'max', 'minLength', 'maxLength'].filter(key => field[key] !== undefined).map(key => [key, field[key]]))
@@ -191,6 +192,10 @@ module.exports = function nativeCrudSource(spec) {
     '          request.body = parsed.body;',
     '          storedUploads = parsed.stored;',
     '        }',
+    '        // Ids, timestamps, soft-delete and audit columns are server-managed: drop anything undeclared.',
+    '        if (["create", "update"].includes(action) && request.body && typeof request.body === "object" && !Array.isArray(request.body)) {',
+    '          request.body = Object.fromEntries(Object.entries(request.body).filter(([name]) => Object.prototype.hasOwnProperty.call(entry.fields, name)));',
+    '        }',
     '        if (await callHook(entry, "before", action, request, reply, model)) {',
     '          if (storedUploads.length) await storage.cleanup(storedUploads).catch(() => {});',
     '          return;',
@@ -217,6 +222,7 @@ module.exports = function nativeCrudSource(spec) {
     '          const page = p.enabled ? Math.max(1, Number(request.query[p.pageParam]) || 1) : 1;',
     '          const sortValue = q.sortParam && request.query[q.sortParam];',
     '          const sortFields = sortValue ? String(sortValue).split(/[ ,]+/).filter(Boolean) : [];',
+    '          if (sortFields.some(field => !entry.sortable.includes(field.replace(/^-/, "")))) return reply.code(400).send({error: "Invalid query parameter", details: [q.sortParam]});',
     '          const orderBy = sortFields.map(field => ({[field.replace(/^-/, "")]: field.startsWith("-") ? "desc" : "asc"}));',
     '          const skip = limit ? (page - 1) * limit : undefined;',
     '          let rows;',

@@ -211,6 +211,8 @@ j2e upgrade examples/shop.json --output generated/shop-api --allow-unknown-schem
 
 `--allow-destructive` is a deliberate acknowledgement: **it does not run, create, or validate SQL migrations**. Back up data, prepare and review Prisma migrations (`db:migrate:verify` and `db:migrate:deploy`) or equivalent MongoDB migrations first. `--approve-schema` is a separate acknowledgement for review-level changes. Changes with both severities require both flags. The legacy `--allow-unknown-schema` flag means you manually checked schema state before initializing the v2 manifest; it does not prove that the database matches.
 
+`upgrade` replaces the output directory as a whole, so restart running servers afterwards; a process started before the upgrade keeps executing the previous tree.
+
 The drift check compares the **previous generated declarative model** against the new specification, not the live contents or physical schema of MongoDB/PostgreSQL. Continue to use database-specific migration and drift tools for production verification. Both `generate` and `upgrade` refuse risky regeneration by default; `diff` and `plan` are read-only.
 
 ## One specification contract
@@ -592,6 +594,8 @@ List endpoints can declaratively define filtering, sorting, projection, and boun
 
 The generator emits filter construction, sort/select application, and skip/limit pagination instead of a fixed Model.find call with no request semantics.
 
+Sort and select parameters accept only the entity's declared fields, its id, `createdAt`/`updatedAt` and audit fields (prefix `-` to sort descending or exclude). Fields hidden with Mongoose `options.select: false` cannot be selected or sorted, and PostgreSQL cannot sort by relation or file fields. Filter values must be plain strings: bracket syntax such as `title[$regex]=` or `title[contains]=` and repeated parameters return 400 with `details` naming the parameter; use the declared `field__operator` parameters instead.
+
 ## Custom middleware
 
 Executable code is never embedded as raw JavaScript strings in JSON.
@@ -852,13 +856,15 @@ Each operation can restrict both roles and accepted strategies:
 }
 ~~~
 
-When `strategies` is omitted from an operation, all globally enabled strategies are accepted. Authentication and role checks happen before controller or workflow execution.
+When `strategies` is omitted from an operation, all globally enabled strategies are accepted. A caller is authorized when they hold **any** of the listed `roles`. Authentication and role checks happen before controller or workflow execution.
 
 Local auth adds configurable endpoints for register, login, logout, refresh, forgot-password, reset-password, OIDC login, and OIDC callback. OpenAPI documents these endpoints and emits JWT, API-key, session-cookie, and OpenID Connect security schemes.
 
 ### Request validation
 
-Generated request middleware validates create/update payload types, required fields, single and array reference identifiers, and resource identifiers before database access. Required many-reference fields reject empty arrays.
+Generated request middleware validates create/update payload types, required fields, length and numeric bounds, single and array reference identifiers, and resource identifiers before database access. Required many-reference fields reject empty arrays.
+
+Create and update bodies keep only declared entity fields, even when `validate` is disabled. Primary keys, timestamps, soft-delete and audit columns, and unknown properties are dropped before persistence, so clients cannot, for example, soft-delete a record through `PATCH {"deletedAt": ...}`.
 
 This gives the generated API an HTTP validation boundary in addition to persistence-layer validation.
 
@@ -946,6 +952,8 @@ Application-specific variables can be declared and validated at startup:
 ~~~
 
 Database URLs plus enabled authentication secrets—JWT secrets, API-key values, OIDC client credentials, and optional reset-webhook URLs—are automatically included in the generated environment guard.
+
+The generated `.env.example` uses `change-me` for secrets. The environment guard refuses to start while any variable still has that value, because a known JWT secret or API key would let anyone forge credentials.
 
 ### Production middleware
 
