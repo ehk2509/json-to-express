@@ -1971,7 +1971,7 @@ test('generated Express routes accept only declared fields, even when validation
   assert.match(routes, /router\.patch\("\/:id", auth\.authenticate\([^)]*\), validation\.fields\("Note"\), controller\.update\)/);
 });
 
-test('generated Mongoose controllers allowlist sort/select and reject non-string filters', () => {
+test('generated Mongoose controllers allowlist sort/select and reject object/array filters', () => {
   const {buildFiles} = require('../src/generators');
   const source = buildFiles(securitySpec('mongodb')).get('src/controllers/NoteController.js');
   const helper = source.slice(source.indexOf('const queryFields'), source.indexOf('async function withTransaction'));
@@ -1983,16 +1983,16 @@ test('generated Mongoose controllers allowlist sort/select and reject non-string
   assert.equal(fieldList('sort', 'secret'), null);
   assert.equal(fieldList('select', 'title -createdAt'), null);
   assert.equal(fieldList('sort', '[object Object]'), null);
-  assert.match(source, /typeof req\.query\[key\] !== "string"\) return res\.status\(400\)/);
+  assert.match(source, /req\.query\[key\] !== null && typeof req\.query\[key\] === "object"\) return res\.status\(400\)/);
   assert.match(source, /const selectFields = fieldList\("select", req\.query\["select"\]\)/);
 });
 
-test('generated Prisma controllers allowlist sort/select and reject non-string filters', () => {
+test('generated Prisma controllers allowlist sort/select and reject object/array filters', () => {
   const {buildFiles} = require('../src/generators');
   const source = buildFiles(securitySpec('postgresql')).get('src/controllers/NoteController.js');
   const fields = JSON.parse(source.match(/^const queryFields = (.*);$/m)[1]);
   assert.deepEqual(fields.sort, ['id', 'createdAt', 'updatedAt', 'title', 'secret']);
   assert.match(source, /sortFields\.some\(field => !queryFields\.sort\.includes/);
   assert.match(source, /selected\.some\(name => !queryFields\.select\.includes\(name\)\)/);
-  assert.match(source, /typeof req\.query\[key\] !== "string"\) return res\.status\(400\)/);
+  assert.match(source, /req\.query\[key\] !== null && typeof req\.query\[key\] === "object"\) return res\.status\(400\)/);
 });

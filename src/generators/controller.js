@@ -108,8 +108,8 @@ function controllerSource(entity, spec) {
     if(q.filters.length){
       lines.push('    const mongoOperators = {eq: "$eq", ne: "$ne", gt: "$gt", gte: "$gte", lt: "$lt", lte: "$lte", in: "$in"};');
       lines.push('    for (const field of '+js(q.filters)+') {');
-      lines.push('      // Express parses field[op]=x into objects; only plain strings may reach the database query.');
-      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== undefined && typeof req.query[key] !== "string") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
+      lines.push('      // Express parses field[op]=x into objects and repeated params into arrays; only scalars may reach the query.');
+      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== null && typeof req.query[key] === "object") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
       lines.push('      if (req.query[field] !== undefined) filter[field] = req.query[field];');
       lines.push('      for (const operator of '+js(q.operators)+') {');
       lines.push('        if (operator === "eq") continue;');
