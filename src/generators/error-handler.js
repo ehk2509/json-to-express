@@ -5,6 +5,9 @@ const {filePaths, js, payload, relativeRequire} = require('./utils');
 module.exports = function errorHandlerSource(spec) {
   const validationBase = payload(spec.app.responses.validationError);
   const validationPayload = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: error.message}' : validationBase;
+  // Mongoose messages embed raw values and internal wording; expose per-field messages only.
+  const mongooseDetails = 'Object.values(error.errors || {}).map(item => item.path + (item.kind === "required" ? " is required" : item.kind === "reference" ? " references a missing record" : " has an invalid value"))';
+  const mongoosePayload = validationBase.endsWith('}') ? validationBase.slice(0, -1) + ', details: ' + mongooseDetails + '}' : validationBase;
   const uniqueBase = payload(spec.app.responses.uniqueConstraint);
   const uniquePayload = uniqueBase.endsWith('}') ? uniqueBase.slice(0, -1) + ', fields: error.keyValue || error.meta && error.meta.target}' : uniqueBase;
 
@@ -16,7 +19,7 @@ module.exports = function errorHandlerSource(spec) {
       "  if (error && error.code === 'P2025') return res.status(" + spec.app.statusCodes.notFound + ').json(' + payload(spec.app.responses.notFound) + ');'
     ]
     : [
-      "  if (error && error.name === 'ValidationError') return res.status(" + spec.app.statusCodes.validationError + ').json(' + validationPayload + ');',
+      "  if (error && error.name === 'ValidationError') return res.status(" + spec.app.statusCodes.validationError + ').json(' + mongoosePayload + ');',
       "  if (error && error.name === 'CastError') return res.status(" + spec.app.statusCodes.invalidIdentifier + ').json(' + payload(spec.app.responses.invalidIdentifier) + ');',
       "  if (error && error.code === 11000) return res.status(" + spec.app.statusCodes.uniqueConstraint + ').json(' + uniquePayload + ');'
     ];
