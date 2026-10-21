@@ -2,6 +2,14 @@
 
 const {js} = require('./utils');
 
+function bounds(field) {
+  const result = {};
+  for (const key of ['min', 'max', 'minLength', 'maxLength']) {
+    if (field[key] !== undefined) result[key] = field[key];
+  }
+  return result;
+}
+
 function descriptor(entity) {
   const fields = {};
   for (const field of entity.fields) {
@@ -10,7 +18,8 @@ function descriptor(entity) {
       required: Boolean(field.required),
       many: Boolean(field.many),
       enum: field.enum || null,
-      upload: field.upload || null
+      upload: field.upload || null,
+      ...bounds(field)
     };
   }
   return fields;
@@ -51,6 +60,17 @@ module.exports = function validationSource(spec) {
     '  if (definition.enum && !definition.enum.includes(value)) return false;',
     '  return true;',
     '}', '',
+    'function boundError(name, definition, value) {',
+    "  if (typeof value === 'string') {",
+    '    if (definition.minLength !== undefined && value.length < definition.minLength) return name + " must be at least " + definition.minLength + " characters";',
+    '    if (definition.maxLength !== undefined && value.length > definition.maxLength) return name + " must be at most " + definition.maxLength + " characters";',
+    '  }',
+    "  if (typeof value === 'number') {",
+    '    if (definition.min !== undefined && value < definition.min) return name + " must be at least " + definition.min;',
+    '    if (definition.max !== undefined && value > definition.max) return name + " must be at most " + definition.max;',
+    '  }',
+    '  return null;',
+    '}', '',
     'function validateBody(entityName, value, partial) {',
     '  const fields = definitions[entityName];',
     '  const errors = [];',
@@ -58,6 +78,10 @@ module.exports = function validationSource(spec) {
     '    const fieldValue = value && value[name];',
     '    if (!partial && definition.required && (fieldValue === undefined || fieldValue === null || (definition.many && Array.isArray(fieldValue) && fieldValue.length === 0))) errors.push(name + " is required");',
     '    if (fieldValue !== undefined && !validValue(definition, fieldValue)) errors.push(name + " has an invalid value");',
+    '    else if (fieldValue !== undefined && fieldValue !== null) {',
+    '      const bound = boundError(name, definition, fieldValue);',
+    '      if (bound) errors.push(bound);',
+    '    }',
     '  }',
     '  return errors;',
     '}', '',

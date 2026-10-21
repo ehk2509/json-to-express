@@ -190,7 +190,9 @@ async function main() {
     });
     console.log('✓ Generated ' + result.files.length + ' files in ' + result.outputDir);
     if (command === 'generate') {
-      console.log('  cd ' + path.relative(process.cwd(), result.outputDir));
+      const relativeOutput = path.relative(process.cwd(), result.outputDir);
+      const insideCwd = relativeOutput && !relativeOutput.startsWith('..') && !path.isAbsolute(relativeOutput);
+      console.log('  cd ' + (insideCwd ? relativeOutput : result.outputDir));
       console.log('  npm install');
       console.log('  cp .env.example .env');
       console.log('  npm start');

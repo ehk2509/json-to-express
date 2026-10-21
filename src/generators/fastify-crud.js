@@ -34,7 +34,8 @@ module.exports = function nativeCrudSource(spec) {
     audit: entity.audit,
     base: joinUrl(spec.app.apiPrefix, entity.route),
     fields: Object.fromEntries(entity.fields.map(field => [field.name, {
-      type: field.type, required: field.required, enum: field.enum || null
+      type: field.type, required: field.required, enum: field.enum || null,
+      ...Object.fromEntries(['min', 'max', 'minLength', 'maxLength'].filter(key => field[key] !== undefined).map(key => [key, field[key]]))
     }]))
   }));
   return [
@@ -87,6 +88,10 @@ module.exports = function nativeCrudSource(spec) {
     '    if (field.type === "boolean" && typeof value !== "boolean") errors.push(name + " has an invalid value");',
     '    if (field.type === "date" && Number.isNaN(Date.parse(value))) errors.push(name + " has an invalid value");',
     '    if (field.enum && !field.enum.includes(value)) errors.push(name + " has an invalid value");',
+    '    if (typeof value === "string" && field.minLength !== undefined && value.length < field.minLength) errors.push(name + " must be at least " + field.minLength + " characters");',
+    '    if (typeof value === "string" && field.maxLength !== undefined && value.length > field.maxLength) errors.push(name + " must be at most " + field.maxLength + " characters");',
+    '    if (typeof value === "number" && field.min !== undefined && value < field.min) errors.push(name + " must be at least " + field.min);',
+    '    if (typeof value === "number" && field.max !== undefined && value > field.max) errors.push(name + " must be at most " + field.max);',
     '  }',
     '  return errors;',
     '}',

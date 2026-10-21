@@ -1794,3 +1794,75 @@ test('generates S3-compatible object storage and signed URL runtime', t => {
   assert.match(env, /OBJECT_ACCESS_KEY=/);
   assert.match(env, /OBJECT_SECRET_KEY=/);
 });
+
+function loadGeneratedModule(source) {
+  const module = {exports: {}};
+  new Function('module', 'exports', 'require', source)(module, module.exports, require);
+  return module.exports;
+}
+
+test('generated Express validation enforces min/max and length bounds and reports every failure', () => {
+  const {buildFiles} = require('../src/generators');
+  const files = buildFiles(normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'bounds-api'},
+    database: {type: 'postgresql'},
+    entities: {
+      Book: {
+        fields: {
+          title: {type: 'string', required: true, minLength: 2, maxLength: 5},
+          year: {type: 'number', min: 1450, max: 2100},
+          genre: {type: 'string', enum: ['fiction', 'science']}
+        }
+      }
+    }
+  }));
+  const {validateBody} = loadGeneratedModule(files.get('src/middleware/validation.js'));
+
+  assert.deepEqual(validateBody('Book', {title: 'A', year: 1200, genre: 'poetry'}, false), [
+    'title must be at least 2 characters',
+    'year must be at least 1450',
+    'genre has an invalid value'
+  ]);
+  assert.deepEqual(validateBody('Book', {title: 'Too long', year: 3000}, false), [
+    'title must be at most 5 characters',
+    'year must be at most 2100'
+  ]);
+  assert.deepEqual(validateBody('Book', {title: 'Dune', year: 1965}, false), []);
+  assert.deepEqual(validateBody('Book', {year: 1}, true), ['year must be at least 1450']);
+});
+
+test('generated Mongoose error handler returns per-field details without raw database messages', () => {
+  const {buildFiles} = require('../src/generators');
+  const files = buildFiles(normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'mongo-errors'},
+    database: {type: 'mongodb'},
+    entities: {Author: {fields: {name: {type: 'string', required: true}}}}
+  }));
+  const errorHandler = loadGeneratedModule(files.get('src/middleware/error-handler.js'));
+  const error = Object.assign(new Error('Author validation failed: name: Path `name` (`X`) is shorter than the minimum'), {
+    name: 'ValidationError',
+    errors: {name: {path: 'name', kind: 'minlength'}, email: {path: 'email', kind: 'required'}}
+  });
+  let sent;
+  const res = {status(code) { sent = {code}; return this; }, json(body) { sent.body = body; return this; }};
+  errorHandler(error, {}, res, () => {});
+
+  assert.equal(sent.code, 400);
+  assert.deepEqual(sent.body.details, ['name has an invalid value', 'email is required']);
+  assert.doesNotMatch(JSON.stringify(sent.body), /Path `name`/);
+});
+
+test('generated environment guard explains how to provide missing variables', () => {
+  const {buildFiles} = require('../src/generators');
+  const files = buildFiles(normalizeSpec({
+    specVersion: '1.0',
+    app: {name: 'env-guard'},
+    database: {type: 'mongodb', uriEnv: 'J2E_TEST_UNSET_URI'},
+    entities: {Author: {fields: {name: {type: 'string'}}}}
+  }));
+  const validateEnvironment = loadGeneratedModule(files.get('src/config/environment.js'));
+  delete process.env.J2E_TEST_UNSET_URI;
+  assert.throws(validateEnvironment, /J2E_TEST_UNSET_URI\. Copy \.env\.example to \.env/);
+});

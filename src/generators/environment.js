@@ -52,7 +52,7 @@ module.exports = function environmentSource(spec) {
     '    if (process.env[name] === undefined && definition.default !== undefined) process.env[name] = String(definition.default);',
     '    if (definition.required && !process.env[name]) missing.push(name);',
     '  }',
-    "  if (missing.length) throw new Error('Missing required environment variables: ' + missing.join(', '));",
+    "  if (missing.length) throw new Error('Missing required environment variables: ' + missing.join(', ') + '. Copy .env.example to .env for local development, or set them in the environment.');",
     '}', '',
     'module.exports = validateEnvironment;', ''
   ].join('\n');

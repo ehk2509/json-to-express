@@ -433,3 +433,20 @@ test('full native Fastify spec retains generated deployment, SDK, admin and Open
   assert.match(files.get('src/server.js'),/server.close\(\)/);
   assert.doesNotMatch(files.get('src/server.js'),/fastifyExpress|fastify.use/);
 });
+
+test('native Fastify validation enforces min/max and length bounds', () => {
+  const input = spec();
+  input.entities.Todo.fields.title = {type: 'string', required: true, minLength: 3, maxLength: 10};
+  input.entities.Todo.fields.priority = {type: 'number', min: 1, max: 5};
+  const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
+  const config = source.match(/^const config = (.*);$/m)[1];
+  const validateSource = source.slice(source.indexOf('function validate('), source.indexOf('async function populateRecord'));
+  const context = {};
+  vm.runInNewContext(validateSource + '\nthis.validate = validate; this.config = ' + config + ';', context);
+  const fields = context.config[0].fields;
+  assert.deepEqual(Array.from(context.validate(fields, {title: 'ab', priority: 9}, false)), [
+    'title must be at least 3 characters',
+    'priority must be at most 5'
+  ]);
+  assert.deepEqual(Array.from(context.validate(fields, {title: 'abc', priority: 3}, false)), []);
+});
