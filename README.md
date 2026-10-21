@@ -5,7 +5,7 @@ native Fastify, MongoDB/Mongoose or PostgreSQL/Prisma. Get a runnable REST API,
 models, validation, health checks and optional auth, workflows, SDK, admin UI
 and deployment scaffolding.
 
-**Current status:** public beta `0.2.0-beta.4`. The `main` branch has newer
+**Current status:** public beta `0.2.0-beta.5`. The `main` branch has newer
 in-development capabilities. **This project has not yet released v1.0 or
 completed independent external-production validation.**
 
