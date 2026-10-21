@@ -1527,6 +1527,11 @@
               "type": "integer",
               "minimum": 100,
               "default": 5000
+            },
+            "commandTimeoutMs": {
+              "type": "integer",
+              "minimum": 10,
+              "default": 500
             }
           }
         },

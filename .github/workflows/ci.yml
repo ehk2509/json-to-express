@@ -771,7 +771,7 @@ jobs:
             await db();
             const form=new FormData();
             form.set('title','Atomic photo');
-            form.set('photo',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'photo.png');
+            form.set('photo',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'photo.png');
             const res=await fetch('http://127.0.0.1:3498/api/assets',{method:'POST',body:form});
             assert.equal(res.status,201);
             const item=await res.json();
@@ -801,7 +801,7 @@ jobs:
             // Two racing deletes must not create duplicate intents or delete live references.
             const form2=new FormData();
             form2.set('title','Concurrent asset');
-            form2.set('photo',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'concurrent.png');
+            form2.set('photo',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'concurrent.png');
             const resp2=await fetch('http://127.0.0.1:3498/api/assets',{method:'POST',body:form2});
             assert.equal(resp2.status,201);
             const asset2=await resp2.json();
@@ -1699,14 +1699,14 @@ jobs:
             const storageFiles=()=>fs.existsSync('uploads') ? fs.readdirSync('uploads',{recursive:true}).filter(name=>String(name).endsWith('.png')).length : 0;
             const filesBefore=storageFiles();
             const invalidUpload=new FormData();
-            invalidUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'invalid.png');
+            invalidUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'invalid.png');
             invalidUpload.set('age','invalid-number');
             const rejected=await fetch(root+'/owners',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:invalidUpload});
             assert.equal(rejected.status,400);
             assert.equal(storageFiles(),filesBefore,'rejected multipart must compensate staged storage');
             const acceptedUpload=new FormData();
             acceptedUpload.set('name','Uploaded');
-            acceptedUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'valid.png');
+            acceptedUpload.set('portrait',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'valid.png');
             const storedResponse=await fetch(root+'/owners',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:acceptedUpload});
             assert.equal(storedResponse.status,201);
             const storedOwner=await storedResponse.json();
@@ -1742,7 +1742,7 @@ jobs:
             const link=await linkResponse.json();
             const cascadeForm=new FormData();
             cascadeForm.set('owner',owner._id);
-            cascadeForm.set('attachment',new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),'nested.png');
+            cascadeForm.set('attachment',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'nested.png');
             const cascadeResponse=await fetch(root+'/cascades',{method:'POST',headers:{'x-api-key':'test-audit-key'},body:cascadeForm});
             assert.equal(cascadeResponse.status,201);
             const cascade=await cascadeResponse.json();

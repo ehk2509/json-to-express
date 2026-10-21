@@ -1037,6 +1037,8 @@ Object lifecycle is automatic for generated CRUD operations:
 - setting a many-file field to `[]` clears all objects
 - deleting/soft-deleting an entity removes its stored files
 - metadata cannot be forged through ordinary JSON requests
+- file content must match the declared MIME type for PNG, JPEG, GIF, WebP and PDF (leading-byte signatures) and must not contain NUL bytes for `text/*` and `application/json`; other types are accepted as declared
+- local downloads send `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`, and only images, PDF and plain text are served inline—other types download as attachments
 - path traversal is rejected for generated local keys/directories
 
 Entities with signed file URLs automatically disable list/get response caching so a cached response cannot contain an expired signed URL.
@@ -1099,7 +1101,8 @@ Caching is opt-in and generated from the same JSON contract:
     "varyByAuth": true,
     "redis": {
       "urlEnv": "REDIS_URL",
-      "connectTimeoutMs": 5000
+      "connectTimeoutMs": 5000,
+      "commandTimeoutMs": 500
     }
   },
   "entities": {
@@ -1139,7 +1142,7 @@ Invalidation does not scan Redis keys. Each entity has a version counter; succes
 
 Relation-aware invalidation also bumps caches for entities that reference the mutated entity. This prevents populated responses such as a cached Product containing an updated Category from remaining stale.
 
-Redis failures are cache fail-open for reads/writes. The database remains the source of truth, while stale Redis entries remain bounded by their configured TTL.
+Redis failures are cache fail-open for reads/writes. Every Redis call is bounded by `commandTimeoutMs` (default 500 ms), so an unresponsive Redis is treated like an unavailable one; after a failure the cache skips Redis for 5 seconds so requests are not each delayed by a timeout. If an invalidation could not be recorded during an outage, the first successful Redis call afterwards invalidates every entity before serving cached data. The database remains the source of truth.
 
 Docker Compose automatically generates a `redis:7-alpine` cache service and wires `REDIS_URL=redis://cache:6379`. Kubernetes keeps Redis external and emits the configured Redis URL as a secret placeholder, which is better suited to managed production Redis.
 
@@ -1318,6 +1321,8 @@ Workflow values can safely reference request and prior-step data using:
 - $steps.<stepName>
 
 For example, $steps.create._id reads the generated id from an earlier create step. Strings beginning with a literal dollar sign can be escaped as $value.
+
+Workflow database steps follow the same rules as generated CRUD: `create` and `updateById` data is validated against the entity's field definitions (types, required, enums, length and numeric bounds) and rejected with the validation status and per-field `details`; `findById`, `updateById` and `deleteById` ignore soft-deleted records and fail with 404 when the record does not exist (400 for a malformed id), stopping the workflow before later steps emit events or enqueue jobs; `deleteById` soft-deletes entities that enable `softDelete`.
 
 References to unavailable future steps, unknown entities, unknown events, and missing workflows are rejected during specification validation.
 
