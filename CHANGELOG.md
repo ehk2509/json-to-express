@@ -6,6 +6,17 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.4 will be listed here.
 
+### Security
+- Generated create/update handlers keep only declared fields, so clients can no longer set ids, timestamps, soft-delete or audit columns (e.g. soft-delete through `PATCH {"deletedAt": ...}` past an admin-only delete).
+- The generated environment guard refuses to start while a variable still holds the `.env.example` placeholder `change-me`.
+- Express list filters reject object and array values, blocking `field[$op]=` MongoDB and `field[contains]=` Prisma operator injection.
+- Sort/select parameters are allowlisted to declared, non-hidden fields; `?select=+field` can no longer expose Mongoose `select: false` fields.
+- Native Fastify applies `app.bodyLimit`.
+
+### Changed
+- An operation's `auth.roles` now authorizes callers holding **any** listed role; previously every listed role was required.
+- Unknown sort fields return 400 instead of 500 on native Fastify with PostgreSQL.
+
 ## [0.2.0-beta.4] - 2026-10-15
 
 ### Added

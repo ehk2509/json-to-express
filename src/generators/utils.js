@@ -62,4 +62,18 @@ function relativeRequire(fromFile, toFile) {
   return relative;
 }
 
-module.exports = {filePaths, js, joinUrl, payload, relativeRequire};
+// Fields clients may name in sort/select query parameters. Hidden (select: false)
+// fields are never exposed, and Prisma cannot order by relations or JSON columns.
+function queryFields(spec, entity, purpose) {
+  const mongo = spec.database.type === 'mongodb';
+  const names = [mongo ? '_id' : 'id', 'createdAt', 'updatedAt'];
+  if (entity.audit && entity.audit.enabled) names.push(entity.audit.createdBy, entity.audit.updatedBy);
+  for (const field of entity.fields) {
+    if (field.options && field.options.select === false) continue;
+    if (purpose === 'sort' && !mongo && (field.type === 'reference' || field.type === 'file')) continue;
+    names.push(field.name);
+  }
+  return [...new Set(names)];
+}
+
+module.exports = {filePaths, js, joinUrl, payload, queryFields, relativeRequire};

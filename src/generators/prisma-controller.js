@@ -1,6 +1,6 @@
 'use strict';
 
-const {filePaths, js, payload, relativeRequire} = require('./utils');
+const {filePaths, js, payload, queryFields, relativeRequire} = require('./utils');
 const {lowerFirst} = require('./prisma-schema');
 
 function hookLines(entity, phase, operation, resultVariable, delegate) {
@@ -20,6 +20,7 @@ function selectionExpression(operation) {
   return [
     '    const selectParam = ' + js(operation.selectParam || (operation.query && operation.query.selectParam) || null) + ';',
     '    const selected = selectParam && req.query[selectParam] ? String(req.query[selectParam]).split(/[ ,]+/).filter(Boolean) : [];',
+    '    if (selected.some(name => !queryFields.select.includes(name))) return res.status(400).json({error: "Invalid query parameter", details: [selectParam]});',
     '    const selection = selected.length ? {select: Object.fromEntries([...selected, "id", ...' + js(populate) + '].map(name => [name, true]))} : ' +
       (populate.length ? '{include: Object.fromEntries(' + js(populate) + '.map(name => [name, true]))}' : '{}') + ';'
   ];
@@ -97,6 +98,7 @@ module.exports = function prismaControllerSource(entity, spec) {
 
   const helper = [
     'const fieldMeta = ' + js(fieldMeta(entity)) + ';',
+    'const queryFields = ' + js({sort: queryFields(spec, entity, 'sort'), select: queryFields(spec, entity, 'select')}) + ';',
     'function coerce(field, value) {',
     '  const type = fieldMeta[field] && fieldMeta[field].type;',
     '  if (type === "number") return Number(value);',
@@ -118,6 +120,8 @@ module.exports = function prismaControllerSource(entity, spec) {
     if (q.filters.length) {
       lines.push('    const operators = {eq: "equals", ne: "not", gt: "gt", gte: "gte", lt: "lt", lte: "lte", in: "in"};');
       lines.push('    for (const field of ' + js(q.filters) + ') {');
+      lines.push('      // Express parses field[op]=x into objects and repeated params into arrays; only scalars may reach Prisma.');
+      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== null && typeof req.query[key] === "object") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
       lines.push('      const meta = fieldMeta[field] || {};');
       lines.push('      const targetField = meta.type === "reference" && !meta.many ? field + "Id" : field;');
       lines.push('      if (req.query[field] !== undefined) {');
@@ -142,7 +146,9 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    const options = {where};');
     if (q.sortParam) {
       lines.push('    if (req.query[' + js(q.sortParam) + ']) {');
-      lines.push('      options.orderBy = String(req.query[' + js(q.sortParam) + ']).split(/[ ,]+/).filter(Boolean).map(field => field.startsWith("-") ? {[field.slice(1)]: "desc"} : {[field]: "asc"});');
+      lines.push('      const sortFields = String(req.query[' + js(q.sortParam) + ']).split(/[ ,]+/).filter(Boolean);');
+      lines.push('      if (sortFields.some(field => !queryFields.sort.includes(field.replace(/^-/, "")))) return res.status(400).json({error: "Invalid query parameter", details: [' + js(q.sortParam) + ']});');
+      lines.push('      options.orderBy = sortFields.map(field => field.startsWith("-") ? {[field.slice(1)]: "desc"} : {[field]: "asc"});');
       lines.push('    }');
     }
     if (q.pagination.enabled) {

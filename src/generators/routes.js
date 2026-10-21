@@ -18,6 +18,7 @@ function routesSource(entity, spec) {
     if (hasFiles && ['create','update'].includes(name)) {
       middleware.push('storage.uploadMiddleware(' + js(entity.name) + ')');
     }
+    if (!operation.validate && ['create', 'update'].includes(name)) middleware.push('validation.fields(' + js(entity.name) + ')');
     if (operation.validate) {
       if (name === 'create') middleware.push('validation.body(' + js(entity.name) + ', false)');
       if (name === 'update') middleware.push('validation.body(' + js(entity.name) + ', true)');

@@ -85,10 +85,22 @@ module.exports = function validationSource(spec) {
     '  }',
     '  return errors;',
     '}', '',
+    '// Ids, timestamps, soft-delete and audit columns are server-managed: drop anything undeclared.',
+    'function declaredFields(entityName, value) {',
+    "  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;",
+    '  return Object.fromEntries(Object.entries(value).filter(([name]) => Object.prototype.hasOwnProperty.call(definitions[entityName], name)));',
+    '}', '',
     'function body(entityName, partial) {',
     '  return function validateBodyMiddleware(req, res, next) {',
     '    const errors = validateBody(entityName, req.body, partial);',
     "    if (errors.length) return res.status(400).json({error: 'Invalid request', details: errors});",
+    '    req.body = declaredFields(entityName, req.body);',
+    '    next();',
+    '  };',
+    '}', '',
+    'function fields(entityName) {',
+    '  return function declaredFieldsMiddleware(req, res, next) {',
+    '    req.body = declaredFields(entityName, req.body);',
     '    next();',
     '  };',
     '}', '',
@@ -98,6 +110,6 @@ module.exports = function validationSource(spec) {
     '    next();',
     '  };',
     '}', '',
-    'module.exports = {body, identifier, objectId: identifier, isIdentifier, validateBody};', ''
+    'module.exports = {body, fields, identifier, objectId: identifier, isIdentifier, validateBody, declaredFields};', ''
   ].join('\n');
 };
