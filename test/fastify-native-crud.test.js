@@ -497,3 +497,18 @@ test('native Fastify Mongo deletes only open transactions when the server suppor
   const source = buildFiles(normalizeSpec(input)).get('src/fastify-crud.js');
   assert.match(source, /transactional\(op.transaction \|\| \(\(entry.inbound.length > 0 \|\| storageEnabled\) && await mongoCanTransact\(\)\)/);
 });
+
+test('native Fastify applies bodyLimit, drops undeclared fields and allowlists sort fields', () => {
+  const input = spec();
+  input.app.bodyLimit = '10kb';
+  input.entities.Todo.fields.secret = {type: 'string', options: {select: false}};
+  input.entities.Todo.operations = {list: {query: {sortParam: 'sort'}}};
+  const files = buildFiles(normalizeSpec(input));
+  assert.match(files.get('src/app.js'), /require\('fastify'\)\(\{logger: false, bodyLimit: 10240/);
+  const source = files.get('src/fastify-crud.js');
+  const config = JSON.parse(source.match(/^const config = (.*);$/m)[1]);
+  assert.deepEqual(config[0].sortable, ['_id', 'createdAt', 'updatedAt', 'title']);
+  assert.match(source, /entry\.sortable\.includes\(field\.replace/);
+  assert.match(source, /request\.body = Object\.fromEntries\(Object\.entries\(request\.body\)\.filter\(\(\[name\]\) => Object\.prototype\.hasOwnProperty\.call\(entry\.fields, name\)\)\)/);
+  new vm.Script(source);
+});

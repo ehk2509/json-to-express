@@ -1,6 +1,6 @@
 'use strict';
 
-const {filePaths, js, payload, relativeRequire} = require('./utils');
+const {filePaths, js, payload, queryFields, relativeRequire} = require('./utils');
 
 function hookLines(entity, phase, operation, resultVariable) {
   const hookName = entity.hooks && entity.hooks[phase] && entity.hooks[phase][operation];
@@ -80,6 +80,15 @@ function controllerSource(entity, spec) {
       '  return mongoIsReplicaSet;',
       '}'
     ] : []),
+    'const queryFields = ' + js({sort: queryFields(spec, entity, 'sort'), select: queryFields(spec, entity, 'select')}) + ';',
+    '// Only declared, non-hidden fields may be sorted or projected; returns null when the list is not allowed.',
+    'function fieldList(kind, value) {',
+    '  const tokens = String(value).split(/[ ,]+/).filter(Boolean);',
+    '  if (!tokens.length || tokens.some(token => !queryFields[kind].includes(token.replace(/^-/, "")))) return null;',
+    '  const projected = tokens.filter(token => token !== "-_id");',
+    '  if (kind === "select" && projected.some(token => token.startsWith("-")) && projected.some(token => !token.startsWith("-"))) return null;',
+    '  return tokens.join(" ");',
+    '}',
     'async function withTransaction(enabled, work) {',
     '  if (!enabled) return work(null);',
     '  const session = await mongoose.startSession();',
@@ -99,6 +108,8 @@ function controllerSource(entity, spec) {
     if(q.filters.length){
       lines.push('    const mongoOperators = {eq: "$eq", ne: "$ne", gt: "$gt", gte: "$gte", lt: "$lt", lte: "$lte", in: "$in"};');
       lines.push('    for (const field of '+js(q.filters)+') {');
+      lines.push('      // Express parses field[op]=x into objects; only plain strings may reach the database query.');
+      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== undefined && typeof req.query[key] !== "string") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
       lines.push('      if (req.query[field] !== undefined) filter[field] = req.query[field];');
       lines.push('      for (const operator of '+js(q.operators)+') {');
       lines.push('        if (operator === "eq") continue;');
@@ -110,8 +121,14 @@ function controllerSource(entity, spec) {
       lines.push('    }');
     }
     lines.push('    let query = '+entity.name+'.find(filter);');
-    if(q.sortParam) lines.push('    if (req.query['+js(q.sortParam)+']) query = query.sort(req.query['+js(q.sortParam)+']);');
-    if(q.selectParam) lines.push('    if (req.query['+js(q.selectParam)+']) query = query.select(req.query['+js(q.selectParam)+']);');
+    for (const [kind, param] of [['sort', q.sortParam], ['select', q.selectParam]]) {
+      if (!param) continue;
+      lines.push('    if (req.query['+js(param)+']) {',
+        '      const ' + kind + 'Fields = fieldList(' + js(kind) + ', req.query['+js(param)+']);',
+        '      if (' + kind + 'Fields === null) return res.status(400).json({error: "Invalid query parameter", details: ['+js(param)+']});',
+        '      query = query.' + kind + '(' + kind + 'Fields);',
+        '    }');
+    }
     if(q.pagination.enabled){
       lines.push('    const requestedLimit = Number(req.query['+js(q.pagination.limitParam)+']);');
       lines.push('    const requestedPage = Number(req.query['+js(q.pagination.pageParam)+']);');
@@ -134,7 +151,11 @@ function controllerSource(entity, spec) {
       '    const filter = {_id: '+id+'};'];
     if(entity.softDelete.enabled) lines.push('    filter['+js(entity.softDelete.field)+'] = null;');
     lines.push('    let query = '+entity.name+'.findOne(filter);');
-    if(get.selectParam) lines.push('    if (req.query['+js(get.selectParam)+']) query = query.select(req.query['+js(get.selectParam)+']);');
+    if(get.selectParam) lines.push('    if (req.query['+js(get.selectParam)+']) {',
+      '      const selectFields = fieldList("select", req.query['+js(get.selectParam)+']);',
+      '      if (selectFields === null) return res.status(400).json({error: "Invalid query parameter", details: ['+js(get.selectParam)+']});',
+      '      query = query.select(selectFields);',
+      '    }');
     lines.push(...populateLines(get));
     if(get.lean) lines.push('    query = query.lean();');
     lines.push('    const item = await query;','    if (!item) return res.status('+get.notFoundStatus+').json('+payload(entity.notFoundResponse)+');',
