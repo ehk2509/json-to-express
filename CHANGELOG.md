@@ -4,7 +4,13 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
-Changes after beta.5 will be listed here.
+Changes after beta.6 will be listed here.
+
+## [0.2.0-beta.6] - 2026-10-21
+
+### Changed
+- Workflows now fail with 404 when a referenced record is missing or soft-deleted instead of continuing, and `deleteById` soft-deletes soft-delete entities.
+- Uploads whose content does not match the declared type are rejected with 400; non-image/PDF/text local downloads are served as attachments.
 
 ### Fixed
 - An unresponsive Redis no longer hangs requests: every cache call is bounded by `cache.redis.commandTimeoutMs` (new, default 500 ms), Redis is skipped for 5 s after a failure, and invalidations missed during an outage are flushed before cached data is served again.
