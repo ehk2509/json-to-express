@@ -16,7 +16,7 @@ module.exports = function authRoutesSource(spec) {
     '',
     'function userId(user) { return String(user.id !== undefined ? user.id : user._id); }',
     'function identity(user) { return {userId: userId(user), email: user.email, roles: Array.isArray(user.roles) ? user.roles : []}; }',
-    'function validEmail(value) { return typeof value === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value); }',
+    'function validEmail(value) { return typeof value === "string" && /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(value); }',
     'function duplicateUser(error) { return error && (error.code === 11000 || error.code === "P2002"); }',
     'function invalidInput(res, message) { return res.status(400).json({error: message}); }',
     '',

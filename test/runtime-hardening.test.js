@@ -244,3 +244,19 @@ test('generated error handlers answer database outages with 503 and Retry-After'
   fastify.app.framework = 'fastify';
   assert.match(buildFiles(fastify).get('src/fastify-native.js'), /return reply\.code\(503\)\.header\("Retry-After", "5"\)\.send\(\{error: "Service unavailable"\}\)/);
 });
+
+test('generated local auth accepts ordinary email addresses on both frameworks', () => {
+  for (const framework of ['express', 'fastify']) {
+    const files = buildFiles(normalizeSpec({
+      specVersion: '1.0',
+      app: {name: 'mail-api', framework},
+      database: {type: 'mongodb'},
+      auth: {enabled: true, strategies: ['jwt'], jwt: {secretEnv: 'JWT_SECRET'}, local: {enabled: true}},
+      entities: {Note: {fields: {title: {type: 'string'}}}}
+    }));
+    const source = [...files.values()].find(content => typeof content === 'string' && content.includes('function validEmail'));
+    const validEmail = new Function(source.match(/function validEmail[^\n]*/)[0] + '\nreturn validEmail;')();
+    for (const email of ['bob@shop.com', 'sales@example.co.uk', 'first.last+tag@sub.domain.org']) assert.equal(validEmail(email), true, `${framework}: ${email}`);
+    for (const email of ['no-at-sign', 'a b@ex.com', 'a@nodot', '@ex.com']) assert.equal(validEmail(email), false, `${framework}: ${email}`);
+  }
+});
