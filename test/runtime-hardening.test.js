@@ -308,3 +308,22 @@ test('generated Express controllers delete through the shared relation engine an
   const native = buildFiles(relationSpec('fastify', 'postgresql')).get('src/fastify-crud.js');
   assert.match(native, /if \(postgres && \["create", "update"\]\.includes\(action\)\) \{/);
 });
+
+test('generated MongoDB delete engine ignores soft-deleted dependents for restrict', async () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name: 'soft-api'}, database: {type: 'mongodb'},
+    entities: {
+      Category: {fields: {name: {type: 'string'}}},
+      Product: {softDelete: {enabled: true, field: 'deletedAt'}, fields: {category: {type: 'reference', ref: 'Category', onDelete: 'restrict'}}}
+    }
+  });
+  const relationDelete = load(buildFiles(spec).get('src/config/relation-delete.js'), {});
+  const filters = [];
+  const query = value => ({session() { return this; }, then(resolve) { return Promise.resolve(value).then(resolve); }});
+  const models = {
+    Category: {findOne: () => query({_id: 'c1'}), findOneAndDelete: async () => {}},
+    Product: {countDocuments: filter => { filters.push(filter); return query(0); }}
+  };
+  await relationDelete(models, 'Category', 'c1', {});
+  assert.deepEqual(filters, [{category: 'c1', deletedAt: null}]);
+});

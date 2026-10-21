@@ -13,6 +13,7 @@ Changes after beta.6 will be listed here.
 - Express local auth no longer rejects email addresses containing the letter "s" (the generated email pattern had lost its escapes).
 - Delete policies now apply through the whole relation graph on Express, as they already did on native Fastify: a cascade runs the cascaded records' own policies, so a `restrict` two levels down refuses the delete and grandchildren are no longer orphaned. Express PostgreSQL soft deletes now honour `restrict` on single references.
 - A delete refused by `restrict` no longer leaves earlier cascades and nullifies applied on MongoDB servers without transactions (standalone): a read-only pass checks the whole graph before anything is written. Express MongoDB deletes now use a transaction whenever the server supports one.
+- On MongoDB, soft-deleted dependents no longer block a `restrict` on native Fastify either, matching Express.
 - PostgreSQL create and update return `400` with `details: ["<field> references a missing record"]` for missing or soft-deleted reference targets, matching MongoDB, instead of `404` or silently accepting a soft-deleted target.
 
 ### Security

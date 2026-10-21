@@ -119,9 +119,9 @@ function buildFiles(spec) {
     if (spec.database.type === 'mongodb') files.set(path.posix.join(spec.generation.paths.source, 'fastify-mongo-delete.js'), fastifyMongoDeleteSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-endpoints.js'), fastifyEndpointSource(spec));
     files.set(path.posix.join(spec.generation.paths.source, 'fastify-auth.js'), fastifyAuthSource(spec));
-  } else {
-    files.set(paths.relationDelete, spec.database.type === 'postgresql' ? fastifyPostgresDeleteSource(spec) : fastifyMongoDeleteSource(spec));
   }
+  // Entity controllers (Express routes, and GraphQL resolvers on Fastify too) delete through this engine.
+  files.set(paths.relationDelete, spec.database.type === 'postgresql' ? fastifyPostgresDeleteSource(spec) : fastifyMongoDeleteSource(spec));
   files.set(paths.database, databaseSource(spec));
   files.set(paths.errorHandler, errorHandlerSource(spec));
   files.set(paths.validation, validationSource(spec));
