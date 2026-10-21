@@ -120,8 +120,8 @@ module.exports = function prismaControllerSource(entity, spec) {
     if (q.filters.length) {
       lines.push('    const operators = {eq: "equals", ne: "not", gt: "gt", gte: "gte", lt: "lt", lte: "lte", in: "in"};');
       lines.push('    for (const field of ' + js(q.filters) + ') {');
-      lines.push('      // Express parses field[op]=x into objects; only plain strings may reach the Prisma where clause.');
-      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== undefined && typeof req.query[key] !== "string") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
+      lines.push('      // Express parses field[op]=x into objects and repeated params into arrays; only scalars may reach Prisma.');
+      lines.push('      for (const key of [field, ...' + js(q.operators) + '.map(operator => field + "__" + operator)]) if (req.query[key] !== null && typeof req.query[key] === "object") return res.status(400).json({error: "Invalid query parameter", details: [key]});');
       lines.push('      const meta = fieldMeta[field] || {};');
       lines.push('      const targetField = meta.type === "reference" && !meta.many ? field + "Id" : field;');
       lines.push('      if (req.query[field] !== undefined) {');

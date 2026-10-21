@@ -594,7 +594,7 @@ List endpoints can declaratively define filtering, sorting, projection, and boun
 
 The generator emits filter construction, sort/select application, and skip/limit pagination instead of a fixed Model.find call with no request semantics.
 
-Sort and select parameters accept only the entity's declared fields, its id, `createdAt`/`updatedAt` and audit fields (prefix `-` to sort descending or exclude). Fields hidden with Mongoose `options.select: false` cannot be selected or sorted, and PostgreSQL cannot sort by relation or file fields. Filter values must be plain strings: bracket syntax such as `title[$regex]=` or `title[contains]=` and repeated parameters return 400 with `details` naming the parameter; use the declared `field__operator` parameters instead.
+Sort and select parameters accept only the entity's declared fields, its id, `createdAt`/`updatedAt` and audit fields (prefix `-` to sort descending or exclude). Fields hidden with Mongoose `options.select: false` cannot be selected or sorted, and PostgreSQL cannot sort by relation or file fields. Filter values must be scalars: bracket syntax such as `title[$regex]=` or `title[contains]=` and repeated parameters return 400 with `details` naming the parameter; use the declared `field__operator` parameters instead.
 
 ## Custom middleware
 
