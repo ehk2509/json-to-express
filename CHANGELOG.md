@@ -4,7 +4,9 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
-Changes after beta.4 will be listed here.
+Changes after beta.5 will be listed here.
+
+## [0.2.0-beta.5] - 2026-10-21
 
 ### Security
 - Generated create/update handlers keep only declared fields, so clients can no longer set ids, timestamps, soft-delete or audit columns (e.g. soft-delete through `PATCH {"deletedAt": ...}` past an admin-only delete).
@@ -12,10 +14,21 @@ Changes after beta.4 will be listed here.
 - Express list filters reject object and array values, blocking `field[$op]=` MongoDB and `field[contains]=` Prisma operator injection.
 - Sort/select parameters are allowlisted to declared, non-hidden fields; `?select=+field` can no longer expose Mongoose `select: false` fields.
 - Native Fastify applies `app.bodyLimit`.
+- Mongoose ValidationError responses return per-field details instead of raw database messages that echoed submitted values.
+
+### Added
+- MongoDB targets reject writes whose reference ids point at missing or soft-deleted records (PostgreSQL already enforced this with foreign keys).
 
 ### Changed
 - An operation's `auth.roles` now authorizes callers holding **any** listed role; previously every listed role was required.
-- Unknown sort fields return 400 instead of 500 on native Fastify with PostgreSQL.
+- Express + MongoDB validation error `details` is an array of strings instead of a single string.
+- Apps with auth no longer start from an unedited `.env.example`; replace every `change-me` value first.
+
+### Fixed
+- Express and native Fastify request validation enforce `min`, `max`, `minLength` and `maxLength`; PostgreSQL targets previously persisted out-of-bounds values.
+- Native Fastify: Mongo deletes of referenced entities no longer fail on standalone MongoDB; unique violations return 409 instead of 500; malformed reference ids return 400; list filters support `field__op` operators, type coercion and reference filters on Prisma; unknown sort fields return 400.
+- The missing-environment error explains how to provide variables, and `j2e generate` prints an absolute next-step path for output outside the current directory.
+- P7 CI installs the PostgreSQL 16 client from PGDG on newer runner images.
 
 ## [0.2.0-beta.4] - 2026-10-15
 
