@@ -1,6 +1,6 @@
 {
   "name": "json-to-express",
-  "version": "0.2.0-beta.6",
+  "version": "0.2.0-beta.7",
   "description": "Generate runnable Express or native Fastify APIs from declarative JSON, with MongoDB/Mongoose or PostgreSQL/Prisma.",
   "main": "src/index.js",
   "bin": {
