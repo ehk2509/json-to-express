@@ -4,7 +4,9 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 ## [Unreleased]
 
-Changes after beta.7 will be listed here.
+Changes after beta.8 will be listed here.
+
+## [0.2.0-beta.8] - 2026-10-22
 
 ### Fixed
 - PostgreSQL responses now carry every reference under its declared name, as the generated SDK types, OpenAPI schemas and MongoDB already do: `author` holds the id (or the populated record) next to the existing `authorId` column, and unpopulated to-many relations such as `tags` are returned as identifier arrays instead of being omitted. Without this the generated admin UI could not edit records with a required reference and showed many-reference selectors empty.
