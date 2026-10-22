@@ -33,7 +33,8 @@ function selectionExpression(operation, entity) {
 
 function inputTransformLines(entity, mode) {
   const refs = entity.fields.filter(field => field.type === 'reference');
-  const lines = ['    const data = {...req.body};'];
+  // Only declared fields are written, even when a before hook added others.
+  const lines = ['    const data = Object.fromEntries(Object.entries(req.body || {}).filter(([name]) => Object.prototype.hasOwnProperty.call(fieldMeta, name)));'];
   for (const field of refs) {
     lines.push('    if (Object.prototype.hasOwnProperty.call(data, ' + js(field.name) + ')) {');
     lines.push('      const reference = data[' + js(field.name) + '];');

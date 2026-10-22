@@ -645,6 +645,8 @@ Per-operation entity hooks connect business logic without modifying generated co
 
 Hooks receive an object containing req, res, model, and result when applicable. If a hook sends a response, generated controller execution stops when res.headersSent becomes true.
 
+On native Fastify, `req` provides body, params, query, headers, auth, id, method, url and ip, and `res` provides status, json, send, end, setHeader/set/header, getHeader, removeHeader and statusCode, so the same hook module works on both frameworks. Fields a before hook adds to `req.body` are written only when they are declared on the entity.
+
 ## Generated package.json
 
 ~~~json

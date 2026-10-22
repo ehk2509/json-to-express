@@ -360,3 +360,18 @@ test('generated observability bounds request ids and Express route labels; Fasti
     if (framework === 'fastify') assert.match(files.get('src/fastify-auth.js'), /setHeader\(key, value\) \{reply\.removeHeader\(key\); reply\.header\(key, value\);\}/);
   }
 });
+
+test('generated hooks get Express-style headers on Fastify, cannot write undeclared fields, and 5xx are logged', () => {
+  const hooked = (framework, database) => buildFiles(normalizeSpec({
+    specVersion: '1.0', app: {name: 'hook-api', framework}, database: {type: database},
+    entities: {Note: {hooks: {module: 'custom/hooks.js', before: {create: 'beforeCreate'}}, fields: {title: {type: 'string'}}}}
+  }));
+  const native = hooked('fastify', 'postgresql').get('src/fastify-crud.js');
+  assert.match(native, /setHeader\(key, value\) \{reply\.header\(key, value\); return this;\}/);
+  const afterHook = native.slice(native.indexOf('callHook(entry, "before"'));
+  assert.match(afterHook, /^[\s\S]{0,700}request\.body = Object\.fromEntries\(Object\.entries\(request\.body\)\.filter/);
+  assert.match(hooked('fastify', 'mongodb').get('src/fastify-native.js'), /if \(status >= 500\) console\.error\(error\);/);
+  const express = hooked('express', 'postgresql');
+  assert.match(express.get('src/controllers/NoteController.js'), /const data = Object\.fromEntries\(Object\.entries\(req\.body \|\| \{\}\)\.filter\(\(\[name\]\) => Object\.prototype\.hasOwnProperty\.call\(fieldMeta, name\)\)\);/);
+  assert.doesNotMatch(express.get('src/middleware/error-handler.js'), /details: error\.message/);
+});

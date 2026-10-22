@@ -85,6 +85,7 @@ module.exports = function fastifyNativeSource(spec) {
       '    if (error.name === "CastError") return reply.code(400).send({error: "Invalid identifier"});'
     ] : []),
     '    const status = error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500;',
+    ...(spec.observability.enabled ? ['    if (status >= 500) observability.logger.error("http.request.error", {requestId: request.raw.id, error: error && error.message, code: error && error.code});'] : ['    if (status >= 500) console.error(error);']),
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message, ...(status < 500 && error.details ? {details: error.details} : {})});',
     '  });'
   );
