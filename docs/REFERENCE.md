@@ -1201,7 +1201,7 @@ Observability is opt-in and generated from the same JSON specification:
 
 ### Structured logging and correlation IDs
 
-The generated request middleware propagates an incoming `X-Request-Id` or creates a UUID, returns it in the response, and keeps it in an AsyncLocalStorage context for downstream logs.
+The generated request middleware propagates an incoming `X-Request-Id` (when it is 1–128 characters of letters, digits, `.`, `_`, `:` or `-`) or creates a UUID, returns it in the response, and keeps it in an AsyncLocalStorage context for downstream logs.
 
 Request-completion logs include bounded operational fields such as method, route, status, duration, request ID, authenticated user ID, and auth strategy. Generated observability intentionally does **not** log request bodies, Authorization headers, cookies, refresh tokens, API keys, or passwords.
 

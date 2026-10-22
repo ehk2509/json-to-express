@@ -15,6 +15,11 @@ Changes after beta.7 will be listed here.
 
 ### Fixed
 - PostgreSQL responses now carry every reference under its declared name, as the generated SDK types, OpenAPI schemas and MongoDB already do: `author` holds the id (or the populated record) next to the existing `authorId` column, and unpopulated to-many relations such as `tags` are returned as identifier arrays instead of being omitted. Without this the generated admin UI could not edit records with a required reference and showed many-reference selectors empty.
+- Express metrics label requests that match no route `unmatched` instead of using the raw path, so random URLs can no longer grow the metric series without bound.
+- Native Fastify no longer sends the refresh cookie twice on register, login and refresh.
+
+### Security
+- An incoming `X-Request-Id` is only echoed and logged when it is 1–128 characters of `A-Z a-z 0-9 . _ : -`; anything else gets a generated UUID.
 
 ### Fixed
 - Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.

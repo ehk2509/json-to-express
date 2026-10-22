@@ -341,3 +341,22 @@ test('generated PostgreSQL responses use declared reference names alongside <nam
   assert.match(native, /function present\(entry, record, populate\)/);
   assert.match(native, /\.\.\.pgInclude\(entry, populate\)\}\)\)\.map\(row => present\(entry, row, populate\)\)/);
 });
+
+test('generated observability bounds request ids and Express route labels; Fastify sets each cookie once', () => {
+  for (const framework of ['express', 'fastify']) {
+    const files = buildFiles(normalizeSpec({
+      specVersion: '1.0', app: {name: 'obs-api', framework}, database: {type: 'mongodb'},
+      auth: {enabled: true, strategies: ['jwt', 'session'], jwt: {secretEnv: 'JWT_SECRET', refresh: {enabled: true}}, local: {enabled: true}},
+      observability: {enabled: true, logging: {enabled: true}, metrics: {enabled: true}},
+      entities: {Note: {fields: {title: {type: 'string'}}}}
+    }));
+    const sources = [...files.values()].filter(content => typeof content === 'string' && /x-request-id/.test(content));
+    assert.ok(sources.length, framework);
+    for (const source of sources) assert.doesNotMatch(source, /\|\| req(uest)?\.headers\[["']x-request-id["']\] \|\|/, framework);
+    const observability = files.get('src/config/observability.js');
+    const routeLabel = new Function(observability.match(/function routeLabel[\s\S]*?\n\}/)[0] + '\nreturn routeLabel;')();
+    assert.equal(routeLabel({path: '/junk-123'}), 'unmatched');
+    assert.equal(routeLabel({baseUrl: '/api/notes', route: {path: '/:id'}}), '/api/notes/:id');
+    if (framework === 'fastify') assert.match(files.get('src/fastify-auth.js'), /setHeader\(key, value\) \{reply\.removeHeader\(key\); reply\.header\(key, value\);\}/);
+  }
+});
