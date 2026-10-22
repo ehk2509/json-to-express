@@ -14,6 +14,9 @@ Changes after beta.7 will be listed here.
 - PostgreSQL create and update return `400` with `details: ["<field> references a missing record"]` for missing or soft-deleted reference targets, matching MongoDB, instead of `404` or silently accepting a soft-deleted target.
 
 ### Fixed
+- PostgreSQL responses now carry every reference under its declared name, as the generated SDK types, OpenAPI schemas and MongoDB already do: `author` holds the id (or the populated record) next to the existing `authorId` column, and unpopulated to-many relations such as `tags` are returned as identifier arrays instead of being omitted. Without this the generated admin UI could not edit records with a required reference and showed many-reference selectors empty.
+
+### Fixed
 - Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.
 - Plugins that log with `console.log` no longer fail with "returned invalid JSON": plugin stdout is redirected to stderr and shown with a `[plugin <module>]` prefix.
 - Express local auth no longer rejects email addresses containing the letter "s" (the generated email pattern had lost its escapes).

@@ -327,3 +327,17 @@ test('generated MongoDB delete engine ignores soft-deleted dependents for restri
   await relationDelete(models, 'Category', 'c1', {});
   assert.deepEqual(filters, [{category: 'c1', deletedAt: null}]);
 });
+
+test('generated PostgreSQL responses use declared reference names alongside <name>Id columns', () => {
+  const controller = buildFiles(relationSpec('express', 'postgresql')).get('src/controllers/ShelfController.js');
+  const helper = controller.slice(controller.indexOf('const relationFields'), controller.indexOf('const relationIds'));
+  const present = new Function(helper + '\nreturn present;')();
+  assert.deepEqual(present({id: 's1', books: [{id: 'b1'}, {id: 'b2'}]}), {id: 's1', books: ['b1', 'b2']});
+  assert.deepEqual(present({id: 's1', books: [{id: 'b1', title: 'kept'}]}, ['books']), {id: 's1', books: [{id: 'b1', title: 'kept'}]});
+  const book = buildFiles(relationSpec('express', 'postgresql')).get('src/controllers/BookController.js');
+  const presentBook = new Function(book.slice(book.indexOf('const relationFields'), book.indexOf('const relationIds')) + '\nreturn present;')();
+  assert.deepEqual(presentBook({id: 'k1', authorId: 'a1'}), {id: 'k1', authorId: 'a1', author: 'a1'});
+  const native = buildFiles(relationSpec('fastify', 'postgresql')).get('src/fastify-crud.js');
+  assert.match(native, /function present\(entry, record, populate\)/);
+  assert.match(native, /\.\.\.pgInclude\(entry, populate\)\}\)\)\.map\(row => present\(entry, row, populate\)\)/);
+});

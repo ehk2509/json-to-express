@@ -755,6 +755,8 @@ PostgreSQL create and update check reference targets before writing, so a missin
 
 MongoDB has no foreign keys, so generated Mongoose models validate that every referenced id exists (and is not soft-deleted) on create and on updates that run validators (`runValidators`, enabled by default). A missing reference returns the validation error status with `details: ["<field> references a missing record"]`. The check is not transactional: a referenced record deleted concurrently can still leave a dangling id.
 
+PostgreSQL responses use the declared field names too: a single reference appears as `<field>` (the id, or the record when populated) next to its `<field>Id` column, and an unpopulated to-many reference as an array of ids.
+
 List filters can target a many-reference field by related id. PostgreSQL translates those filters to relation some/none predicates; MongoDB uses normal array membership matching.
 
 Operations can declare the same field in populate for either target. OpenAPI exposes identifier arrays, the TypeScript SDK emits string[] inputs and Array<string | Entity> outputs, and the generated admin UI automatically renders a multi-select relation control.
