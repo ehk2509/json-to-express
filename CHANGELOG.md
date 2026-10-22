@@ -6,13 +6,6 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.7 will be listed here.
 
-## [0.2.0-beta.7] - 2026-10-21
-
-### Changed
-- Database-unavailable errors return `503 Service unavailable` with `Retry-After` instead of 500.
-- On MongoDB, soft-deleted dependents no longer block a `restrict` on native Fastify either, matching Express.
-- PostgreSQL create and update return `400` with `details: ["<field> references a missing record"]` for missing or soft-deleted reference targets, matching MongoDB, instead of `404` or silently accepting a soft-deleted target.
-
 ### Fixed
 - PostgreSQL responses now carry every reference under its declared name, as the generated SDK types, OpenAPI schemas and MongoDB already do: `author` holds the id (or the populated record) next to the existing `authorId` column, and unpopulated to-many relations such as `tags` are returned as identifier arrays instead of being omitted. Without this the generated admin UI could not edit records with a required reference and showed many-reference selectors empty.
 - Express metrics label requests that match no route `unmatched` instead of using the raw path, so random URLs can no longer grow the metric series without bound.
@@ -25,6 +18,13 @@ Changes after beta.7 will be listed here.
 ### Security
 - Express PostgreSQL no longer returns Prisma's validation message, which embeds server file paths and code frames, in 400 responses.
 - An incoming `X-Request-Id` is only echoed and logged when it is 1–128 characters of `A-Z a-z 0-9 . _ : -`; anything else gets a generated UUID.
+
+## [0.2.0-beta.7] - 2026-10-21
+
+### Changed
+- Database-unavailable errors return `503 Service unavailable` with `Retry-After` instead of 500.
+- On MongoDB, soft-deleted dependents no longer block a `restrict` on native Fastify either, matching Express.
+- PostgreSQL create and update return `400` with `details: ["<field> references a missing record"]` for missing or soft-deleted reference targets, matching MongoDB, instead of `404` or silently accepting a soft-deleted target.
 
 ### Fixed
 - Requests no longer hang while the database is down or unresponsive: MongoDB connections default to `serverSelectionTimeoutMS: 5000` and `timeoutMS: 10000` (overridable through `database.options`), the Prisma client adds `connect_timeout`, `pool_timeout` and `socket_timeout` URL defaults, and readiness checks give up after 2 s.
