@@ -645,6 +645,8 @@ Per-operation entity hooks connect business logic without modifying generated co
 
 Hooks receive an object containing req, res, model, and result when applicable. If a hook sends a response, generated controller execution stops when res.headersSent becomes true.
 
+On native Fastify, `req` provides body, params, query, headers, auth, id, method, url and ip, and `res` provides status, json, send, end, setHeader/set/header, getHeader, removeHeader and statusCode, so the same hook module works on both frameworks. Fields a before hook adds to `req.body` are written only when they are declared on the entity.
+
 ## Generated package.json
 
 ~~~json
@@ -754,6 +756,8 @@ Supported delete policies remain restrict, nullify, and cascade. The generated a
 PostgreSQL create and update check reference targets before writing, so a missing or soft-deleted target returns the validation error status with `details: ["<field> references a missing record"]`, as on MongoDB.
 
 MongoDB has no foreign keys, so generated Mongoose models validate that every referenced id exists (and is not soft-deleted) on create and on updates that run validators (`runValidators`, enabled by default). A missing reference returns the validation error status with `details: ["<field> references a missing record"]`. The check is not transactional: a referenced record deleted concurrently can still leave a dangling id.
+
+PostgreSQL responses use the declared field names too: a single reference appears as `<field>` (the id, or the record when populated) next to its `<field>Id` column, and an unpopulated to-many reference as an array of ids.
 
 List filters can target a many-reference field by related id. PostgreSQL translates those filters to relation some/none predicates; MongoDB uses normal array membership matching.
 
@@ -1199,7 +1203,7 @@ Observability is opt-in and generated from the same JSON specification:
 
 ### Structured logging and correlation IDs
 
-The generated request middleware propagates an incoming `X-Request-Id` or creates a UUID, returns it in the response, and keeps it in an AsyncLocalStorage context for downstream logs.
+The generated request middleware propagates an incoming `X-Request-Id` (when it is 1–128 characters of letters, digits, `.`, `_`, `:` or `-`) or creates a UUID, returns it in the response, and keeps it in an AsyncLocalStorage context for downstream logs.
 
 Request-completion logs include bounded operational fields such as method, route, status, duration, request ID, authenticated user ID, and auth strategy. Generated observability intentionally does **not** log request bodies, Authorization headers, cookies, refresh tokens, API keys, or passwords.
 
@@ -1361,6 +1365,8 @@ Events can have declarative webhook subscribers:
 Webhook URLs are read from environment variables instead of being stored in the application spec. They are automatically included in the generated environment contract and .env.example.
 
 failure can be fail or continue. fail propagates delivery failure through the workflow request; continue logs the delivery error and lets the request complete.
+
+Each delivery is aborted after `timeoutMs` (default 10000, or half of `outbox.lockTimeoutMs` when that is smaller, so a slow delivery gives up before its lock can expire and another worker delivers it again). A timed-out delivery counts as a failed attempt under the `failure` policy.
 
 Custom endpoint auth uses the same multi-strategy/RBAC rules as CRUD and GraphQL operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
 

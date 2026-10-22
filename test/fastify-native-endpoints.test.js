@@ -194,7 +194,7 @@ test('PostgreSQL soft-delete entities stay native and filter tombstones', () => 
   const source = buildFiles(spec).get('src/fastify-crud.js');
   assert.match(source, /"name":"Todo"/);
   assert.match(source, /model.findFirst\(\{where: liveFilter\(entry, \{id\}\)/);
-  assert.match(source, /rows = await model.findMany\(\{where: conditions/);
+  assert.match(source, /rows = \(await model.findMany\(\{where: conditions/);
   const planner = buildFiles(spec).get('src/fastify-postgres-delete.js');
   assert.match(source, /postgresDelete\(tx, entry.name, id\)/);
   assert.match(planner, /meta.softDelete.enabled && !forceHard/);

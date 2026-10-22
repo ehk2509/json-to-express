@@ -91,7 +91,7 @@ module.exports = function authRoutesSource(spec) {
       '    if (config.local.passwordReset.webhookUrlEnv && process.env[config.local.passwordReset.webhookUrlEnv]) {',
       '      try {',
       '        const delivered = await fetch(process.env[config.local.passwordReset.webhookUrlEnv], {',
-      '          method: "POST", headers: {"content-type": "application/json"},',
+      '          method: "POST", headers: {"content-type": "application/json"}, signal: AbortSignal.timeout(10000),',
       '          body: JSON.stringify({email: user.email, token: resetToken, resetUrl})',
       '        });',
       '        if (!delivered.ok) console.error("Password reset webhook failed with status", delivered.status);',

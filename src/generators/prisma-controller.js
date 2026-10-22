@@ -15,20 +15,26 @@ function hookLines(entity, phase, operation, resultVariable, delegate) {
   ];
 }
 
-function selectionExpression(operation) {
+function selectionExpression(operation, entity) {
   const populate = operation.populate || [];
+  const refs = entity.fields.filter(field => field.type === 'reference');
+  // Unpopulated to-many references are still returned, as identifier arrays (see present()).
+  const idsOnly = refs.filter(field => field.many && !populate.includes(field.name)).map(field => field.name);
+  const include = [...populate.map(name => '[' + js(name) + ', true]'), ...idsOnly.map(name => '[' + js(name) + ', {select: {id: true}}]')];
+  const singles = refs.filter(field => !field.many && !populate.includes(field.name)).map(field => field.name);
   return [
     '    const selectParam = ' + js(operation.selectParam || (operation.query && operation.query.selectParam) || null) + ';',
     '    const selected = selectParam && req.query[selectParam] ? String(req.query[selectParam]).split(/[ ,]+/).filter(Boolean) : [];',
     '    if (selected.some(name => !queryFields.select.includes(name))) return res.status(400).json({error: "Invalid query parameter", details: [selectParam]});',
-    '    const selection = selected.length ? {select: Object.fromEntries([...selected, "id", ...' + js(populate) + '].map(name => [name, true]))} : ' +
-      (populate.length ? '{include: Object.fromEntries(' + js(populate) + '.map(name => [name, true]))}' : '{}') + ';'
+    '    const selection = selected.length ? {select: Object.fromEntries([...[...selected, "id"].map(name => ' + js(singles) + '.includes(name) ? [name + "Id", true] : [name, ' + js(idsOnly) + '.includes(name) ? {select: {id: true}} : true]), ...' + js(populate) + '.map(name => [name, true])])} : ' +
+      (include.length ? '{include: Object.fromEntries([' + include.join(', ') + '])}' : '{}') + ';'
   ];
 }
 
 function inputTransformLines(entity, mode) {
   const refs = entity.fields.filter(field => field.type === 'reference');
-  const lines = ['    const data = {...req.body};'];
+  // Only declared fields are written, even when a before hook added others.
+  const lines = ['    const data = Object.fromEntries(Object.entries(req.body || {}).filter(([name]) => Object.prototype.hasOwnProperty.call(fieldMeta, name)));'];
   for (const field of refs) {
     lines.push('    if (Object.prototype.hasOwnProperty.call(data, ' + js(field.name) + ')) {');
     lines.push('      const reference = data[' + js(field.name) + '];');
@@ -77,8 +83,21 @@ module.exports = function prismaControllerSource(entity, spec) {
     '    const missing = await missingReferences(req.body || {});',
     '    if (missing.length) return res.status(' + spec.app.statusCodes.validationError + ').json(' + referenceError + ');'
   ] : [];
+  const relationFields = Object.fromEntries(entity.fields.filter(field => field.type === 'reference').map(field => [field.name, Boolean(field.many)]));
   const helper = [
     'const fieldMeta = ' + js(fieldMeta(entity)) + ';',
+    'const relationFields = ' + js(relationFields) + ';',
+    '// Respond with declared reference names like MongoDB: <name>Id columns also appear as <name>, and',
+    '// unpopulated to-many relations as identifier arrays. <name>Id stays for existing clients.',
+    'function present(item, populated = []) {',
+    '  if (!item) return item;',
+    '  for (const [name, many] of Object.entries(relationFields)) {',
+    '    if (many && Array.isArray(item[name]) && !populated.includes(name)) item[name] = item[name].map(entry => entry && typeof entry === "object" ? entry.id : entry);',
+    '    else if (!many && item[name] === undefined && item[name + "Id"] !== undefined) item[name] = item[name + "Id"];',
+    '  }',
+    '  return item;',
+    '}',
+    'const relationIds = ' + js(Object.keys(relationFields).filter(name => relationFields[name]).length ? {include: Object.fromEntries(Object.keys(relationFields).filter(name => relationFields[name]).map(name => [name, {select: {id: true}}]))} : {}) + ';',
     ...(referenceCheck.length ? [
       'const referenceTargets = ' + js(referenceTargets) + ';',
       '// A missing connect target would surface as P2025 (404); soft-deleted targets would be accepted. Check first.',
@@ -154,9 +173,9 @@ module.exports = function prismaControllerSource(entity, spec) {
       lines.push('    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;');
       lines.push('    options.take = take; options.skip = (page - 1) * take;');
     }
-    lines.push(...selectionExpression(list).map(line => line.replace(/^    /, '    ')));
+    lines.push(...selectionExpression(list, entity).map(line => line.replace(/^    /, '    ')));
     lines.push('    Object.assign(options, selection);');
-    lines.push('    const items = await ' + delegate + '.findMany(options);');
+    lines.push('    const items = (await ' + delegate + '.findMany(options)).map(item => present(item, ' + js(list.populate || []) + '));');
     lines.push(...hookLines(entity,'after','list','items',delegate));
     if (hasFiles) lines.push('    const responseItems = await storage.enrich(' + js(entity.name) + ', items, req);');
     lines.push('    res.status(' + list.status + ').json(' + (hasFiles ? 'responseItems' : 'items') + ');','  } catch (error) { next(error); }','}');
@@ -167,8 +186,8 @@ module.exports = function prismaControllerSource(entity, spec) {
   if (get.enabled) {
     const lines = ['async function get(req, res, next) {','  try {',...hookLines(entity,'before','get',null,delegate),'    const where = {id: ' + id + '};'];
     if (entity.softDelete.enabled) lines.push('    where[' + js(entity.softDelete.field) + '] = null;');
-    lines.push(...selectionExpression(get));
-    lines.push('    const item = await ' + delegate + '.findFirst({where, ...selection});');
+    lines.push(...selectionExpression(get, entity));
+    lines.push('    const item = present(await ' + delegate + '.findFirst({where, ...selection}), ' + js(get.populate || []) + ');');
     lines.push('    if (!item) return res.status(' + get.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     lines.push(...hookLines(entity,'after','get','item',delegate));
     if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
@@ -180,8 +199,8 @@ module.exports = function prismaControllerSource(entity, spec) {
   if (create.enabled) {
     const lines = ['async function create(req, res, next) {','  try {',...hookLines(entity,'before','create',null,delegate),...referenceCheck,...inputTransformLines(entity, 'create')];
     if (entity.audit.enabled) lines.push('    if (req.auth && req.auth.userId) { data[' + js(entity.audit.createdBy) + '] = req.auth.userId; data[' + js(entity.audit.updatedBy) + '] = req.auth.userId; }');
-    lines.push(...selectionExpression(create));
-    lines.push('    const item = await withTransaction(' + create.transaction + ', db => db.' + delegateName + '.create({data, ...selection}));');
+    lines.push(...selectionExpression(create, entity));
+    lines.push('    const item = present(await withTransaction(' + create.transaction + ', db => db.' + delegateName + '.create({data, ...selection})), ' + js(create.populate || []) + ');');
     if (hasFiles) lines.push('    storage.commitUploads(req);');
     lines.push(...hookLines(entity,'after','create','item',delegate));
     if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
@@ -197,7 +216,7 @@ module.exports = function prismaControllerSource(entity, spec) {
     if (entity.softDelete.enabled) lines.push('    lookup[' + js(entity.softDelete.field) + '] = null;');
     lines.push('    const existing = await ' + delegate + '.findFirst({where: lookup});');
     lines.push('    if (!existing) return res.status(' + update.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
-    lines.push(...selectionExpression(update));
+    lines.push(...selectionExpression(update, entity));
     if (hasFiles) {
       lines.push('    const committed = await withTransaction(true, async db => {');
       lines.push('      const current = await db.' + delegateName + '.findFirst({where: lookup});');
@@ -206,11 +225,11 @@ module.exports = function prismaControllerSource(entity, spec) {
       lines.push('      const intent = await storage.enqueueCleanupIntent(storage.planReplaced(' + js(entity.name) + ', current, req.body), db);');
       lines.push('      return {updated, intent};');
       lines.push('    });');
-      lines.push('    const item = committed.updated;');
+      lines.push('    const item = present(committed.updated, ' + js(update.populate || []) + ');');
       lines.push('    storage.commitUploads(req);');
       lines.push('    await storage.finishCleanupIntent(committed.intent);');
     } else {
-      lines.push('    const item = await withTransaction(' + update.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection}));');
+      lines.push('    const item = present(await withTransaction(' + update.transaction + ', db => db.' + delegateName + '.update({where: {id: ' + id + '}, data, ...selection})), ' + js(update.populate || []) + ');');
     }
     lines.push(...hookLines(entity,'after','update','item',delegate));
     if (hasFiles) lines.push('    const responseItem = await storage.enrich(' + js(entity.name) + ', item, req);');
@@ -226,16 +245,16 @@ module.exports = function prismaControllerSource(entity, spec) {
     lines.push('    const outcome = await withTransaction(true, async db => {');
     lines.push('      const lookup = {id: targetId};');
     if (entity.softDelete.enabled) lines.push('      lookup[' + js(entity.softDelete.field) + '] = null;');
-    lines.push('      let removed = await db.' + delegateName + '.findFirst({where: lookup});');
+    lines.push('      let removed = await db.' + delegateName + '.findFirst({where: lookup, ...relationIds});');
     lines.push('      if (!removed) return null;');
     lines.push('      const affected = await relationDelete(db, ' + js(entity.name) + ', targetId);');
-    if (entity.softDelete.enabled) lines.push('      removed = await db.' + delegateName + '.findUnique({where: {id: targetId}});');
+    if (entity.softDelete.enabled) lines.push('      removed = await db.' + delegateName + '.findUnique({where: {id: targetId}, ...relationIds});');
     if (hasFiles) {
       lines.push('      const intent = await storage.enqueueCleanupIntent(affected, db);');
       lines.push('      return {removed, intent};');
     } else lines.push('      return {removed};');
     lines.push('    });');
-    lines.push('    const item = outcome && outcome.removed;');
+    lines.push('    const item = present(outcome && outcome.removed);');
     lines.push('    if (!item) return res.status(' + remove.notFoundStatus + ').json(' + payload(entity.notFoundResponse) + ');');
     if (hasFiles) lines.push('    await storage.finishCleanupIntent(outcome.intent);');
     lines.push(...hookLines(entity,'after','delete','item',delegate));

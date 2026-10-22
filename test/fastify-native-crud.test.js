@@ -368,7 +368,7 @@ test('native Fastify supports mutation population on both persistence targets', 
     assert.equal(pkg.dependencies['@fastify/express'],undefined);
     assert.match(generated,/populateRecord\(entry, record, op.populate\)/);
     assert.match(generated,/deleteResponse/);
-    assert.match(generated,/include: Object.fromEntries\(fields.map/);
+    assert.match(generated,/findUnique\({where: {id: record.id}, ...pgInclude\(entry, fields\)}\)/);
     new vm.Script(generated);
   }
 });

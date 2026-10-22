@@ -6,6 +6,19 @@ All notable project changes are tracked here. Versions prior to this beta were d
 
 Changes after beta.7 will be listed here.
 
+### Fixed
+- PostgreSQL responses now carry every reference under its declared name, as the generated SDK types, OpenAPI schemas and MongoDB already do: `author` holds the id (or the populated record) next to the existing `authorId` column, and unpopulated to-many relations such as `tags` are returned as identifier arrays instead of being omitted. Without this the generated admin UI could not edit records with a required reference and showed many-reference selectors empty.
+- Express metrics label requests that match no route `unmatched` instead of using the raw path, so random URLs can no longer grow the metric series without bound.
+- Native Fastify no longer sends the refresh cookie twice on register, login and refresh.
+- Entity hooks work unchanged on native Fastify: the `res` passed to hooks now supports `setHeader`, `set`, `header`, `getHeader` and `removeHeader` (calling them threw and returned 500), and `req` includes `method`, `url` and `ip`.
+- Fields a before hook adds are written only when declared, on every stack. PostgreSQL previously rejected such a create or update.
+- Native Fastify logs 5xx errors (through structured logging when observability is enabled) instead of returning 500 silently.
+- Webhook deliveries time out (new `events.<name>.webhooks[].timeoutMs`, default 10 s or half of `outbox.lockTimeoutMs`, whichever is smaller). A destination that never answered used to stall the worker indefinitely, so every later event and job waited behind it. Password-reset webhooks time out after 10 s instead of holding the forgot-password request open.
+
+### Security
+- Express PostgreSQL no longer returns Prisma's validation message, which embeds server file paths and code frames, in 400 responses.
+- An incoming `X-Request-Id` is only echoed and logged when it is 1–128 characters of `A-Z a-z 0-9 . _ : -`; anything else gets a generated UUID.
+
 ## [0.2.0-beta.7] - 2026-10-21
 
 ### Changed

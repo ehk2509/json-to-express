@@ -22,7 +22,8 @@ module.exports = function fastifyNativeSource(spec) {
       '    reply.header("Referrer-Policy", "no-referrer");'
     );
     if (spec.app.production.requestId) lines.push(
-      '    request.raw.id = String(request.raw.id || request.headers["x-request-id"] || crypto.randomUUID());',
+      '    const incoming = request.headers["x-request-id"];',
+      '    request.raw.id = String(request.raw.id || (typeof incoming === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(incoming) ? incoming : crypto.randomUUID()));',
       '    reply.header("X-Request-Id", request.raw.id);'
     );
     if (spec.app.production.cors.enabled) lines.push(
@@ -84,6 +85,7 @@ module.exports = function fastifyNativeSource(spec) {
       '    if (error.name === "CastError") return reply.code(400).send({error: "Invalid identifier"});'
     ] : []),
     '    const status = error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500;',
+    ...(spec.observability.enabled ? ['    if (status >= 500) observability.logger.error("http.request.error", {requestId: request.raw.id, error: error && error.message, code: error && error.code});'] : ['    if (status >= 500) console.error(error);']),
     '    return reply.code(status).send({error: status >= 500 ? "Internal server error" : error.message, ...(status < 500 && error.details ? {details: error.details} : {})});',
     '  });'
   );

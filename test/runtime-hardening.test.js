@@ -327,3 +327,76 @@ test('generated MongoDB delete engine ignores soft-deleted dependents for restri
   await relationDelete(models, 'Category', 'c1', {});
   assert.deepEqual(filters, [{category: 'c1', deletedAt: null}]);
 });
+
+test('generated PostgreSQL responses use declared reference names alongside <name>Id columns', () => {
+  const controller = buildFiles(relationSpec('express', 'postgresql')).get('src/controllers/ShelfController.js');
+  const helper = controller.slice(controller.indexOf('const relationFields'), controller.indexOf('const relationIds'));
+  const present = new Function(helper + '\nreturn present;')();
+  assert.deepEqual(present({id: 's1', books: [{id: 'b1'}, {id: 'b2'}]}), {id: 's1', books: ['b1', 'b2']});
+  assert.deepEqual(present({id: 's1', books: [{id: 'b1', title: 'kept'}]}, ['books']), {id: 's1', books: [{id: 'b1', title: 'kept'}]});
+  const book = buildFiles(relationSpec('express', 'postgresql')).get('src/controllers/BookController.js');
+  const presentBook = new Function(book.slice(book.indexOf('const relationFields'), book.indexOf('const relationIds')) + '\nreturn present;')();
+  assert.deepEqual(presentBook({id: 'k1', authorId: 'a1'}), {id: 'k1', authorId: 'a1', author: 'a1'});
+  const native = buildFiles(relationSpec('fastify', 'postgresql')).get('src/fastify-crud.js');
+  assert.match(native, /function present\(entry, record, populate\)/);
+  assert.match(native, /\.\.\.pgInclude\(entry, populate\)\}\)\)\.map\(row => present\(entry, row, populate\)\)/);
+});
+
+test('generated observability bounds request ids and Express route labels; Fastify sets each cookie once', () => {
+  for (const framework of ['express', 'fastify']) {
+    const files = buildFiles(normalizeSpec({
+      specVersion: '1.0', app: {name: 'obs-api', framework}, database: {type: 'mongodb'},
+      auth: {enabled: true, strategies: ['jwt', 'session'], jwt: {secretEnv: 'JWT_SECRET', refresh: {enabled: true}}, local: {enabled: true}},
+      observability: {enabled: true, logging: {enabled: true}, metrics: {enabled: true}},
+      entities: {Note: {fields: {title: {type: 'string'}}}}
+    }));
+    const sources = [...files.values()].filter(content => typeof content === 'string' && /x-request-id/.test(content));
+    assert.ok(sources.length, framework);
+    for (const source of sources) assert.doesNotMatch(source, /\|\| req(uest)?\.headers\[["']x-request-id["']\] \|\|/, framework);
+    const observability = files.get('src/config/observability.js');
+    const routeLabel = new Function(observability.match(/function routeLabel[\s\S]*?\n\}/)[0] + '\nreturn routeLabel;')();
+    assert.equal(routeLabel({path: '/junk-123'}), 'unmatched');
+    assert.equal(routeLabel({baseUrl: '/api/notes', route: {path: '/:id'}}), '/api/notes/:id');
+    if (framework === 'fastify') assert.match(files.get('src/fastify-auth.js'), /setHeader\(key, value\) \{reply\.removeHeader\(key\); reply\.header\(key, value\);\}/);
+  }
+});
+
+test('generated hooks get Express-style headers on Fastify, cannot write undeclared fields, and 5xx are logged', () => {
+  const hooked = (framework, database) => buildFiles(normalizeSpec({
+    specVersion: '1.0', app: {name: 'hook-api', framework}, database: {type: database},
+    entities: {Note: {hooks: {module: 'custom/hooks.js', before: {create: 'beforeCreate'}}, fields: {title: {type: 'string'}}}}
+  }));
+  const native = hooked('fastify', 'postgresql').get('src/fastify-crud.js');
+  assert.match(native, /setHeader\(key, value\) \{reply\.header\(key, value\); return this;\}/);
+  const afterHook = native.slice(native.indexOf('callHook(entry, "before"'));
+  assert.match(afterHook, /^[\s\S]{0,700}request\.body = Object\.fromEntries\(Object\.entries\(request\.body\)\.filter/);
+  assert.match(hooked('fastify', 'mongodb').get('src/fastify-native.js'), /if \(status >= 500\) console\.error\(error\);/);
+  const express = hooked('express', 'postgresql');
+  assert.match(express.get('src/controllers/NoteController.js'), /const data = Object\.fromEntries\(Object\.entries\(req\.body \|\| \{\}\)\.filter\(\(\[name\]\) => Object\.prototype\.hasOwnProperty\.call\(fieldMeta, name\)\)\);/);
+  assert.doesNotMatch(express.get('src/middleware/error-handler.js'), /details: error\.message/);
+});
+
+test('generated webhook delivery gives up on a hanging destination before the outbox lock expires', {timeout: 5000}, async () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name: 'hook-api'}, database: {type: 'mongodb'},
+    outbox: {lockTimeoutMs: 1000},
+    events: {'note.created': {webhooks: [{urlEnv: 'HANG_URL', failure: 'fail'}]}},
+    entities: {Note: {fields: {title: {type: 'string'}}}}
+  });
+  assert.equal(spec.events['note.created'].webhooks[0].timeoutMs, 500);
+  assert.equal(normalizeSpec({specVersion: '1.0', app: {name: 'x'}, database: {type: 'mongodb'}, events: {e: {webhooks: [{urlEnv: 'U'}]}}, entities: {N: {fields: {t: {type: 'string'}}}}}).events.e.webhooks[0].timeoutMs, 10000);
+  const bus = load(buildFiles(spec).get('src/workflows/events.js'), {outbox: {}});
+  const server = require('node:http').createServer(() => {}).listen(0, '127.0.0.1');
+  try {
+    await new Promise(resolve => server.once('listening', resolve));
+    process.env.HANG_URL = 'http://127.0.0.1:' + server.address().port + '/hook';
+    const started = Date.now();
+    const stalled = new Promise((resolve, reject) => setTimeout(() => reject(new Error('delivery stalled')), 3000).unref());
+    await assert.rejects(Promise.race([bus.deliver('note.created', {id: 1}), stalled]), error => error.name === 'TimeoutError');
+    assert.ok(Date.now() - started < 3000);
+  } finally {
+    delete process.env.HANG_URL;
+    server.closeAllConnections();
+    server.close();
+  }
+});
