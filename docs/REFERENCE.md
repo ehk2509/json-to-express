@@ -1366,6 +1366,8 @@ Webhook URLs are read from environment variables instead of being stored in the 
 
 failure can be fail or continue. fail propagates delivery failure through the workflow request; continue logs the delivery error and lets the request complete.
 
+Each delivery is aborted after `timeoutMs` (default 10000, or half of `outbox.lockTimeoutMs` when that is smaller, so a slow delivery gives up before its lock can expire and another worker delivers it again). A timed-out delivery counts as a failed attempt under the `failure` policy.
+
 Custom endpoint auth uses the same multi-strategy/RBAC rules as CRUD and GraphQL operations. Custom endpoints are also included in generated OpenAPI and the generated project README.
 
 ## Durable outbox and background jobs

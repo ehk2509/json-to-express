@@ -981,6 +981,12 @@
                     "continue"
                   ],
                   "default": "continue"
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 300000,
+                  "description": "Abort a delivery that takes longer; defaults to 10000 or half of outbox.lockTimeoutMs, whichever is smaller"
                 }
               }
             }

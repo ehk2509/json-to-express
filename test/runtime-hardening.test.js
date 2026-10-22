@@ -375,3 +375,28 @@ test('generated hooks get Express-style headers on Fastify, cannot write undecla
   assert.match(express.get('src/controllers/NoteController.js'), /const data = Object\.fromEntries\(Object\.entries\(req\.body \|\| \{\}\)\.filter\(\(\[name\]\) => Object\.prototype\.hasOwnProperty\.call\(fieldMeta, name\)\)\);/);
   assert.doesNotMatch(express.get('src/middleware/error-handler.js'), /details: error\.message/);
 });
+
+test('generated webhook delivery gives up on a hanging destination before the outbox lock expires', {timeout: 5000}, async () => {
+  const spec = normalizeSpec({
+    specVersion: '1.0', app: {name: 'hook-api'}, database: {type: 'mongodb'},
+    outbox: {lockTimeoutMs: 1000},
+    events: {'note.created': {webhooks: [{urlEnv: 'HANG_URL', failure: 'fail'}]}},
+    entities: {Note: {fields: {title: {type: 'string'}}}}
+  });
+  assert.equal(spec.events['note.created'].webhooks[0].timeoutMs, 500);
+  assert.equal(normalizeSpec({specVersion: '1.0', app: {name: 'x'}, database: {type: 'mongodb'}, events: {e: {webhooks: [{urlEnv: 'U'}]}}, entities: {N: {fields: {t: {type: 'string'}}}}}).events.e.webhooks[0].timeoutMs, 10000);
+  const bus = load(buildFiles(spec).get('src/workflows/events.js'), {outbox: {}});
+  const server = require('node:http').createServer(() => {}).listen(0, '127.0.0.1');
+  try {
+    await new Promise(resolve => server.once('listening', resolve));
+    process.env.HANG_URL = 'http://127.0.0.1:' + server.address().port + '/hook';
+    const started = Date.now();
+    const stalled = new Promise((resolve, reject) => setTimeout(() => reject(new Error('delivery stalled')), 3000).unref());
+    await assert.rejects(Promise.race([bus.deliver('note.created', {id: 1}), stalled]), error => error.name === 'TimeoutError');
+    assert.ok(Date.now() - started < 3000);
+  } finally {
+    delete process.env.HANG_URL;
+    server.closeAllConnections();
+    server.close();
+  }
+});

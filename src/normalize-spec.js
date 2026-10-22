@@ -600,7 +600,9 @@ function normalizeSpec(inputSpec) {
           urlEnv: webhook.urlEnv,
           method: valueOr(webhook.method, 'post'),
           headers: webhook.headers || {},
-          failure: valueOr(webhook.failure, 'continue')
+          failure: valueOr(webhook.failure, 'continue'),
+          // A delivery must give up before its outbox lock expires, or another worker would deliver it again.
+          timeoutMs: valueOr(webhook.timeoutMs, Math.min(10000, Math.floor(valueOr(outboxConfig.lockTimeoutMs, 30000) / 2)))
         }))
       }
     ])),

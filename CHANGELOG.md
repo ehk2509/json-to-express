@@ -20,6 +20,7 @@ Changes after beta.7 will be listed here.
 - Entity hooks work unchanged on native Fastify: the `res` passed to hooks now supports `setHeader`, `set`, `header`, `getHeader` and `removeHeader` (calling them threw and returned 500), and `req` includes `method`, `url` and `ip`.
 - Fields a before hook adds are written only when declared, on every stack. PostgreSQL previously rejected such a create or update.
 - Native Fastify logs 5xx errors (through structured logging when observability is enabled) instead of returning 500 silently.
+- Webhook deliveries time out (new `events.<name>.webhooks[].timeoutMs`, default 10 s or half of `outbox.lockTimeoutMs`, whichever is smaller). A destination that never answered used to stall the worker indefinitely, so every later event and job waited behind it. Password-reset webhooks time out after 10 s instead of holding the forgot-password request open.
 
 ### Security
 - Express PostgreSQL no longer returns Prisma's validation message, which embeds server file paths and code frames, in 400 responses.

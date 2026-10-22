@@ -63,7 +63,7 @@ module.exports = function fastifyAuthSource(spec) {
     '      const baseUrl = config.resetUrl;',
     '      const resetUrl = baseUrl ? baseUrl + (baseUrl.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(resetToken) : undefined;',
     '      if (config.webhookUrlEnv && process.env[config.webhookUrlEnv]) {',
-    '        try {const delivered = await fetch(process.env[config.webhookUrlEnv], {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({email: user.email, token: resetToken, resetUrl})}); if (!delivered.ok) console.error("Password reset webhook failed with status", delivered.status);}',
+    '        try {const delivered = await fetch(process.env[config.webhookUrlEnv], {method: "POST", signal: AbortSignal.timeout(10000), headers: {"content-type": "application/json"}, body: JSON.stringify({email: user.email, token: resetToken, resetUrl})}); if (!delivered.ok) console.error("Password reset webhook failed with status", delivered.status);}',
     '        catch (error) {console.error("Password reset webhook failed", error);}',
     '      }',
     '      if (config.exposeToken) response.resetToken = resetToken;',
